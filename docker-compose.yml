@@ -25,6 +25,20 @@ services:
       timeout: 3s
       retries: 10
 
+  # Optional MinIO (Docker Hub may require login). Default app uses local filesystem.
+  minio:
+    profiles: ["minio"]
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
   api:
     build:
       context: .
@@ -36,8 +50,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-      STORAGE_BACKEND: local
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
       LOCAL_STORAGE_PATH: /data/files
+      MINIO_ENDPOINT: minio:9000
       SOURCES_CONFIG_PATH: /config/sources.yaml
     ports:
       - "8000:8000"
@@ -62,8 +77,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-      STORAGE_BACKEND: local
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
       LOCAL_STORAGE_PATH: /data/files
+      MINIO_ENDPOINT: minio:9000
       SOURCES_CONFIG_PATH: /config/sources.yaml
     volumes:
       - ./config:/config:ro
@@ -87,7 +103,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-edb}:${POSTGRES_PASSWORD:-edb_secret}@db:5432/${POSTGRES_DB:-edb_circulars}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-      STORAGE_BACKEND: local
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
       LOCAL_STORAGE_PATH: /data/files
       SOURCES_CONFIG_PATH: /config/sources.yaml
     volumes:
@@ -109,6 +125,14 @@ services:
     depends_on:
       - api
 
+  # Optional Dify stack placeholder — enable with: docker compose --profile dify up -d
+  # Replace with official Dify services when needed; see docker/dify/README.md
+  dify-placeholder:
+    profiles: ["dify"]
+    image: alpine:3.20
+    command: ["sh", "-c", "echo 'Mount official Dify compose under docker/dify and set DIFY_ENABLED=true' && sleep infinity"]
+
 volumes:
   pgdata:
   filedata:
+  miniodata:

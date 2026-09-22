@@ -1,19 +1,32 @@
-# Optional Dify profile (default off)
+# Optional Dify Knowledge profile
 
-# Usage:
-#   1. Place official Dify docker compose under this folder (or symlink).
-#   2. docker compose --profile dify up -d
-#   3. Set in root .env:
-#        DIFY_ENABLED=true
-#        DIFY_API_URL=http://dify-api:5001
-#        DIFY_DATASET_API_KEY=...
-#        DIFY_APP_API_KEY=...
-#        DIFY_DATASET_ID=...
-#
-# The app already ships a no-op DifySync; when enabled it uploads documents
-# to the dataset and can retrieve into chat knowledge_source modes:
-# local | local_and_dify | dify
+## Enable
 
-# Placeholder service so `profile: dify` is documented without bundling Dify.
-# Replace with official Dify services when you need Knowledge.
-services: {}
+1. Obtain / clone official Dify docker compose into this folder (or symlink).
+2. Start:
+
+```bash
+docker compose --profile dify up -d
+```
+
+3. In root `.env`:
+
+```
+DIFY_ENABLED=true
+DIFY_API_URL=http://dify-api:5001
+DIFY_DATASET_API_KEY=...
+DIFY_APP_API_KEY=...
+DIFY_DATASET_ID=...
+```
+
+4. Restart `api` / `worker` so they pick up env.
+
+## App behaviour
+
+- `DifySync` uploads newly ingested files to the Dataset when enabled.
+- Chat `knowledge_source`: `local` | `local_and_dify` | `dify`
+- When `DIFY_ENABLED=false`, backends are no-ops — main RAG still works.
+
+## RAM
+
+Official Dify stack typically needs ≥8GB free RAM. Keep it off for small machines.

@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "@/i18n/routing";
-import { fileUrl, listDocuments } from "@/lib/api";
+import { Link, useRouter } from "@/i18n/routing";
+import { listDocuments } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 type Doc = {
@@ -55,7 +55,9 @@ export default function DocumentsPage() {
         {items.map((doc) => (
           <article key={doc.id} className="doc-row">
             <div>
-              <h3>{doc.title}</h3>
+              <h3>
+                <Link href={`/documents/${doc.id}`}>{doc.title}</Link>
+              </h3>
               <div className="meta">
                 <span className="chip">{doc.source_id}</span>
                 <span>
@@ -70,25 +72,9 @@ export default function DocumentsPage() {
               </div>
             </div>
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "start" }}>
-              <a
-                className="btn secondary"
-                href={fileUrl(doc.id)}
-                target="_blank"
-                rel="noreferrer"
-                onClick={(e) => {
-                  e.preventDefault();
-                  fetch(fileUrl(doc.id), {
-                    headers: { Authorization: `Bearer ${token}` },
-                  })
-                    .then((r) => r.blob())
-                    .then((blob) => {
-                      const url = URL.createObjectURL(blob);
-                      window.open(url, "_blank");
-                    });
-                }}
-              >
+              <Link className="btn secondary" href={`/documents/${doc.id}`}>
                 {t("open")}
-              </a>
+              </Link>
             </div>
           </article>
         ))}

@@ -6,9 +6,8 @@ from typing import Any, Literal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import ChatMessage, ChatSession
-from app.services.dify import get_dify_sync
+from app.services.knowledge import get_dify_knowledge, get_local_knowledge
 from app.services.llm import get_llm_client
-from app.services.rag import retrieve_chunks
 
 KnowledgeSource = Literal["local", "local_and_dify", "dify"]
 
@@ -45,9 +44,9 @@ async def answer_question(
     local_hits: list[dict] = []
     dify_hits: list[dict] = []
     if knowledge_source in ("local", "local_and_dify"):
-        local_hits = await retrieve_chunks(session, question, top_k=8)
+        local_hits = await get_local_knowledge().retrieve(session, question, top_k=8)
     if knowledge_source in ("dify", "local_and_dify"):
-        dify_hits = await get_dify_sync().retrieve(question, top_k=5)
+        dify_hits = await get_dify_knowledge().retrieve(session, question, top_k=5)
 
     context_blocks: list[str] = []
     citations: list[dict[str, Any]] = []

@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     dify_app_api_key: str = ""
     dify_dataset_id: str = ""
 
+    # Phase-2 Google OAuth (stub)
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
