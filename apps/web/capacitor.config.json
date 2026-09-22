@@ -1,0 +1,9 @@
+{
+  "appId": "hk.edb.circulars",
+  "appName": "EDB Circulars",
+  "webDir": "out",
+  "server": {
+    "url": "http://localhost:4000",
+    "cleartext": true
+  }
+}

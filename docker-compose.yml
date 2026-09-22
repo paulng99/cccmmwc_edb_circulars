@@ -1,0 +1,114 @@
+services:
+  db:
+    image: ankane/pgvector:v0.5.1
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-edb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-edb_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-edb_circulars}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-edb} -d ${POSTGRES_DB:-edb_circulars}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-edb}:${POSTGRES_PASSWORD:-edb_secret}@db:5432/${POSTGRES_DB:-edb_circulars}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      STORAGE_BACKEND: local
+      LOCAL_STORAGE_PATH: /data/files
+      SOURCES_CONFIG_PATH: /config/sources.yaml
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config:/config:ro
+      - filedata:/data/files
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: celery -A app.worker.celery_app worker --loglevel=info
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-edb}:${POSTGRES_PASSWORD:-edb_secret}@db:5432/${POSTGRES_DB:-edb_circulars}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      STORAGE_BACKEND: local
+      LOCAL_STORAGE_PATH: /data/files
+      SOURCES_CONFIG_PATH: /config/sources.yaml
+    volumes:
+      - ./config:/config:ro
+      - filedata:/data/files
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+  beat:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: celery -A app.worker.celery_app beat --loglevel=info
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-edb}:${POSTGRES_PASSWORD:-edb_secret}@db:5432/${POSTGRES_DB:-edb_circulars}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      STORAGE_BACKEND: local
+      LOCAL_STORAGE_PATH: /data/files
+      SOURCES_CONFIG_PATH: /config/sources.yaml
+    volumes:
+      - ./config:/config:ro
+    depends_on:
+      - worker
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      PORT: "4000"
+      HOSTNAME: "0.0.0.0"
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_DEFAULT_LOCALE: ${NEXT_PUBLIC_DEFAULT_LOCALE:-zh-HK}
+    ports:
+      - "4000:4000"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  filedata:

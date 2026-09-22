@@ -1,0 +1,87 @@
+# Source registry for EDB and related public sites.
+# Enable/disable per source; collectors read this at crawl time.
+
+sources:
+  - id: edb_circulars
+    name:
+      en: EDB Circulars System
+      zh-HK: 教育局通告系統
+    enabled: true
+    priority: 0
+    type: circular_aspnet
+    base_url: https://applications.edb.gov.hk/circular/circular.aspx
+    langs: [2, 1]  # 2=zh-HK, 1=en
+    year_from: 2025
+    year_to: 2026
+    rate_limit_seconds: 1.5
+    schedule: "0 6 * * *"  # daily 06:00
+
+  - id: edb_www
+    name:
+      en: Education Bureau Website Attachments
+      zh-HK: 教育局網站附件
+    enabled: true
+    priority: 0
+    type: site_attachments
+    base_url: https://www.edb.gov.hk
+    allow_hosts:
+      - www.edb.gov.hk
+      - edb.gov.hk
+    path_prefixes:
+      - /attachment/
+    file_extensions: [.pdf, .doc, .docx, .xls, .xlsx, .ppt, .pptx]
+    max_pages: 2000
+    rate_limit_seconds: 1.5
+    schedule: "30 6 * * *"
+
+  - id: sss_sister
+    name:
+      en: Sister School Scheme
+      zh-HK: 姊妹學校計劃
+    enabled: true
+    priority: 1
+    type: site_attachments
+    base_url: https://sss.edb.gov.hk
+    allow_hosts:
+      - sss.edb.gov.hk
+    file_extensions: [.pdf, .doc, .docx, .xls, .xlsx]
+    max_pages: 500
+    rate_limit_seconds: 1.5
+    schedule: "0 7 * * *"
+
+  - id: edb_lwlssg
+    name:
+      en: Life-wide Learning and Sister School Grant
+      zh-HK: 全方位學習及姊妹學校津貼
+    enabled: true
+    priority: 1
+    type: site_attachments
+    base_url: https://www.edb.gov.hk/tc/curriculum-development/curriculum-area/life-wide-learning/LWLSSG/index.html
+    seed_urls:
+      - https://www.edb.gov.hk/tc/curriculum-development/curriculum-area/life-wide-learning/LWLSSG/index.html
+      - https://www.edb.gov.hk/en/curriculum-development/curriculum-area/life-wide-learning/LWLSSG/index.html
+      - https://www.edb.gov.hk/tc/lwlssg
+      - https://www.edb.gov.hk/en/lwlssg
+    allow_hosts:
+      - www.edb.gov.hk
+      - edb.gov.hk
+    file_extensions: [.pdf, .doc, .docx, .xls, .xlsx]
+    max_pages: 200
+    rate_limit_seconds: 1.5
+    schedule: "15 7 * * *"
+
+  - id: edcity
+    name:
+      en: Hong Kong Education City
+      zh-HK: 香港教育城
+    enabled: false
+    priority: 2
+    type: site_attachments
+    base_url: https://www.edcity.hk
+    allow_hosts:
+      - www.edcity.hk
+      - edcity.hk
+    file_extensions: [.pdf]
+    max_pages: 300
+    rate_limit_seconds: 2.0
+    schedule: "0 8 * * 0"

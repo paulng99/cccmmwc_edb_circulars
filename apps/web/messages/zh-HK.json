@@ -1,0 +1,54 @@
+{
+  "app": {
+    "name": "教育局通告助手",
+    "tagline": "自動收集通告與文件，智能問答整合資訊"
+  },
+  "nav": {
+    "documents": "文件",
+    "chat": "問答",
+    "status": "收集狀態",
+    "logout": "登出",
+    "login": "登入"
+  },
+  "login": {
+    "title": "登入",
+    "username": "用戶名稱",
+    "password": "密碼",
+    "submit": "登入",
+    "hint": "預設帳號 admin / 000000（上線前請更改）",
+    "error": "登入失敗，請檢查帳號密碼"
+  },
+  "documents": {
+    "title": "通告與文件",
+    "search": "搜尋標題或通告編號",
+    "empty": "暫無文件。可於收集狀態頁觸發爬取。",
+    "circularNo": "通告編號",
+    "issuedAt": "發出日期",
+    "source": "來源",
+    "status": "狀態",
+    "open": "開啟",
+    "download": "下載"
+  },
+  "chat": {
+    "title": "通告問答",
+    "placeholder": "例如：姊妹學校津貼如何使用？",
+    "send": "傳送",
+    "knowledge": "知識來源",
+    "local": "本庫",
+    "localAndDify": "本庫 + Dify",
+    "dify": "僅 Dify",
+    "citations": "參考來源",
+    "thinking": "正在分析通告與文件…"
+  },
+  "status": {
+    "title": "收集狀態",
+    "crawl": "立即爬取",
+    "crawling": "已啟動背景爬取",
+    "total": "文件總數",
+    "ready": "已索引",
+    "indexing": "索引中",
+    "failed": "失敗",
+    "sources": "資料來源",
+    "recentRuns": "最近執行"
+  }
+}

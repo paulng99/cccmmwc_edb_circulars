@@ -1,0 +1,45 @@
+# Env & secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+
+# Capacitor / mobile
+apps/web/android/
+apps/web/ios/
+*.keystore
+*.jks
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Docker / data volumes (local)
+data/
+*.log
+
+# Build
+coverage/
+.turbo/

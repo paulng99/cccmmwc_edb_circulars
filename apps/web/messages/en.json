@@ -1,0 +1,54 @@
+{
+  "app": {
+    "name": "EDB Circulars Assistant",
+    "tagline": "Automatically collect circulars and documents, then answer with grounded RAG"
+  },
+  "nav": {
+    "documents": "Documents",
+    "chat": "Chat",
+    "status": "Ingest Status",
+    "logout": "Log out",
+    "login": "Log in"
+  },
+  "login": {
+    "title": "Sign in",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Sign in",
+    "hint": "Default admin / 000000 (change before production)",
+    "error": "Sign-in failed. Check your credentials."
+  },
+  "documents": {
+    "title": "Circulars & Documents",
+    "search": "Search title or circular number",
+    "empty": "No documents yet. Trigger a crawl from Ingest Status.",
+    "circularNo": "Circular No.",
+    "issuedAt": "Issued",
+    "source": "Source",
+    "status": "Status",
+    "open": "Open",
+    "download": "Download"
+  },
+  "chat": {
+    "title": "Ask about EDB materials",
+    "placeholder": "e.g. How should sister school grant be used?",
+    "send": "Send",
+    "knowledge": "Knowledge source",
+    "local": "Local",
+    "localAndDify": "Local + Dify",
+    "dify": "Dify only",
+    "citations": "Citations",
+    "thinking": "Analysing circulars and documents…"
+  },
+  "status": {
+    "title": "Ingest Status",
+    "crawl": "Crawl now",
+    "crawling": "Background crawl started",
+    "total": "Total docs",
+    "ready": "Indexed",
+    "indexing": "Indexing",
+    "failed": "Failed",
+    "sources": "Sources",
+    "recentRuns": "Recent runs"
+  }
+}
