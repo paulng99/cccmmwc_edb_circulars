@@ -60,6 +60,30 @@ async def download_and_store(
     digest = content_hash(data)
     existing = await session.scalar(select(Document).where(Document.content_hash == digest))
     if existing:
+        # Refresh metadata if an older crawl stored language-label titles
+        from app.collectors.circular_meta import is_language_label
+
+        changed = False
+        if item.title and (is_language_label(existing.title) or not existing.title):
+            existing.title = item.title[:1000]
+            changed = True
+        if item.circular_no and item.circular_no != existing.circular_no:
+            existing.circular_no = item.circular_no
+            changed = True
+        if item.language and item.language != existing.language:
+            existing.language = item.language
+            changed = True
+        if item.issued_at and existing.issued_at != item.issued_at:
+            existing.issued_at = item.issued_at
+            changed = True
+        if item.meta:
+            extra = dict(existing.extra or {})
+            extra.update(item.meta)
+            existing.extra = extra
+            changed = True
+        if changed:
+            await session.commit()
+            await session.refresh(existing)
         return existing
 
     mime = item.mime_type

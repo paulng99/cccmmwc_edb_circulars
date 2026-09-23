@@ -32,9 +32,17 @@ export async function listDocuments(
   if (params.q) sp.set("q", params.q);
   sp.set("page", String(params.page || 1));
   sp.set("page_size", String(params.page_size || 20));
+  sp.set("grouped", "true");
   const res = await fetch(`${API_URL}/api/documents?${sp}`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error("list_failed");
-  return res.json();
+  return res.json() as Promise<{
+    total: number;
+    page: number;
+    page_size: number;
+    grouped?: boolean;
+    file_count?: number;
+    items: unknown[];
+  }>;
 }
 
 export async function chatAsk(

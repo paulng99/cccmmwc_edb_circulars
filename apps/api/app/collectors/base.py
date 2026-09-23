@@ -10,6 +10,12 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
+from app.collectors.circular_meta import (
+    extract_subject,
+    resolve_circular_no,
+    resolve_language,
+    resolve_title,
+)
 from app.core.config import get_settings
 
 
@@ -107,46 +113,63 @@ class CircularAspNetCollector:
         return self._parse_results(r2.text, url, language)
 
     def _parse_results(self, html: str, page_url: str, language: str) -> list[DiscoveredItem]:
+        """Parse EDB circular search results.
+
+        Each table row is one circular: date | subject+number | language PDF links.
+        Language link text (英文/繁體/簡體) is NOT the title.
+        """
         soup = BeautifulSoup(html, "lxml")
         items: list[DiscoveredItem] = []
-        # Prefer table rows with PDF links
-        for a in soup.select("a[href]"):
-            href = a.get("href", "")
-            if not href.lower().endswith(".pdf"):
+        seen_files: set[str] = set()
+
+        for tr in soup.select("table tr"):
+            pdf_links = [
+                a
+                for a in tr.select("a[href]")
+                if (a.get("href") or "").lower().endswith(".pdf")
+            ]
+            if not pdf_links:
                 continue
-            file_url = urljoin(page_url, href)
-            fname = file_url.split("/")[-1]
-            title = a.get_text(" ", strip=True) or fname
-            row = a.find_parent("tr")
-            row_text = row.get_text(" ", strip=True) if row else title
-            circ = None
-            # Prefer EDB file stem (EDBCM26157E) over date-like row text (09/2026)
-            fm = re.search(r"(EDBC(?:M)?\d+[A-Za-z]?)", fname, re.I)
-            if fm:
-                circ = fm.group(1).upper()
-            else:
-                m = re.search(
-                    r"(EDBC(?:M)?\s*\d+/\d+|No\.\s*\d+/\d+|\d+/\d{4})",
-                    row_text,
-                    re.I,
-                )
-                if m:
-                    circ = m.group(1).replace(" ", "")
+
+            tds = tr.find_all("td")
+            date_text = tds[0].get_text(" ", strip=True) if tds else ""
+            subject_cell = tds[1].get_text(" ", strip=True) if len(tds) > 1 else ""
+            row_text = tr.get_text(" ", strip=True)
+            subject = extract_subject(subject_cell) or extract_subject(row_text)
             issued = None
-            dm = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", row_text)
+            dm = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", date_text or row_text)
             if dm:
                 issued = _parse_hk_date(dm.group(1))
-            items.append(
-                DiscoveredItem(
-                    title=title[:1000],
-                    source_url=page_url,
+
+            for a in pdf_links:
+                href = a.get("href") or ""
+                file_url = urljoin(page_url, href)
+                if file_url in seen_files:
+                    continue
+                seen_files.add(file_url)
+                link_text = a.get_text(" ", strip=True)
+                circ = resolve_circular_no(row_text=subject_cell or row_text, file_url=file_url)
+                title = resolve_title(
+                    subject=subject,
+                    row_text=subject_cell or row_text,
+                    link_text=link_text,
                     file_url=file_url,
-                    circular_no=circ,
-                    issued_at=issued,
-                    language=language,
-                    meta={"row_text": row_text[:500]},
                 )
-            )
+                lang = resolve_language(link_text=link_text, file_url=file_url, fallback=language)
+                items.append(
+                    DiscoveredItem(
+                        title=title[:1000],
+                        source_url=page_url,
+                        file_url=file_url,
+                        circular_no=circ,
+                        issued_at=issued,
+                        language=lang,
+                        meta={
+                            "row_text": (subject_cell or row_text)[:800],
+                            "link_label": link_text[:64],
+                        },
+                    )
+                )
         return items
 
 
