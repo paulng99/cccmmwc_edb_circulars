@@ -7,21 +7,21 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
-from app.core.config import get_settings
 from app.core.db import get_db
 from app.models.entities import CrawlRun, Document, Source, User
+from app.services.runtime_settings import resolved_settings
 
 router = APIRouter(prefix="/api", tags=["system"])
 
 
 @router.get("/health")
 async def health() -> dict:
-    settings = get_settings()
+    rs = resolved_settings()
     return {
         "ok": True,
-        "app": settings.app_name,
-        "llm_provider": settings.llm_provider,
-        "dify_enabled": settings.dify_enabled,
+        "app": rs.get("app_name"),
+        "llm_provider": rs.get("llm_provider"),
+        "dify_enabled": rs.get("dify_enabled"),
     }
 
 

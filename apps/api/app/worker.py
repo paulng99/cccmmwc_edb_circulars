@@ -32,9 +32,12 @@ def _run_async(coro: Any) -> Any:
 def crawl_all() -> dict:
     from app.core.db import SessionLocal
     from app.services.pipeline import run_source_crawl
+    from app.services.runtime_settings import ensure_seeded, get_merged
 
     async def _inner() -> dict:
         async with SessionLocal() as session:
+            await ensure_seeded(session)
+            await get_merged(session)
             return await run_source_crawl(session)
 
     return _run_async(_inner())
@@ -44,9 +47,12 @@ def crawl_all() -> dict:
 def crawl_source(source_id: str) -> dict:
     from app.core.db import SessionLocal
     from app.services.pipeline import run_source_crawl
+    from app.services.runtime_settings import ensure_seeded, get_merged
 
     async def _inner() -> dict:
         async with SessionLocal() as session:
+            await ensure_seeded(session)
+            await get_merged(session)
             return await run_source_crawl(session, source_id=source_id)
 
     return _run_async(_inner())

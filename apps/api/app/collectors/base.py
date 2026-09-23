@@ -16,7 +16,7 @@ from app.collectors.circular_meta import (
     resolve_language,
     resolve_title,
 )
-from app.core.config import get_settings
+from app.services.runtime_settings import resolved_settings
 
 
 @dataclass
@@ -49,17 +49,17 @@ class CircularAspNetCollector:
     """EDB Circulars ASP.NET search form collector."""
 
     async def discover(self, config: dict[str, Any]) -> list[DiscoveredItem]:
-        settings = get_settings()
+        rs = resolved_settings()
         base = config.get("base_url") or "https://applications.edb.gov.hk/circular/circular.aspx"
         langs = config.get("langs") or [2]
-        rate = float(config.get("rate_limit_seconds") or settings.crawl_rate_limit_seconds)
+        rate = float(config.get("rate_limit_seconds") or rs["crawl_rate_limit_seconds"])
         # default: last ~2 years in yearly slices for backfill friendliness
         year_from = int(config.get("year_from") or date.today().year - 1)
         year_to = int(config.get("year_to") or date.today().year)
 
         items: list[DiscoveredItem] = []
         seen: set[str] = set()
-        headers = {"User-Agent": settings.crawl_user_agent}
+        headers = {"User-Agent": rs["crawl_user_agent"]}
 
         async with httpx.AsyncClient(headers=headers, timeout=90, follow_redirects=True) as client:
             for lang in langs:
@@ -177,16 +177,16 @@ class SiteAttachmentsCollector:
     """BFS crawl within allow_hosts for attachment-like files."""
 
     async def discover(self, config: dict[str, Any]) -> list[DiscoveredItem]:
-        settings = get_settings()
+        rs = resolved_settings()
         base = config["base_url"]
         seeds = list(config.get("seed_urls") or [base])
         allow_hosts = set(config.get("allow_hosts") or [urlparse(base).netloc])
         exts = [e.lower() for e in (config.get("file_extensions") or [".pdf"])]
         path_prefixes = config.get("path_prefixes") or []
         max_pages = int(config.get("max_pages") or 500)
-        rate = float(config.get("rate_limit_seconds") or settings.crawl_rate_limit_seconds)
+        rate = float(config.get("rate_limit_seconds") or rs["crawl_rate_limit_seconds"])
 
-        headers = {"User-Agent": settings.crawl_user_agent}
+        headers = {"User-Agent": rs["crawl_user_agent"]}
         seen_pages: set[str] = set()
         seen_files: set[str] = set()
         queue: list[str] = list(seeds)

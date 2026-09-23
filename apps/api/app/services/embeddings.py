@@ -5,7 +5,7 @@ from typing import Protocol
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from app.core.config import get_settings
+from app.services.runtime_settings import resolved_settings
 
 
 class EmbeddingBackend(Protocol):
@@ -13,16 +13,14 @@ class EmbeddingBackend(Protocol):
 
 
 class JinaEmbeddingBackend:
-    def __init__(self) -> None:
-        self.settings = get_settings()
-
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
     async def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        if not self.settings.jina_api_key:
+        rs = resolved_settings()
+        if not rs.get("jina_api_key"):
             # Deterministic stub for local boot without keys (unit length ~ dim)
-            dim = self.settings.jina_embedding_dim
+            dim = int(rs["jina_embedding_dim"])
             out: list[list[float]] = []
             for t in texts:
                 seed = sum(ord(c) for c in t) % 997
@@ -31,13 +29,13 @@ class JinaEmbeddingBackend:
             return out
 
         headers = {
-            "Authorization": f"Bearer {self.settings.jina_api_key}",
+            "Authorization": f"Bearer {rs['jina_api_key']}",
             "Content-Type": "application/json",
         }
         payload = {
-            "model": self.settings.jina_embedding_model,
+            "model": rs["jina_embedding_model"],
             "task": "text-matching",
-            "dimensions": self.settings.jina_embedding_dim,
+            "dimensions": int(rs["jina_embedding_dim"]),
             "input": texts,
         }
         async with httpx.AsyncClient(timeout=120) as client:

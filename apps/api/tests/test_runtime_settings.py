@@ -9,6 +9,7 @@ from app.services.runtime_settings import (
     DEFAULT_SYSTEM_PROMPT,
     apply_patch,
     build_settings_response,
+    build_system_prompt,
     defaults_from_env,
     ensure_seeded,
     get_cached_merged,
@@ -83,6 +84,12 @@ def test_build_settings_response_masks():
     assert "super-secret" not in str(payload)
     assert "admin_password" not in str(payload)
     assert payload["readonly"]["jwt_secret"]["configured"] is True
+
+
+def test_build_system_prompt_with_cite():
+    text = build_system_prompt({"system_prompt": "BASE", "cite_inline_refs": True})
+    assert "BASE" in text
+    assert "[L1]" in text
 
 
 def test_cache_initially_empty():

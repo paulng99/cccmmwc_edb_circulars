@@ -189,6 +189,21 @@ def get_cached_merged() -> dict[str, Any] | None:
     return _cache
 
 
+def resolved_settings() -> dict[str, Any]:
+    """Return merged runtime settings; prefer warm cache, fall back to env defaults."""
+    cached = get_cached_merged()
+    if cached is not None:
+        return cached
+    return defaults_from_env(get_settings())
+
+
+def build_system_prompt(rs: dict[str, Any]) -> str:
+    system = str(rs.get("system_prompt") or DEFAULT_SYSTEM_PROMPT)
+    if rs.get("cite_inline_refs"):
+        system = system + "\n" + INLINE_CITE_INSTRUCTION
+    return system
+
+
 async def ensure_seeded(session: AsyncSession) -> AppSetting:
     row = await session.get(AppSetting, 1)
     if row:
