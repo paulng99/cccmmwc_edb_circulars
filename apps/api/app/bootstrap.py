@@ -45,6 +45,24 @@ async def init_db() -> None:
                 "ADD COLUMN IF NOT EXISTS celery_task_id VARCHAR(64)"
             )
         )
+        await conn.execute(
+            text(
+                "ALTER TABLE documents "
+                "ADD COLUMN IF NOT EXISTS programme VARCHAR(32) DEFAULT 'other'"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE documents "
+                "ADD COLUMN IF NOT EXISTS topics JSONB DEFAULT '[]'::jsonb"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_documents_programme "
+                "ON documents (programme)"
+            )
+        )
 
 
 async def seed_admin(session: AsyncSession) -> None:

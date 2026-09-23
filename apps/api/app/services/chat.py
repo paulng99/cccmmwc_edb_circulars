@@ -23,6 +23,8 @@ async def answer_question(
     knowledge_source: KnowledgeSource = "local",
     session_id: uuid.UUID | None = None,
     locale: str = "zh-HK",
+    programme: str | None = None,
+    topic: str | None = None,
 ) -> dict[str, Any]:
     if session_id:
         chat = await session.get(ChatSession, session_id)
@@ -41,7 +43,13 @@ async def answer_question(
     local_hits: list[dict] = []
     dify_hits: list[dict] = []
     if knowledge_source in ("local", "local_and_dify"):
-        local_hits = await get_local_knowledge().retrieve(session, question, top_k=int(rs["local_top_k"]))
+        local_hits = await get_local_knowledge().retrieve(
+            session,
+            question,
+            top_k=int(rs["local_top_k"]),
+            programme=programme,
+            topic=topic,
+        )
     # Keep prompt lean so OpenRouter stays responsive
     local_hits = local_hits[:8]
     for hit in local_hits:
@@ -122,4 +130,6 @@ async def answer_question(
         "answer": answer,
         "citations": citations,
         "knowledge_source": knowledge_source,
+        "programme": programme,
+        "topic": topic,
     }

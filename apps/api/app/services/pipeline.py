@@ -95,6 +95,8 @@ async def download_and_store(
     key = f"{source_id}/{digest[:2]}/{digest}{ext}"
     put_object(key, data, content_type=mime)
 
+    from app.services.classify import programme_for
+
     doc = Document(
         source_id=source_id,
         title=item.title,
@@ -108,6 +110,8 @@ async def download_and_store(
         storage_key=key,
         file_size=len(data),
         status="stored",
+        programme=programme_for(source_id=source_id, circular_no=item.circular_no),
+        topics=[],
         extra=item.meta or {},
     )
     session.add(doc)

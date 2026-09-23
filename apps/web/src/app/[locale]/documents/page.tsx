@@ -21,15 +21,43 @@ type DocGroup = {
   issued_at?: string | null;
   source_id: string;
   primary_id: string;
-  category?: "circular" | "document" | string;
+  programme?: string;
+  category?: string;
+  topics?: string[];
   variants: Variant[];
 };
 
-type Category = "all" | "circular" | "document";
+type Programme = "all" | "circular" | "sister_school" | "lwlssg" | "other";
+type Topic =
+  | "all"
+  | "grant_funding"
+  | "curriculum"
+  | "admin"
+  | "student_activity"
+  | "parent_home"
+  | "other";
 type ListStatus = "idle" | "loading" | "success" | "empty" | "error";
 
 const SKELETON_COUNT = 4;
 const PAGE_SIZE = 20;
+
+const PROGRAMME_OPTIONS: { value: Programme; key: string }[] = [
+  { value: "all", key: "programmeAll" },
+  { value: "circular", key: "programmeCircular" },
+  { value: "sister_school", key: "programmeSisterSchool" },
+  { value: "lwlssg", key: "programmeLwlssg" },
+  { value: "other", key: "programmeOther" },
+];
+
+const TOPIC_OPTIONS: { value: Topic; key: string }[] = [
+  { value: "all", key: "topicAll" },
+  { value: "grant_funding", key: "topicGrantFunding" },
+  { value: "curriculum", key: "topicCurriculum" },
+  { value: "admin", key: "topicAdmin" },
+  { value: "student_activity", key: "topicStudentActivity" },
+  { value: "parent_home", key: "topicParentHome" },
+  { value: "other", key: "topicOther" },
+];
 
 function langLabel(code: string, t: (key: string) => string): string {
   if (code === "zh-HK") return t("langZhHk");
@@ -38,13 +66,37 @@ function langLabel(code: string, t: (key: string) => string): string {
   return code;
 }
 
+function programmeLabel(prog: string | undefined, t: (key: string) => string): string {
+  const map: Record<string, string> = {
+    circular: "programmeCircular",
+    sister_school: "programmeSisterSchool",
+    lwlssg: "programmeLwlssg",
+    other: "programmeOther",
+  };
+  const key = map[prog || ""] || "programmeOther";
+  return t(key);
+}
+
+function topicLabel(topic: string, t: (key: string) => string): string {
+  const map: Record<string, string> = {
+    grant_funding: "topicGrantFunding",
+    curriculum: "topicCurriculum",
+    admin: "topicAdmin",
+    student_activity: "topicStudentActivity",
+    parent_home: "topicParentHome",
+    other: "topicOther",
+  };
+  return t(map[topic] || "topicOther");
+}
+
 export default function DocumentsPage() {
   const t = useTranslations("documents");
   const { token, ready } = useAuth();
   const router = useRouter();
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
-  const [category, setCategory] = useState<Category>("all");
+  const [programme, setProgramme] = useState<Programme>("all");
+  const [topic, setTopic] = useState<Topic>("all");
   const [items, setItems] = useState<DocGroup[]>([]);
   const [total, setTotal] = useState(0);
   const [fileCount, setFileCount] = useState(0);
@@ -72,7 +124,8 @@ export default function DocumentsPage() {
       q: debouncedQ || undefined,
       page,
       page_size: PAGE_SIZE,
-      category,
+      programme,
+      topic,
     })
       .then((data) => {
         if (cancelled) return;
@@ -92,24 +145,27 @@ export default function DocumentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, debouncedQ, page, category, reloadKey]);
+  }, [token, debouncedQ, page, programme, topic, reloadKey]);
 
   if (!token) return null;
 
   const hasKeyword = Boolean(debouncedQ);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  function selectCategory(next: Category) {
-    setCategory(next);
+  function selectProgramme(next: Programme) {
+    setProgramme(next);
+    setPage(1);
+  }
+
+  function selectTopic(next: Topic) {
+    setTopic(next);
     setPage(1);
   }
 
   const countLabel =
-    category === "document"
-      ? t("resultCountDocuments", { count: total })
-      : category === "circular"
-        ? t("resultCountCirculars", { count: total })
-        : t("resultCount", { count: total });
+    programme === "circular"
+      ? t("resultCountCirculars", { count: total })
+      : t("resultCountProgramme", { count: total });
 
   return (
     <div className="page-enter">
@@ -118,23 +174,35 @@ export default function DocumentsPage() {
       </div>
       <div className="panel" style={{ marginBottom: "1rem" }}>
         <div className="field" style={{ marginBottom: "0.85rem" }}>
-          <span className="category-label" id="cat-label">
-            {t("categoryFilter")}
+          <span className="category-label" id="prog-label">
+            {t("programmeFilter")}
           </span>
-          <div className="lang-variants category-toggle" role="group" aria-labelledby="cat-label">
-            {(
-              [
-                ["all", "categoryAll"],
-                ["circular", "categoryCirculars"],
-                ["document", "categoryDocuments"],
-              ] as const
-            ).map(([value, key]) => (
+          <div className="lang-variants category-toggle" role="group" aria-labelledby="prog-label">
+            {PROGRAMME_OPTIONS.map(({ value, key }) => (
               <button
                 key={value}
                 type="button"
-                className={`lang-chip${category === value ? " active" : ""}`}
-                aria-pressed={category === value}
-                onClick={() => selectCategory(value)}
+                className={`lang-chip${programme === value ? " active" : ""}`}
+                aria-pressed={programme === value}
+                onClick={() => selectProgramme(value)}
+              >
+                {t(key)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="field" style={{ marginBottom: "0.85rem" }}>
+          <span className="category-label" id="topic-label">
+            {t("topicFilter")}
+          </span>
+          <div className="lang-variants category-toggle" role="group" aria-labelledby="topic-label">
+            {TOPIC_OPTIONS.map(({ value, key }) => (
+              <button
+                key={value}
+                type="button"
+                className={`lang-chip${topic === value ? " active" : ""}`}
+                aria-pressed={topic === value}
+                onClick={() => selectTopic(value)}
               >
                 {t(key)}
               </button>
@@ -212,8 +280,13 @@ export default function DocumentsPage() {
                   <h3>{group.title}</h3>
                   <div className="meta">
                     <span className="chip category-chip">
-                      {group.category === "circular" ? t("categoryCirculars") : t("categoryDocuments")}
+                      {programmeLabel(group.programme || group.category, t)}
                     </span>
+                    {(group.topics || []).slice(0, 3).map((tp) => (
+                      <span key={tp} className="chip">
+                        {topicLabel(tp, t)}
+                      </span>
+                    ))}
                     <span className="chip">{group.source_id}</span>
                     <span>
                       {t("circularNo")}: {group.circular_no || "—"}

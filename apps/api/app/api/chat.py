@@ -37,6 +37,8 @@ async def chat(
             knowledge_source=ks,  # type: ignore[arg-type]
             session_id=session_id,
             locale=body.locale,
+            programme=body.programme,
+            topic=body.topic,
         )
         log.info("chat done cites=%s", len(result.get("citations") or []))
         return result

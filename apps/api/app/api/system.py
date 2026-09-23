@@ -229,3 +229,30 @@ async def fix_metadata(
 
     result = await fix_document_metadata(db)
     return {"ok": True, **result}
+
+
+@router.post("/ingest/classify")
+async def trigger_classify(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+    force: bool = False,
+    sync: bool = False,
+) -> dict:
+    """Backfill programme + topics. Default: Celery async; sync=1 runs inline (rules+LLM)."""
+    from app.worker import classify_documents
+
+    if sync:
+        from app.services.classify import backfill_classifications
+
+        result = await backfill_classifications(
+            db, use_llm=True, force_topics=force
+        )
+        return {"ok": True, "started": False, "sync": True, **result}
+
+    async_result = classify_documents.delay(force_topics=force, use_llm=True)
+    return {
+        "ok": True,
+        "started": True,
+        "force": force,
+        "task_id": async_result.id,
+    }

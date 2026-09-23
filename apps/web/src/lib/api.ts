@@ -33,12 +33,16 @@ export async function listDocuments(
     status?: string;
     grouped?: boolean;
     category?: "all" | "circular" | "document";
+    programme?: "all" | "circular" | "sister_school" | "lwlssg" | "other";
+    topic?: "all" | string;
   } = {},
 ) {
   const sp = new URLSearchParams();
   if (params.q) sp.set("q", params.q);
   if (params.status) sp.set("status", params.status);
-  if (params.category && params.category !== "all") sp.set("category", params.category);
+  if (params.programme && params.programme !== "all") sp.set("programme", params.programme);
+  else if (params.category && params.category !== "all") sp.set("category", params.category);
+  if (params.topic && params.topic !== "all") sp.set("topic", params.topic);
   sp.set("page", String(params.page || 1));
   sp.set("page_size", String(params.page_size || 20));
   sp.set("grouped", String(params.grouped ?? true));
@@ -50,6 +54,8 @@ export async function listDocuments(
     page_size: number;
     grouped?: boolean;
     category?: string;
+    programme?: string;
+    topic?: string;
     file_count?: number;
     items: unknown[];
   }>;
@@ -62,6 +68,8 @@ export async function chatAsk(
     session_id?: string | null;
     knowledge_source?: KnowledgeSource;
     locale?: string;
+    programme?: string | null;
+    topic?: string | null;
   },
   opts?: { timeoutMs?: number },
 ) {
@@ -88,6 +96,17 @@ export async function chatAsk(
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function triggerClassify(token: string, force = false) {
+  const sp = new URLSearchParams();
+  if (force) sp.set("force", "true");
+  const res = await fetch(`${API_URL}/api/ingest/classify?${sp}`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error("classify_failed");
+  return res.json() as Promise<{ ok: boolean; started?: boolean; task_id?: string }>;
 }
 
 export async function ingestStatus(token: string) {

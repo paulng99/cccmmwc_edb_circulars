@@ -88,3 +88,18 @@ def index_document_task(document_id: str) -> dict:
             return await index_document(session, uuid.UUID(document_id))
 
     return _run_async(_inner())
+
+
+@celery_app.task(name="app.worker.classify_documents")
+def classify_documents(force_topics: bool = False, use_llm: bool = True) -> dict:
+    from app.core.db import SessionLocal
+    from app.services.classify import backfill_classifications
+
+    async def _inner() -> dict:
+        async with SessionLocal() as session:
+            await _refresh_runtime_settings(session)
+            return await backfill_classifications(
+                session, use_llm=use_llm, force_topics=force_topics
+            )
+
+    return _run_async(_inner())

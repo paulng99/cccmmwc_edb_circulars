@@ -110,6 +110,10 @@ class Document(Base):
     storage_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     file_size: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(32), default="stored")  # stored|indexing|ready|failed
+    # programme: circular | sister_school | lwlssg | other
+    programme: Mapped[str] = mapped_column(String(32), default="other", index=True)
+    # topics: multi-label from closed vocab (grant_funding, curriculum, …)
+    topics: Mapped[list] = mapped_column(JSONB, default=list)
     school_types: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     extra: Mapped[dict] = mapped_column(JSONB, default=dict)
     dify_document_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)

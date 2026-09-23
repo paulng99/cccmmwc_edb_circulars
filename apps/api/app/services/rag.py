@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import uuid
@@ -15,6 +16,18 @@ from app.services.ingest import chunk_text, extract_text_from_pdf
 from app.services.storage import get_object_bytes
 
 logger = logging.getLogger(__name__)
+
+_VALID_PROGRAMMES = frozenset({"circular", "sister_school", "lwlssg", "other"})
+_VALID_TOPICS = frozenset(
+    {
+        "grant_funding",
+        "curriculum",
+        "admin",
+        "student_activity",
+        "parent_home",
+        "other",
+    }
+)
 
 
 async def index_document(session: AsyncSession, document_id: uuid.UUID) -> dict[str, Any]:
@@ -35,6 +48,12 @@ async def index_document(session: AsyncSession, document_id: uuid.UUID) -> dict[
         if not chunks:
             doc.status = "ready"
             doc.extra = {**(doc.extra or {}), "warning": "no text extracted"}
+            try:
+                from app.services.classify import apply_classification
+
+                await apply_classification(doc, use_llm=True, force_topics=False)
+            except Exception:
+                logger.exception("Classification failed for %s", document_id)
             await session.commit()
             return {"ok": True, "chunks": 0}
 
@@ -57,6 +76,12 @@ async def index_document(session: AsyncSession, document_id: uuid.UUID) -> dict[
                 )
             )
         doc.status = "ready"
+        try:
+            from app.services.classify import apply_classification
+
+            await apply_classification(doc, use_llm=True, force_topics=False)
+        except Exception:
+            logger.exception("Classification failed for %s", document_id)
         await session.commit()
 
         sync = get_dify_sync()
@@ -106,10 +131,29 @@ def _query_terms(query: str) -> list[str]:
     return terms[:12]
 
 
+def _filter_sql(
+    *,
+    programme: str | None,
+    topic: str | None,
+    params: dict[str, Any],
+) -> str:
+    parts: list[str] = []
+    if programme:
+        params["programme"] = programme
+        parts.append("AND d.programme = :programme")
+    if topic:
+        params["topic_json"] = json.dumps([topic])
+        parts.append("AND d.topics @> CAST(:topic_json AS jsonb)")
+    return " ".join(parts)
+
+
 async def _vector_retrieve(
     session: AsyncSession,
     query: str,
     top_k: int,
+    *,
+    programme: str | None = None,
+    topic: str | None = None,
 ) -> list[dict[str, Any]]:
     try:
         embedder = get_embedding_backend()
@@ -121,19 +165,22 @@ async def _vector_retrieve(
         return []
     qvec = vectors[0]
     emb_literal = "[" + ",".join(str(float(x)) for x in qvec) + "]"
+    params: dict[str, Any] = {"embedding": emb_literal, "top_k": top_k}
+    filt = _filter_sql(programme=programme, topic=topic, params=params)
     sql = text(
-        """
+        f"""
         SELECT c.id, c.document_id, c.content, c.chunk_index,
                d.title, d.circular_no, d.issued_at, d.source_url, d.language,
                1 - (c.embedding <=> CAST(:embedding AS vector)) AS score
         FROM document_chunks c
         JOIN documents d ON d.id = c.document_id
         WHERE d.status = 'ready' AND c.embedding IS NOT NULL
+        {filt}
         ORDER BY c.embedding <=> CAST(:embedding AS vector)
         LIMIT :top_k
         """
     )
-    result = await session.execute(sql, {"embedding": emb_literal, "top_k": top_k})
+    result = await session.execute(sql, params)
     return [
         _row_to_hit(r, score=float(r["score"]) if r["score"] is not None else 0.0, match="vector")
         for r in result.mappings().all()
@@ -144,6 +191,9 @@ async def _keyword_retrieve(
     session: AsyncSession,
     query: str,
     top_k: int,
+    *,
+    programme: str | None = None,
+    topic: str | None = None,
 ) -> list[dict[str, Any]]:
     terms = _query_terms(query)
     if not terms:
@@ -158,6 +208,7 @@ async def _keyword_retrieve(
             f"(d.title ILIKE :{key} OR COALESCE(d.circular_no, '') ILIKE :{key} OR c.content ILIKE :{key})"
         )
     where_sql = " OR ".join(clauses)
+    filt = _filter_sql(programme=programme, topic=topic, params=params)
     sql = text(
         f"""
         SELECT c.id, c.document_id, c.content, c.chunk_index,
@@ -166,6 +217,7 @@ async def _keyword_retrieve(
         JOIN documents d ON d.id = c.document_id
         WHERE d.status = 'ready'
           AND ({where_sql})
+          {filt}
         ORDER BY d.issued_at DESC NULLS LAST
         LIMIT :limit
         """
@@ -209,11 +261,20 @@ async def retrieve_chunks(
     session: AsyncSession,
     query: str,
     top_k: int = 8,
+    *,
+    programme: str | None = None,
+    topic: str | None = None,
 ) -> list[dict[str, Any]]:
     """Hybrid retrieval: pgvector + keyword ILIKE, merged by score."""
+    prog = programme if programme in _VALID_PROGRAMMES else None
+    top = topic if topic in _VALID_TOPICS else None
     fetch_k = max(top_k * 2, 12)
-    vector_hits = await _vector_retrieve(session, query, fetch_k)
-    keyword_hits = await _keyword_retrieve(session, query, fetch_k)
+    vector_hits = await _vector_retrieve(
+        session, query, fetch_k, programme=prog, topic=top
+    )
+    keyword_hits = await _keyword_retrieve(
+        session, query, fetch_k, programme=prog, topic=top
+    )
     if not vector_hits and not keyword_hits:
         return []
     if not vector_hits:

@@ -20,6 +20,34 @@ type Msg = {
   }>;
 };
 
+type Programme = "all" | "circular" | "sister_school" | "lwlssg" | "other";
+type Topic =
+  | "all"
+  | "grant_funding"
+  | "curriculum"
+  | "admin"
+  | "student_activity"
+  | "parent_home"
+  | "other";
+
+const PROGRAMME_OPTIONS: { value: Programme; key: string }[] = [
+  { value: "all", key: "programmeAll" },
+  { value: "circular", key: "programmeCircular" },
+  { value: "sister_school", key: "programmeSisterSchool" },
+  { value: "lwlssg", key: "programmeLwlssg" },
+  { value: "other", key: "programmeOther" },
+];
+
+const TOPIC_OPTIONS: { value: Topic; key: string }[] = [
+  { value: "all", key: "topicAll" },
+  { value: "grant_funding", key: "topicGrantFunding" },
+  { value: "curriculum", key: "topicCurriculum" },
+  { value: "admin", key: "topicAdmin" },
+  { value: "student_activity", key: "topicStudentActivity" },
+  { value: "parent_home", key: "topicParentHome" },
+  { value: "other", key: "topicOther" },
+];
+
 export default function ChatPage() {
   const t = useTranslations("chat");
   const locale = useLocale();
@@ -27,6 +55,8 @@ export default function ChatPage() {
   const router = useRouter();
   const [question, setQuestion] = useState("");
   const [knowledge, setKnowledge] = useState<KnowledgeSource>("local");
+  const [programme, setProgramme] = useState<Programme>("all");
+  const [topic, setTopic] = useState<Topic>("all");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(false);
@@ -48,6 +78,8 @@ export default function ChatPage() {
         session_id: sessionId,
         knowledge_source: knowledge,
         locale,
+        programme: programme === "all" ? null : programme,
+        topic: topic === "all" ? null : topic,
       });
       setSessionId(res.session_id);
       setMsgs((m) => [
@@ -117,6 +149,50 @@ export default function ChatPage() {
               <option value="local_and_dify">{t("localAndDify")}</option>
               <option value="dify">{t("dify")}</option>
             </select>
+          </div>
+          <div className="field">
+            <span className="category-label" id="chat-prog-label">
+              {t("programmeFilter")}
+            </span>
+            <div
+              className="lang-variants category-toggle"
+              role="group"
+              aria-labelledby="chat-prog-label"
+            >
+              {PROGRAMME_OPTIONS.map(({ value, key }) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`lang-chip${programme === value ? " active" : ""}`}
+                  aria-pressed={programme === value}
+                  onClick={() => setProgramme(value)}
+                >
+                  {t(key)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="field">
+            <span className="category-label" id="chat-topic-label">
+              {t("topicFilter")}
+            </span>
+            <div
+              className="lang-variants category-toggle"
+              role="group"
+              aria-labelledby="chat-topic-label"
+            >
+              {TOPIC_OPTIONS.map(({ value, key }) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`lang-chip${topic === value ? " active" : ""}`}
+                  aria-pressed={topic === value}
+                  onClick={() => setTopic(value)}
+                >
+                  {t(key)}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="field">
             <label htmlFor="q">{t("placeholder")}</label>

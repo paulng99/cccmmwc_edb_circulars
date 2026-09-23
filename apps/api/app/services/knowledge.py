@@ -15,8 +15,18 @@ class KnowledgeBackend(Protocol):
 
 
 class LocalPgvectorBackend:
-    async def retrieve(self, session: AsyncSession, query: str, top_k: int = 8) -> list[dict[str, Any]]:
-        hits = await retrieve_chunks(session, query, top_k=top_k)
+    async def retrieve(
+        self,
+        session: AsyncSession,
+        query: str,
+        top_k: int = 8,
+        *,
+        programme: str | None = None,
+        topic: str | None = None,
+    ) -> list[dict[str, Any]]:
+        hits = await retrieve_chunks(
+            session, query, top_k=top_k, programme=programme, topic=topic
+        )
         for h in hits:
             h["backend"] = "local"
         return hits

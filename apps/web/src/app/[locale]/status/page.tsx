@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter, Link } from "@/i18n/routing";
-import { ingestStatus, listDocuments, stopCrawl, triggerCrawl, triggerReindex } from "@/lib/api";
+import { ingestStatus, listDocuments, stopCrawl, triggerClassify, triggerCrawl, triggerReindex } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDateTime } from "@/lib/date";
 
@@ -199,6 +199,19 @@ export default function StatusPage() {
     }
   }
 
+  async function onClassify() {
+    if (!token || busy) return;
+    setError("");
+    setMsg(t("classifying"));
+    try {
+      await triggerClassify(token, false);
+      setMsg(t("classifyStarted"));
+    } catch {
+      setError(t("classifyError"));
+      setMsg("");
+    }
+  }
+
   async function onStop() {
     if (!token || !busy || stopping) return;
     setError("");
@@ -278,6 +291,9 @@ export default function StatusPage() {
         </button>
         <button className="btn" type="button" disabled={busy} onClick={() => onReindex()}>
           {busy && jobKind === "reindex" ? t("reindexingBtn") : t("reindex")}
+        </button>
+        <button className="btn secondary" type="button" disabled={busy} onClick={() => onClassify()}>
+          {t("classify")}
         </button>
         <button className="btn secondary" type="button" disabled={!busy || stopping} onClick={() => onStop()}>
           {stopping ? t("stopping") : t("stop")}

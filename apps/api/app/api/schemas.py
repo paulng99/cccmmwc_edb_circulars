@@ -27,6 +27,8 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     knowledge_source: str = "local"
     locale: str = "zh-HK"
+    programme: str | None = None
+    topic: str | None = None
 
 
 class DocumentOut(BaseModel):
@@ -40,6 +42,8 @@ class DocumentOut(BaseModel):
     file_url: str | None
     status: str
     file_size: int
+    programme: str = "other"
+    topics: list[str] = []
     index_error: str | None = None
     warning: str | None = None
 
@@ -61,7 +65,9 @@ class DocumentGroupOut(BaseModel):
     issued_at: str | None
     source_id: str
     primary_id: str
-    category: str  # circular | document
+    programme: str = "other"
+    category: str = "document"  # legacy: circular | document
+    topics: list[str] = []
     variants: list[DocumentVariantOut]
 
 
