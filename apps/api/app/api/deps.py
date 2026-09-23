@@ -48,3 +48,11 @@ async def get_optional_user(
     except ValueError:
         return None
     return await db.get(User, user_id)
+
+
+async def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
+    """Reserved for later: enforce user.role == "admin".
+
+    Currently any authenticated user may manage settings.
+    """
+    return user

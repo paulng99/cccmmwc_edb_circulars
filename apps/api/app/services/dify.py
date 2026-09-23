@@ -7,8 +7,8 @@ from typing import Protocol
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.models.entities import Document
+from app.services.runtime_settings import resolved_settings
 from app.services.storage import get_object_bytes
 
 
@@ -27,15 +27,13 @@ class NoOpDifySync:
 
 
 class HttpDifySync:
-    def __init__(self) -> None:
-        self.settings = get_settings()
-
     async def sync_document(self, session: AsyncSession, doc: Document) -> None:
-        if not doc.storage_key or not self.settings.dify_dataset_id:
+        rs = resolved_settings()
+        if not doc.storage_key or not rs.get("dify_dataset_id"):
             return
         raw = get_object_bytes(doc.storage_key)
         headers = {
-            "Authorization": f"Bearer {self.settings.dify_dataset_api_key}",
+            "Authorization": f"Bearer {rs['dify_dataset_api_key']}",
         }
         files = {"file": (f"{doc.id}.pdf", raw, doc.mime_type or "application/pdf")}
         data = {
@@ -43,8 +41,8 @@ class HttpDifySync:
             "process_rule": '{"mode":"automatic"}',
         }
         url = (
-            f"{self.settings.dify_api_url.rstrip('/')}/v1/datasets/"
-            f"{self.settings.dify_dataset_id}/document/create-by-file"
+            f"{str(rs['dify_api_url']).rstrip('/')}/v1/datasets/"
+            f"{rs['dify_dataset_id']}/document/create-by-file"
         )
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(url, headers=headers, data=data, files=files)
@@ -57,15 +55,16 @@ class HttpDifySync:
                 await session.commit()
 
     async def retrieve(self, query: str, top_k: int = 5) -> list[dict]:
-        if not self.settings.dify_dataset_id:
+        rs = resolved_settings()
+        if not rs.get("dify_dataset_id"):
             return []
         headers = {
-            "Authorization": f"Bearer {self.settings.dify_dataset_api_key}",
+            "Authorization": f"Bearer {rs['dify_dataset_api_key']}",
             "Content-Type": "application/json",
         }
         url = (
-            f"{self.settings.dify_api_url.rstrip('/')}/v1/datasets/"
-            f"{self.settings.dify_dataset_id}/retrieve"
+            f"{str(rs['dify_api_url']).rstrip('/')}/v1/datasets/"
+            f"{rs['dify_dataset_id']}/retrieve"
         )
         payload = {
             "query": query,
@@ -95,7 +94,7 @@ class HttpDifySync:
 
 
 def get_dify_sync() -> DifySync:
-    settings = get_settings()
-    if settings.dify_enabled:
+    rs = resolved_settings()
+    if rs.get("dify_enabled"):
         return HttpDifySync()
     return NoOpDifySync()

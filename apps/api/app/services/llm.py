@@ -6,7 +6,7 @@ from typing import Any, Protocol
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from app.core.config import get_settings
+from app.services.runtime_settings import resolved_settings
 
 
 class LlmClient(Protocol):
@@ -14,12 +14,10 @@ class LlmClient(Protocol):
 
 
 class OpenRouterClient:
-    def __init__(self) -> None:
-        self.settings = get_settings()
-
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
     async def chat(self, messages: list[dict[str, str]], stream: bool = False) -> str | AsyncIterator[str]:
-        if not self.settings.openrouter_api_key:
+        rs = resolved_settings()
+        if not rs.get("openrouter_api_key"):
             answer = (
                 "[Demo mode: OPENROUTER_API_KEY not set]\n\n"
                 "Based on the retrieved Education Bureau materials in context, "
@@ -34,21 +32,23 @@ class OpenRouterClient:
             return answer
 
         headers = {
-            "Authorization": f"Bearer {self.settings.openrouter_api_key}",
+            "Authorization": f"Bearer {rs['openrouter_api_key']}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://localhost",
-            "X-Title": "EDB Circulars App",
+            "X-Title": rs.get("app_name", "EDB Circulars App"),
         }
         payload: dict[str, Any] = {
-            "model": self.settings.openrouter_model,
+            "model": rs["openrouter_model"],
             "messages": messages,
             "stream": stream,
+            "temperature": float(rs["temperature"]),
+            "max_tokens": int(rs["max_tokens"]),
         }
         if stream:
-            return self._stream(headers, payload)
+            return self._stream(headers, payload, rs)
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
-                f"{self.settings.openrouter_base_url}/chat/completions",
+                f"{rs['openrouter_base_url']}/chat/completions",
                 headers=headers,
                 json=payload,
             )
@@ -56,11 +56,11 @@ class OpenRouterClient:
             data = resp.json()
             return data["choices"][0]["message"]["content"]
 
-    async def _stream(self, headers: dict[str, str], payload: dict[str, Any]) -> AsyncIterator[str]:
+    async def _stream(self, headers: dict[str, str], payload: dict[str, Any], rs: dict[str, Any]) -> AsyncIterator[str]:
         async with httpx.AsyncClient(timeout=None) as client:
             async with client.stream(
                 "POST",
-                f"{self.settings.openrouter_base_url}/chat/completions",
+                f"{rs['openrouter_base_url']}/chat/completions",
                 headers=headers,
                 json=payload,
             ) as resp:
@@ -83,13 +83,19 @@ class OpenRouterClient:
 
 
 class OllamaClient:
-    def __init__(self) -> None:
-        self.settings = get_settings()
-
     async def chat(self, messages: list[dict[str, str]], stream: bool = False) -> str | AsyncIterator[str]:
-        payload = {"model": self.settings.ollama_model, "messages": messages, "stream": False}
+        rs = resolved_settings()
+        payload = {
+            "model": rs["ollama_model"],
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": float(rs["temperature"]),
+                "num_predict": int(rs["max_tokens"]),
+            },
+        }
         async with httpx.AsyncClient(timeout=300) as client:
-            resp = await client.post(f"{self.settings.ollama_base_url}/api/chat", json=payload)
+            resp = await client.post(f"{rs['ollama_base_url']}/api/chat", json=payload)
             resp.raise_for_status()
             content = resp.json()["message"]["content"]
             if stream:
@@ -102,7 +108,7 @@ class OllamaClient:
 
 
 def get_llm_client() -> LlmClient:
-    settings = get_settings()
-    if settings.llm_provider == "ollama":
+    rs = resolved_settings()
+    if rs.get("llm_provider") == "ollama":
         return OllamaClient()
     return OpenRouterClient()

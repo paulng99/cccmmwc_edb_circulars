@@ -39,6 +39,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link href="/status" className={pathname.startsWith("/status") ? "active" : ""}>
             {t("nav.status")}
           </Link>
+          <Link href="/settings" className={pathname.startsWith("/settings") ? "active" : ""}>
+            {t("nav.settings")}
+          </Link>
           <button
             type="button"
             onClick={() => router.replace(pathname, { locale: locale === "zh-HK" ? "en" : "zh-HK" })}
