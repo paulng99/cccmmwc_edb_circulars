@@ -39,7 +39,12 @@
     "source": "Source",
     "status": "Status",
     "open": "Open",
-    "download": "Download"
+    "download": "Download",
+    "preview": "Preview",
+    "previewLoading": "Loading preview…",
+    "previewFailed": "Could not render this PDF. Try Download instead.",
+    "previewPages": "{count, plural, one {# page} other {# pages}}",
+    "openSource": "Original link"
   },
   "chat": {
     "title": "Ask about EDB materials",

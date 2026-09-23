@@ -69,6 +69,7 @@ async def ingest_status(
                 "discovered": r.discovered,
                 "downloaded": r.downloaded,
                 "failed": r.failed,
+                "progress_message": r.progress_message,
                 "error_message": r.error_message,
                 "started_at": r.started_at.isoformat() if r.started_at else None,
                 "finished_at": r.finished_at.isoformat() if r.finished_at else None,

@@ -15,6 +15,13 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
+        # create_all does not add columns to existing tables
+        await conn.execute(
+            text(
+                "ALTER TABLE crawl_runs "
+                "ADD COLUMN IF NOT EXISTS progress_message TEXT"
+            )
+        )
 
 
 async def seed_admin(session: AsyncSession) -> None:

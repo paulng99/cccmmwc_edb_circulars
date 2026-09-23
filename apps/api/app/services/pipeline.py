@@ -98,10 +98,13 @@ async def _save_run_progress(
     discovered: int,
     downloaded: int,
     failed: int,
+    message: str | None = None,
 ) -> None:
     run.discovered = discovered
     run.downloaded = downloaded
     run.failed = failed
+    if message is not None:
+        run.progress_message = message[:2000]
     await session.commit()
 
 
@@ -113,7 +116,11 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
     summary = {"runs": []}
 
     for cfg in sources:
-        run = CrawlRun(source_id=cfg["id"], status="running")
+        run = CrawlRun(
+            source_id=cfg["id"],
+            status="running",
+            progress_message="Discovering files…",
+        )
         session.add(run)
         await session.commit()
         await session.refresh(run)
@@ -125,9 +132,17 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
             collector = get_collector(cfg["type"])
             items = await collector.discover(cfg)
             discovered = len(items)
-            await _save_run_progress(session, run, discovered=discovered, downloaded=0, failed=0)
+            await _save_run_progress(
+                session,
+                run,
+                discovered=discovered,
+                downloaded=0,
+                failed=0,
+                message=f"Discovered {discovered} files, downloading…",
+            )
 
             for i, item in enumerate(items, start=1):
+                label = (item.circular_no or item.title or item.file_url or "")[:120]
                 try:
                     doc = await download_and_store(session, cfg["id"], item)
                     if doc:
@@ -136,6 +151,8 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
                             result = await index_document(session, doc.id)
                             if not result.get("ok"):
                                 failed += 1
+                    else:
+                        failed += 1
                 except Exception:
                     await session.rollback()
                     failed += 1
@@ -143,10 +160,16 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
 
                 if i % 3 == 0 or i == discovered:
                     await _save_run_progress(
-                        session, run, discovered=discovered, downloaded=downloaded, failed=failed
+                        session,
+                        run,
+                        discovered=discovered,
+                        downloaded=downloaded,
+                        failed=failed,
+                        message=f"[{i}/{discovered}] {label}",
                     )
 
             run.status = "completed"
+            run.progress_message = f"Done — downloaded {downloaded}, failed {failed}"
             src = await session.get(Source, cfg["id"])
             if src:
                 src.last_crawl_at = datetime.now(timezone.utc)
@@ -156,6 +179,7 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
             if run:
                 run.status = "failed"
                 run.error_message = str(exc)[:4000]
+                run.progress_message = f"Failed: {exc}"[:2000]
             failed += 1
         if run:
             run.discovered = discovered

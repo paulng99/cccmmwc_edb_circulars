@@ -478,3 +478,37 @@ textarea {
     transform: none;
   }
 }
+
+.pdf-preview {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #e8eef8;
+  padding: 0.75rem;
+  overflow: auto;
+  max-height: min(80vh, 1100px);
+}
+
+.pdf-pages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.pdf-page {
+  width: 100%;
+  height: auto;
+  background: white;
+  box-shadow: 0 8px 24px rgba(15, 45, 95, 0.12);
+  border-radius: 4px;
+}
+
+.pdf-status {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.pdf-error {
+  color: #b42318;
+}

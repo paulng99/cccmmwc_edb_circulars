@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import PurePosixPath
 from typing import Annotated, Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, or_, select
@@ -14,6 +16,15 @@ from app.models.entities import Document, User
 from app.services.storage import get_object_bytes
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
+
+
+def _download_filename(doc: Document) -> str:
+    if doc.file_url:
+        name = PurePosixPath(urlparse(doc.file_url).path).name
+        if name.lower().endswith(".pdf"):
+            return name
+    raw = (doc.circular_no or str(doc.id)).replace("/", "-")
+    return f"{raw}.pdf"
 
 
 def _to_out(doc: Document) -> DocumentOut:
@@ -84,7 +95,7 @@ async def download_file(
     if not doc or not doc.storage_key:
         raise HTTPException(status_code=404, detail="File not found")
     data = get_object_bytes(doc.storage_key)
-    filename = f"{doc.circular_no or doc.id}.pdf"
+    filename = _download_filename(doc)
     return Response(
         content=data,
         media_type=doc.mime_type or "application/pdf",

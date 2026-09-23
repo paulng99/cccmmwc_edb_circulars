@@ -14,6 +14,7 @@ type Run = {
   discovered: number;
   downloaded: number;
   failed: number;
+  progress_message?: string | null;
   error_message?: string | null;
   started_at: string | null;
   finished_at?: string | null;
@@ -184,7 +185,7 @@ export default function StatusPage() {
                         />
                       </div>
                       <div className="hint" style={{ marginTop: "0.35rem" }}>
-                        {r.discovered === 0 ? t("discovering") : `${pct}%`}
+                        {r.progress_message || (r.discovered === 0 ? t("discovering") : `${pct}%`)}
                       </div>
                     </div>
                   </div>
@@ -256,6 +257,11 @@ export default function StatusPage() {
                       </span>
                       <span>{formatHkDateTime(r.started_at)}</span>
                     </div>
+                    {r.progress_message && r.status !== "running" ? (
+                      <p className="hint" style={{ marginTop: "0.35rem" }}>
+                        {r.progress_message}
+                      </p>
+                    ) : null}
                     {r.error_message ? (
                       <p className="error" style={{ marginTop: "0.4rem", fontSize: "0.85rem" }}>
                         {r.error_message.slice(0, 240)}

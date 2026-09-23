@@ -67,7 +67,12 @@ export async function triggerCrawl(token: string, sourceId?: string) {
     : `${API_URL}/api/ingest/crawl`;
   const res = await fetch(url, { method: "POST", headers: authHeaders(token) });
   if (!res.ok) throw new Error("crawl_failed");
-  return res.json();
+  return res.json() as Promise<{
+    ok: boolean;
+    started: boolean;
+    source_id?: string | null;
+    reason?: string;
+  }>;
 }
 
 export function fileUrl(documentId: string) {

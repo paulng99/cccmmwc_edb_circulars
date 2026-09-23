@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/routing";
+import PdfPreview from "@/components/PdfPreview";
 import { API_URL, fileUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
@@ -22,6 +23,13 @@ type Doc = {
 
 type DetailStatus = "loading" | "success" | "not_found" | "error";
 
+function pdfFilename(doc: Doc) {
+  const fromUrl = doc.file_url?.split("/").pop();
+  if (fromUrl && fromUrl.toLowerCase().endsWith(".pdf")) return fromUrl;
+  const circ = (doc.circular_no || "").replaceAll("/", "-");
+  return `${circ || doc.title || doc.id}.pdf`;
+}
+
 export default function DocumentDetailPage() {
   const t = useTranslations("documents");
   const { token, ready } = useAuth();
@@ -33,6 +41,11 @@ export default function DocumentDetailPage() {
   const [pdfOpening, setPdfOpening] = useState(false);
   const [pdfFailed, setPdfFailed] = useState(false);
   const [blobDownloadUrl, setBlobDownloadUrl] = useState<string | null>(null);
+
+  const pdfApiUrl = useMemo(
+    () => (params?.id ? fileUrl(params.id) : ""),
+    [params?.id],
+  );
 
   useEffect(() => {
     if (ready && !token) router.replace("/login");
@@ -104,36 +117,23 @@ export default function DocumentDetailPage() {
     setPdfOpening(true);
     setPdfFailed(false);
     try {
-      const res = await fetch(fileUrl(doc.id), {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("open_failed");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      setBlobDownloadUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return url;
-      });
-      const win = window.open(url, "_blank");
-      if (!win) {
-        setPdfFailed(true);
-      }
+      await downloadViaBlob(pdfFilename(doc));
     } catch {
       setPdfFailed(true);
     } finally {
       setPdfOpening(false);
     }
-  }, [token, doc]);
+  }, [token, doc, downloadViaBlob]);
 
   const handleDownloadFallback = useCallback(async () => {
     if (!doc) return;
     try {
+      await downloadViaBlob(pdfFilename(doc));
+    } catch {
       if (doc.file_url) {
         window.open(doc.file_url, "_blank", "noopener,noreferrer");
         return;
       }
-      await downloadViaBlob(doc.title || doc.id);
-    } catch {
       setPdfFailed(true);
     }
   }, [doc, downloadViaBlob]);
@@ -222,29 +222,29 @@ export default function DocumentDetailPage() {
             </a>
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginTop: "1rem" }}>
-            <button className="btn" type="button" onClick={openPdf} disabled={pdfOpening}>
-              {pdfOpening ? t("pdfOpening") : t("open")}
+            <button className="btn" type="button" onClick={() => void openPdf()} disabled={pdfOpening}>
+              {pdfOpening ? t("pdfOpening") : t("download")}
             </button>
             {doc.file_url ? (
               <a className="btn secondary" href={doc.file_url} target="_blank" rel="noreferrer">
-                {t("download")}
+                {t("openSource")}
               </a>
-            ) : (
-              <button className="btn secondary" type="button" onClick={handleDownloadFallback}>
-                {t("download")}
-              </button>
-            )}
+            ) : null}
           </div>
           {pdfFailed ? (
             <div style={{ marginTop: "1rem" }}>
               <p className="error" style={{ marginBottom: "0.5rem" }}>
                 {t("pdfOpenFail")}
               </p>
-              <button className="btn secondary" type="button" onClick={handleDownloadFallback}>
+              <button className="btn secondary" type="button" onClick={() => void handleDownloadFallback()}>
                 {t("pdfDownloadFallback")}
               </button>
             </div>
           ) : null}
+          <div style={{ marginTop: "1.25rem" }}>
+            <h2 style={{ fontSize: "1.05rem", margin: "0 0 0.75rem" }}>{t("preview")}</h2>
+            <PdfPreview fileUrl={pdfApiUrl} token={token} />
+          </div>
         </div>
       ) : null}
     </div>

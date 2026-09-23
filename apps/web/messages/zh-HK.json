@@ -39,7 +39,12 @@
     "source": "來源",
     "status": "狀態",
     "open": "開啟",
-    "download": "下載"
+    "download": "下載",
+    "preview": "預覽",
+    "previewLoading": "正在載入預覽…",
+    "previewFailed": "無法預覽此 PDF，請改用下載。",
+    "previewPages": "{count} 頁",
+    "openSource": "原始連結"
   },
   "chat": {
     "title": "通告問答",

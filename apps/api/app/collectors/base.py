@@ -115,13 +115,23 @@ class CircularAspNetCollector:
             if not href.lower().endswith(".pdf"):
                 continue
             file_url = urljoin(page_url, href)
-            title = a.get_text(" ", strip=True) or file_url.split("/")[-1]
+            fname = file_url.split("/")[-1]
+            title = a.get_text(" ", strip=True) or fname
             row = a.find_parent("tr")
             row_text = row.get_text(" ", strip=True) if row else title
             circ = None
-            m = re.search(r"(EDBC(?:M)?\s*\d+/\d+|No\.\s*\d+/\d+|\d+/\d{4})", row_text, re.I)
-            if m:
-                circ = m.group(1).replace(" ", "")
+            # Prefer EDB file stem (EDBCM26157E) over date-like row text (09/2026)
+            fm = re.search(r"(EDBC(?:M)?\d+[A-Za-z]?)", fname, re.I)
+            if fm:
+                circ = fm.group(1).upper()
+            else:
+                m = re.search(
+                    r"(EDBC(?:M)?\s*\d+/\d+|No\.\s*\d+/\d+|\d+/\d{4})",
+                    row_text,
+                    re.I,
+                )
+                if m:
+                    circ = m.group(1).replace(" ", "")
             issued = None
             dm = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", row_text)
             if dm:
