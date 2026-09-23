@@ -96,6 +96,14 @@ async def stop_crawl(
     user: Annotated[User, Depends(get_current_user)],
     run_id: Optional[str] = None,
 ) -> dict:
+    """Request cancel and force-terminate active Celery crawl workers."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+
+    from app.models.entities import CrawlRun
+    from app.worker import celery_app
+
     rid: UUID | None = None
     if run_id:
         try:
@@ -105,8 +113,42 @@ async def stop_crawl(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Invalid run_id",
             ) from exc
+
     n = await request_cancel(db, rid)
-    return {"ok": True, "stopped": n}
+
+    # Soft-cancel alone only stops between files; terminate active crawl tasks now.
+    revoked: list[str] = []
+    try:
+        inspect = celery_app.control.inspect(timeout=2.0)
+        active = (inspect.active() if inspect else None) or {}
+        reserved = (inspect.reserved() if inspect else None) or {}
+        crawl_names = {"app.worker.crawl_all", "app.worker.crawl_source"}
+        for bucket in (active, reserved):
+            for _worker, tasks in bucket.items():
+                for task in tasks or []:
+                    if task.get("name") in crawl_names:
+                        tid = task.get("id")
+                        if tid and tid not in revoked:
+                            celery_app.control.revoke(tid, terminate=True, signal="SIGTERM")
+                            revoked.append(tid)
+    except Exception:
+        pass
+
+    # Mark runs cancelled immediately so UI stops showing "running"
+    stmt = select(CrawlRun).where(CrawlRun.status == "running")
+    if rid is not None:
+        stmt = stmt.where(CrawlRun.id == rid)
+    rows = list((await db.scalars(stmt)).all())
+    now = datetime.now(timezone.utc)
+    for run in rows:
+        run.status = "cancelled"
+        run.cancel_requested = True
+        run.progress_message = "Cancelled by user"
+        run.finished_at = now
+    if rows:
+        await db.commit()
+
+    return {"ok": True, "stopped": max(n, len(rows)), "revoked": len(revoked)}
 
 
 @router.post("/ingest/crawl")
