@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.collectors.base import DiscoveredItem, get_collector
 from app.collectors.registry import get_enabled_sources, load_sources_config
 from app.models.entities import CrawlRun, Document, Source
+from app.services.crawl_events import emit_event
 from app.services.rag import index_document
 from app.services.runtime_settings import resolved_settings
 from app.services.storage import content_hash, put_object
@@ -142,8 +143,12 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
     if source_id:
         sources = [s for s in sources if s["id"] == source_id]
     summary = {"runs": []}
+    abort_remaining = False
 
     for cfg in sources:
+        if abort_remaining:
+            break
+
         run = CrawlRun(
             source_id=cfg["id"],
             status="running",
@@ -152,14 +157,30 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
         session.add(run)
         await session.commit()
         await session.refresh(run)
+        await emit_event(
+            session,
+            run_id=run.id,
+            event_type="discovering",
+            source_id=cfg["id"],
+        )
 
         discovered = 0
         downloaded = 0
         failed = 0
+        cancelled = False
         try:
             collector = get_collector(cfg["type"])
             items = await collector.discover(cfg)
             discovered = len(items)
+            base_url = cfg.get("base_url")
+            if base_url:
+                await emit_event(
+                    session,
+                    run_id=run.id,
+                    event_type="page",
+                    url=base_url,
+                    source_id=cfg["id"],
+                )
             await _save_run_progress(
                 session,
                 run,
@@ -170,20 +191,65 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
             )
 
             for i, item in enumerate(items, start=1):
+                run = await session.get(CrawlRun, run.id)
+                if run and run.cancel_requested:
+                    run.status = "cancelled"
+                    run.progress_message = "Cancelled by user"
+                    await emit_event(
+                        session,
+                        run_id=run.id,
+                        event_type="cancelled",
+                        source_id=cfg["id"],
+                    )
+                    cancelled = True
+                    break
+
                 label = (item.circular_no or item.title or item.file_url or "")[:120]
+                await emit_event(
+                    session,
+                    run_id=run.id,
+                    event_type="download_start",
+                    url=item.file_url,
+                    title=label,
+                    source_id=cfg["id"],
+                )
                 try:
                     doc = await download_and_store(session, cfg["id"], item)
                     if doc:
                         downloaded += 1
+                        await emit_event(
+                            session,
+                            run_id=run.id,
+                            event_type="download_ok",
+                            url=item.file_url,
+                            title=label,
+                            source_id=cfg["id"],
+                        )
                         if doc.status in ("stored", "failed"):
                             result = await index_document(session, doc.id)
                             if not result.get("ok"):
                                 failed += 1
                     else:
                         failed += 1
+                        await emit_event(
+                            session,
+                            run_id=run.id,
+                            event_type="download_fail",
+                            url=item.file_url,
+                            title=label,
+                            source_id=cfg["id"],
+                        )
                 except Exception:
                     await session.rollback()
                     failed += 1
+                    await emit_event(
+                        session,
+                        run_id=run.id,
+                        event_type="download_fail",
+                        url=item.file_url,
+                        title=label,
+                        source_id=cfg["id"],
+                    )
                     run = await session.get(CrawlRun, run.id) or run
 
                 if i % 3 == 0 or i == discovered:
@@ -196,11 +262,18 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
                         message=f"[{i}/{discovered}] {label}",
                     )
 
-            run.status = "completed"
-            run.progress_message = f"Done — downloaded {downloaded}, failed {failed}"
-            src = await session.get(Source, cfg["id"])
-            if src:
-                src.last_crawl_at = datetime.now(timezone.utc)
+            if not cancelled:
+                run.status = "completed"
+                run.progress_message = f"Done — downloaded {downloaded}, failed {failed}"
+                await emit_event(
+                    session,
+                    run_id=run.id,
+                    event_type="done",
+                    source_id=cfg["id"],
+                )
+                src = await session.get(Source, cfg["id"])
+                if src:
+                    src.last_crawl_at = datetime.now(timezone.utc)
         except Exception as exc:  # noqa: BLE001
             await session.rollback()
             run = await session.get(CrawlRun, run.id)
@@ -225,4 +298,7 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
                     "failed": failed,
                 }
             )
+        if cancelled:
+            abort_remaining = True
+            break
     return summary

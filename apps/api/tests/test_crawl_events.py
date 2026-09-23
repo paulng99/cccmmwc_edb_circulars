@@ -120,3 +120,78 @@ async def test_request_cancel_none_running():
 
     count = await request_cancel(session, None)
     assert count == 0
+
+
+@pytest.mark.asyncio
+@patch("app.services.pipeline.resolved_settings")
+@patch("app.services.pipeline.sync_sources_table", new_callable=AsyncMock)
+@patch("app.services.pipeline.get_enabled_sources")
+@patch("app.services.pipeline.get_collector")
+@patch("app.services.pipeline.download_and_store", new_callable=AsyncMock)
+@patch("app.services.pipeline.index_document", new_callable=AsyncMock, return_value={"ok": True})
+@patch("app.services.pipeline.emit_event", new_callable=AsyncMock)
+async def test_run_source_crawl_honours_cancel(
+    mock_emit,
+    mock_index,
+    mock_download,
+    mock_get_collector,
+    mock_get_sources,
+    mock_sync,
+    mock_settings,
+):
+    from app.collectors.base import DiscoveredItem
+    from app.models.entities import CrawlRun, Source
+    from app.services.pipeline import run_source_crawl
+
+    mock_settings.return_value = {"crawl_enabled": True}
+    mock_get_sources.return_value = [
+        {"id": "src1", "type": "test", "base_url": "https://example.com", "enabled": True}
+    ]
+    items = [
+        DiscoveredItem(title="A", source_url="https://example.com/a", file_url="https://example.com/a.pdf"),
+        DiscoveredItem(title="B", source_url="https://example.com/b", file_url="https://example.com/b.pdf"),
+        DiscoveredItem(title="C", source_url="https://example.com/c", file_url="https://example.com/c.pdf"),
+    ]
+    collector = MagicMock()
+    collector.discover = AsyncMock(return_value=items)
+    mock_get_collector.return_value = collector
+
+    doc = MagicMock()
+    doc.status = "stored"
+    doc.id = uuid.uuid4()
+    mock_download.return_value = doc
+
+    run_obj: CrawlRun | None = None
+    get_count = 0
+
+    async def fake_get(model, _id):
+        nonlocal get_count, run_obj
+        if model is CrawlRun and run_obj is not None:
+            get_count += 1
+            if get_count >= 2:
+                run_obj.cancel_requested = True
+            return run_obj
+        if model is Source:
+            return None
+        return None
+
+    session = AsyncMock()
+    session.get = AsyncMock(side_effect=fake_get)
+    session.commit = AsyncMock()
+    session.refresh = AsyncMock()
+    session.rollback = AsyncMock()
+
+    def fake_add(obj):
+        nonlocal run_obj
+        if isinstance(obj, CrawlRun):
+            run_obj = obj
+
+    session.add = MagicMock(side_effect=fake_add)
+
+    result = await run_source_crawl(session)
+
+    assert mock_download.await_count == 1
+    assert result["runs"][0]["status"] == "cancelled"
+    event_types = [call.kwargs["event_type"] for call in mock_emit.call_args_list]
+    assert "cancelled" in event_types
+    assert "done" not in event_types
