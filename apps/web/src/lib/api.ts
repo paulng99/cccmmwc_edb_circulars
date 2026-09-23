@@ -60,14 +60,31 @@ export async function chatAsk(
     knowledge_source?: KnowledgeSource;
     locale?: string;
   },
+  opts?: { timeoutMs?: number },
 ) {
-  const res = await fetch(`${API_URL}/api/chat`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error("chat_failed");
-  return res.json();
+  const timeoutMs = opts?.timeoutMs ?? 90_000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${API_URL}/api/chat`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(detail || `chat_failed_${res.status}`);
+    }
+    return res.json();
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new Error("chat_timeout");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function ingestStatus(token: string) {

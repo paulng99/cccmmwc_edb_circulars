@@ -42,6 +42,12 @@ async def answer_question(
     dify_hits: list[dict] = []
     if knowledge_source in ("local", "local_and_dify"):
         local_hits = await get_local_knowledge().retrieve(session, question, top_k=int(rs["local_top_k"]))
+    # Keep prompt lean so OpenRouter stays responsive
+    local_hits = local_hits[:8]
+    for hit in local_hits:
+        content = hit.get("content") or ""
+        if len(content) > 1200:
+            hit["content"] = content[:1200] + "…"
     if knowledge_source in ("dify", "local_and_dify"):
         dify_hits = await get_dify_knowledge().retrieve(session, question, top_k=int(rs["dify_top_k"]))
 

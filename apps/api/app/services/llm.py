@@ -14,7 +14,7 @@ class LlmClient(Protocol):
 
 
 class OpenRouterClient:
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=4))
     async def chat(self, messages: list[dict[str, str]], stream: bool = False) -> str | AsyncIterator[str]:
         rs = resolved_settings()
         if not rs.get("openrouter_api_key"):
@@ -42,11 +42,11 @@ class OpenRouterClient:
             "messages": messages,
             "stream": stream,
             "temperature": float(rs["temperature"]),
-            "max_tokens": int(rs["max_tokens"]),
+            "max_tokens": min(int(rs["max_tokens"]), 2048),
         }
         if stream:
             return self._stream(headers, payload, rs)
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(
                 f"{rs['openrouter_base_url']}/chat/completions",
                 headers=headers,

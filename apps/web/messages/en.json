@@ -66,7 +66,9 @@
     "dify": "Dify only",
     "citations": "Citations",
     "thinking": "Analysing circulars and documents…",
-    "noCitations": "No matching circular was retrieved. Try a circular number (e.g. EDBCM048/2026) or more specific keywords."
+    "noCitations": "No matching circular was retrieved. Try a circular number (e.g. EDBCM048/2026) or more specific keywords.",
+    "timeout": "The reply took too long. Please try again, or use a shorter question / circular number.",
+    "error": "Could not reach the chat service. Check that the API is running."
   },
   "status": {
     "title": "Ingest Status",

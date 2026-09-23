@@ -54,8 +54,10 @@ export default function ChatPage() {
         ...m,
         { role: "assistant", content: res.answer, citations: res.citations || [] },
       ]);
-    } catch {
-      setMsgs((m) => [...m, { role: "assistant", content: "Error contacting chat API." }]);
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message === "chat_timeout" ? t("timeout") : t("error");
+      setMsgs((m) => [...m, { role: "assistant", content: msg }]);
     } finally {
       setLoading(false);
     }
