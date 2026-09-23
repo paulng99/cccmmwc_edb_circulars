@@ -6,6 +6,15 @@ from io import BytesIO
 from pypdf import PdfReader
 
 
+def sanitize_text(text: str) -> str:
+    """Remove null bytes and other non-UTF8-safe control chars for Postgres."""
+    if not text:
+        return ""
+    text = text.replace("\x00", "")
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", text)
+    return text
+
+
 def extract_text_from_pdf(data: bytes) -> str:
     reader = PdfReader(BytesIO(data))
     parts: list[str] = []
@@ -14,23 +23,29 @@ def extract_text_from_pdf(data: bytes) -> str:
             text = page.extract_text() or ""
         except Exception:
             text = ""
+        text = sanitize_text(text)
         if text.strip():
             parts.append(text)
     return "\n\n".join(parts)
 
 
 def chunk_text(text: str, chunk_size: int = 1200, overlap: int = 150) -> list[str]:
-    cleaned = re.sub(r"\s+\n", "\n", text)
+    cleaned = sanitize_text(text)
+    cleaned = re.sub(r"\s+\n", "\n", cleaned)
     cleaned = re.sub(r"[ \t]+", " ", cleaned).strip()
     if not cleaned:
         return []
+    # Skip mostly-binary garbage (very low printable ratio)
+    printable = sum(1 for c in cleaned if c.isprintable() or c in "\n\t")
+    if printable / max(len(cleaned), 1) < 0.7:
+        return []
+
     chunks: list[str] = []
     start = 0
     n = len(cleaned)
     while start < n:
         end = min(start + chunk_size, n)
         if end < n:
-            # prefer break at paragraph/sentence
             window = cleaned[start:end]
             break_at = max(window.rfind("\n\n"), window.rfind("。"), window.rfind(". "))
             if break_at > chunk_size // 3:

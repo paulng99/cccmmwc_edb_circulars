@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import mimetypes
-import uuid
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from urllib.parse import urlparse
@@ -92,6 +91,20 @@ async def download_and_store(
     return doc
 
 
+async def _save_run_progress(
+    session: AsyncSession,
+    run: CrawlRun,
+    *,
+    discovered: int,
+    downloaded: int,
+    failed: int,
+) -> None:
+    run.discovered = discovered
+    run.downloaded = downloaded
+    run.failed = failed
+    await session.commit()
+
+
 async def run_source_crawl(session: AsyncSession, source_id: str | None = None) -> dict:
     await sync_sources_table(session)
     sources = get_enabled_sources()
@@ -112,36 +125,52 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
             collector = get_collector(cfg["type"])
             items = await collector.discover(cfg)
             discovered = len(items)
-            for item in items:
+            await _save_run_progress(session, run, discovered=discovered, downloaded=0, failed=0)
+
+            for i, item in enumerate(items, start=1):
                 try:
                     doc = await download_and_store(session, cfg["id"], item)
                     if doc:
                         downloaded += 1
                         if doc.status in ("stored", "failed"):
-                            await index_document(session, doc.id)
+                            result = await index_document(session, doc.id)
+                            if not result.get("ok"):
+                                failed += 1
                 except Exception:
+                    await session.rollback()
                     failed += 1
+                    run = await session.get(CrawlRun, run.id) or run
+
+                if i % 3 == 0 or i == discovered:
+                    await _save_run_progress(
+                        session, run, discovered=discovered, downloaded=downloaded, failed=failed
+                    )
+
             run.status = "completed"
             src = await session.get(Source, cfg["id"])
             if src:
                 src.last_crawl_at = datetime.now(timezone.utc)
         except Exception as exc:  # noqa: BLE001
-            run.status = "failed"
-            run.error_message = str(exc)
+            await session.rollback()
+            run = await session.get(CrawlRun, run.id)
+            if run:
+                run.status = "failed"
+                run.error_message = str(exc)[:4000]
             failed += 1
-        run.discovered = discovered
-        run.downloaded = downloaded
-        run.failed = failed
-        run.finished_at = datetime.now(timezone.utc)
-        await session.commit()
-        summary["runs"].append(
-            {
-                "source_id": cfg["id"],
-                "run_id": str(run.id),
-                "status": run.status,
-                "discovered": discovered,
-                "downloaded": downloaded,
-                "failed": failed,
-            }
-        )
+        if run:
+            run.discovered = discovered
+            run.downloaded = downloaded
+            run.failed = failed
+            run.finished_at = datetime.now(timezone.utc)
+            await session.commit()
+            summary["runs"].append(
+                {
+                    "source_id": cfg["id"],
+                    "run_id": str(run.id),
+                    "status": run.status,
+                    "discovered": discovered,
+                    "downloaded": downloaded,
+                    "failed": failed,
+                }
+            )
     return summary

@@ -2,15 +2,14 @@ from __future__ import annotations
 
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.config import get_settings
-from app.core.db import SessionLocal, get_db
+from app.core.db import get_db
 from app.models.entities import CrawlRun, Document, Source, User
-from app.services.pipeline import run_source_crawl
 
 router = APIRouter(prefix="/api", tags=["system"])
 
@@ -37,12 +36,21 @@ async def ingest_status(
         select(func.count()).select_from(Document).where(Document.status == "indexing")
     ) or 0
     failed = await db.scalar(select(func.count()).select_from(Document).where(Document.status == "failed")) or 0
+    stored = await db.scalar(select(func.count()).select_from(Document).where(Document.status == "stored")) or 0
     sources = (await db.scalars(select(Source))).all()
     last_runs = (
-        await db.scalars(select(CrawlRun).order_by(CrawlRun.started_at.desc()).limit(10))
+        await db.scalars(select(CrawlRun).order_by(CrawlRun.started_at.desc()).limit(15))
     ).all()
+    active = [r for r in last_runs if r.status == "running"]
     return {
-        "documents": {"total": total, "ready": ready, "indexing": indexing, "failed": failed},
+        "documents": {
+            "total": total,
+            "ready": ready,
+            "indexing": indexing,
+            "stored": stored,
+            "failed": failed,
+        },
+        "active": len(active) > 0,
         "sources": [
             {
                 "id": s.id,
@@ -61,6 +69,7 @@ async def ingest_status(
                 "discovered": r.discovered,
                 "downloaded": r.downloaded,
                 "failed": r.failed,
+                "error_message": r.error_message,
                 "started_at": r.started_at.isoformat() if r.started_at else None,
                 "finished_at": r.finished_at.isoformat() if r.finished_at else None,
             }
@@ -69,16 +78,21 @@ async def ingest_status(
     }
 
 
-async def _bg_crawl(source_id: Optional[str]) -> None:
-    async with SessionLocal() as session:
-        await run_source_crawl(session, source_id=source_id)
-
-
 @router.post("/ingest/crawl")
 async def trigger_crawl(
-    background: BackgroundTasks,
     user: Annotated[User, Depends(get_current_user)],
     source_id: Optional[str] = None,
 ) -> dict:
-    background.add_task(_bg_crawl, source_id)
-    return {"ok": True, "started": True, "source_id": source_id}
+    """Enqueue crawl on Celery worker so UI can poll live CrawlRun progress."""
+    from app.worker import crawl_all, crawl_source
+
+    if source_id:
+        async_result = crawl_source.delay(source_id)
+    else:
+        async_result = crawl_all.delay()
+    return {
+        "ok": True,
+        "started": True,
+        "source_id": source_id,
+        "task_id": async_result.id,
+    }

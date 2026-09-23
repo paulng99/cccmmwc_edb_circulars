@@ -23,7 +23,10 @@ async def index_document(session: AsyncSession, document_id: uuid.UUID) -> dict[
 
     try:
         raw = get_object_bytes(doc.storage_key)
-        text = extract_text_from_pdf(raw) if doc.mime_type == "application/pdf" else raw.decode("utf-8", errors="ignore")
+        if doc.mime_type == "application/pdf" or (doc.storage_key or "").lower().endswith(".pdf"):
+            text = extract_text_from_pdf(raw)
+        else:
+            text = raw.decode("utf-8", errors="ignore")
         chunks = chunk_text(text)
         if not chunks:
             doc.status = "ready"
@@ -33,7 +36,6 @@ async def index_document(session: AsyncSession, document_id: uuid.UUID) -> dict[
 
         await session.execute(delete(DocumentChunk).where(DocumentChunk.document_id == doc.id))
         embedder = get_embedding_backend()
-        # batch embeddings
         batch_size = 16
         all_vectors: list[list[float]] = []
         for i in range(0, len(chunks), batch_size):
@@ -58,9 +60,12 @@ async def index_document(session: AsyncSession, document_id: uuid.UUID) -> dict[
 
         return {"ok": True, "chunks": len(chunks)}
     except Exception as exc:  # noqa: BLE001
-        doc.status = "failed"
-        doc.extra = {**(doc.extra or {}), "index_error": str(exc)}
-        await session.commit()
+        await session.rollback()
+        doc = await session.get(Document, document_id)
+        if doc:
+            doc.status = "failed"
+            doc.extra = {**(doc.extra or {}), "index_error": str(exc)[:2000]}
+            await session.commit()
         return {"ok": False, "error": str(exc)}
 
 
