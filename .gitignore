@@ -43,3 +43,7 @@ data/
 # Build
 coverage/
 .turbo/
+.worktrees/
+
+# Superpowers SDD scratch
+.superpowers/

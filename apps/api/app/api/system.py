@@ -79,6 +79,26 @@ async def ingest_status(
     }
 
 
+@router.post("/ingest/crawl")
+async def trigger_crawl(
+    user: Annotated[User, Depends(get_current_user)],
+    source_id: Optional[str] = None,
+) -> dict:
+    """Enqueue crawl on Celery worker so UI can poll live CrawlRun progress."""
+    from app.worker import crawl_all, crawl_source
+
+    if source_id:
+        async_result = crawl_source.delay(source_id)
+    else:
+        async_result = crawl_all.delay()
+    return {
+        "ok": True,
+        "started": True,
+        "source_id": source_id,
+        "task_id": async_result.id,
+    }
+
+
 @router.post("/ingest/fix-metadata")
 async def fix_metadata(
     db: Annotated[AsyncSession, Depends(get_db)],
