@@ -167,8 +167,14 @@ async def topics_via_llm(title: str, abstract: str, source_id: str) -> list[str]
             ],
             stream=False,
         )
-        assert isinstance(raw, str)
-        text = raw.strip()
+        if not isinstance(raw, str):
+            # Some clients may return an async iterator even when stream=False
+            parts: list[str] = []
+            async for chunk in raw:  # type: ignore[union-attr]
+                parts.append(str(chunk))
+            text = "".join(parts).strip()
+        else:
+            text = raw.strip()
         if text.startswith("```"):
             text = re.sub(r"^```(?:json)?\s*", "", text)
             text = re.sub(r"\s*```$", "", text)
