@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
 import { getSettings, SecretField, SettingsResponse, updateSettings } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { formatHkDateTime } from "@/lib/date";
 
 const SECRET_KEYS = new Set([
   "openrouter_api_key",
@@ -437,7 +438,7 @@ export default function SettingsPage() {
           {data ? (
             <div className="field" style={{ marginBottom: 0 }}>
               <label>{fieldLabel("updated_at")}</label>
-              <input value={data.meta.updated_at || "—"} disabled readOnly />
+              <input value={formatHkDateTime(data.meta.updated_at)} disabled readOnly />
             </div>
           ) : null}
         </section>
