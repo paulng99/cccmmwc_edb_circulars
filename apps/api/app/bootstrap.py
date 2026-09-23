@@ -6,8 +6,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.db import Base, engine
 from app.core.security import hash_password
-from app.models import ChatMessage, ChatSession, CrawlRun, Document, DocumentChunk, Source, User  # noqa: F401
+from app.models import (  # noqa: F401
+    AppSetting,
+    ChatMessage,
+    ChatSession,
+    CrawlRun,
+    Document,
+    DocumentChunk,
+    Source,
+    User,
+)
 from app.services.pipeline import sync_sources_table
+from app.services.runtime_settings import ensure_seeded
 from app.services.storage import ensure_bucket
 
 
@@ -50,4 +60,5 @@ async def bootstrap() -> None:
 
     async with SessionLocal() as session:
         await seed_admin(session)
+        await ensure_seeded(session)
         await sync_sources_table(session)

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
-from app.core.config import Settings
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import Settings, get_settings
+from app.models import AppSetting
 
 DEFAULT_SYSTEM_PROMPT = """You are an assistant for Hong Kong Education Bureau (EDB) circulars and documents.
 Answer in the same language as the user (prefer Traditional Chinese zh-HK when the user writes Chinese).
@@ -121,3 +125,56 @@ def apply_patch(current: dict[str, Any], patch: dict[str, Any]) -> tuple[dict[st
             raise ValueError("storage_backend must be local or minio")
         new[k] = v
     return new, warnings
+
+
+_cache: dict[str, Any] | None = None
+
+
+def invalidate_cache() -> None:
+    global _cache
+    _cache = None
+
+
+def get_cached_merged() -> dict[str, Any] | None:
+    return _cache
+
+
+async def ensure_seeded(session: AsyncSession) -> AppSetting:
+    row = await session.get(AppSetting, 1)
+    if row:
+        return row
+    row = AppSetting(id=1, values=defaults_from_env(get_settings()))
+    session.add(row)
+    await session.commit()
+    await session.refresh(row)
+    invalidate_cache()
+    return row
+
+
+async def get_merged(session: AsyncSession) -> dict[str, Any]:
+    global _cache
+    if _cache is not None:
+        return _cache
+    row = await ensure_seeded(session)
+    env_defaults = defaults_from_env(get_settings())
+    _cache = merge_values(env_defaults, row.values or {})
+    return _cache
+
+
+async def update_settings(
+    session: AsyncSession,
+    patch: dict[str, Any],
+    user_id: uuid.UUID | None,
+) -> tuple[dict[str, Any], list[str], AppSetting]:
+    row = await ensure_seeded(session)
+    env_defaults = defaults_from_env(get_settings())
+    current = merge_values(env_defaults, row.values or {})
+    new_values, warnings = apply_patch(current, patch)
+    # Persist only editable bag (full merged editable snapshot)
+    row.values = {k: new_values[k] for k in EDITABLE_KEYS if k in new_values}
+    row.updated_by = user_id
+    await session.commit()
+    await session.refresh(row)
+    invalidate_cache()
+    merged = await get_merged(session)
+    return merged, warnings, row

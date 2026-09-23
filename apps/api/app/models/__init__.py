@@ -1,4 +1,5 @@
 from app.models.entities import (
+    AppSetting,
     ChatMessage,
     ChatSession,
     CrawlRun,
@@ -9,6 +10,7 @@ from app.models.entities import (
 )
 
 __all__ = [
+    "AppSetting",
     "User",
     "Source",
     "CrawlRun",
