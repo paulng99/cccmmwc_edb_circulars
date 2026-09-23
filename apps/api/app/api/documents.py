@@ -31,6 +31,7 @@ def _download_filename(doc: Document) -> str:
 
 
 def _to_out(doc: Document) -> DocumentOut:
+    extra = doc.extra or {}
     return DocumentOut(
         id=str(doc.id),
         source_id=doc.source_id,
@@ -42,6 +43,8 @@ def _to_out(doc: Document) -> DocumentOut:
         file_url=doc.file_url,
         status=doc.status,
         file_size=doc.file_size,
+        index_error=(extra.get("index_error") or None),
+        warning=(extra.get("warning") or None),
     )
 
 
@@ -121,6 +124,7 @@ async def list_documents(
     user: Annotated[User, Depends(get_current_user)],
     q: Optional[str] = None,
     source_id: Optional[str] = None,
+    status_filter: Optional[str] = Query(None, alias="status"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     grouped: bool = Query(True),
@@ -131,10 +135,12 @@ async def list_documents(
         stmt = stmt.where(or_(Document.title.ilike(like), Document.circular_no.ilike(like)))
     if source_id:
         stmt = stmt.where(Document.source_id == source_id)
+    if status_filter:
+        stmt = stmt.where(Document.status == status_filter)
     stmt = stmt.order_by(Document.issued_at.desc().nullslast(), Document.created_at.desc())
     rows = list((await db.scalars(stmt)).all())
 
-    if not grouped:
+    if not grouped or status_filter == "failed":
         total = len(rows)
         page_rows = rows[(page - 1) * page_size : page * page_size]
         return {

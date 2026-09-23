@@ -40,6 +40,8 @@ class DocumentOut(BaseModel):
     file_url: str | None
     status: str
     file_size: int
+    index_error: str | None = None
+    warning: str | None = None
 
 
 class DocumentVariantOut(BaseModel):

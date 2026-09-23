@@ -160,6 +160,20 @@ textarea {
   padding: 1rem;
   border-radius: 14px;
   background: linear-gradient(145deg, rgba(37, 99, 212, 0.1), rgba(20, 184, 166, 0.08));
+  border: 1px solid transparent;
+  font: inherit;
+  color: inherit;
+  display: block;
+  width: 100%;
+}
+
+button.stat:not(:disabled):hover {
+  border-color: rgba(29, 91, 184, 0.35);
+  background: linear-gradient(145deg, rgba(37, 99, 212, 0.16), rgba(20, 184, 166, 0.12));
+}
+
+button.stat:disabled {
+  opacity: 0.75;
 }
 
 .stat strong {

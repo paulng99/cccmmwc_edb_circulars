@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { useRouter } from "@/i18n/routing";
-import { ingestStatus, stopCrawl, triggerCrawl, triggerReindex } from "@/lib/api";
+import { useRouter, Link } from "@/i18n/routing";
+import { ingestStatus, listDocuments, stopCrawl, triggerCrawl, triggerReindex } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDateTime } from "@/lib/date";
 
@@ -30,6 +30,15 @@ type Run = {
   current?: CrawlEvent | null;
   recent_events?: CrawlEvent[];
   cancel_requested?: boolean;
+};
+
+type FailedDoc = {
+  id: string;
+  title: string;
+  source_id: string;
+  file_url?: string | null;
+  status: string;
+  index_error?: string | null;
 };
 
 type IngestData = {
@@ -82,6 +91,10 @@ export default function StatusPage() {
   const [jobKind, setJobKind] = useState<"crawl" | "reindex" | null>(null);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState("");
+  const [showFailed, setShowFailed] = useState(false);
+  const [failedDocs, setFailedDocs] = useState<FailedDoc[]>([]);
+  const [failedLoading, setFailedLoading] = useState(false);
+  const [failedError, setFailedError] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async (tok: string) => {
@@ -202,6 +215,29 @@ export default function StatusPage() {
     } catch {
       setStopping(false);
       setError(t("stopError"));
+    }
+  }
+
+  async function onShowFailed() {
+    if (!token) return;
+    const next = !showFailed;
+    setShowFailed(next);
+    if (!next) return;
+    setFailedLoading(true);
+    setFailedError("");
+    try {
+      const res = await listDocuments(token, {
+        status: "failed",
+        grouped: false,
+        page: 1,
+        page_size: 100,
+      });
+      setFailedDocs((res.items || []) as FailedDoc[]);
+    } catch {
+      setFailedDocs([]);
+      setFailedError(t("failedLoadError"));
+    } finally {
+      setFailedLoading(false);
     }
   }
 
@@ -357,11 +393,59 @@ export default function StatusPage() {
               <strong>{data.documents.indexing}</strong>
               <span>{t("indexing")}</span>
             </div>
-            <div className="stat">
+            <button
+              type="button"
+              className="stat"
+              onClick={() => void onShowFailed()}
+              title={t("failedHint")}
+              style={{
+                cursor: data.documents.failed > 0 ? "pointer" : "default",
+                borderColor: showFailed ? "var(--blue-500)" : undefined,
+                textAlign: "left",
+              }}
+              disabled={data.documents.failed === 0}
+            >
               <strong>{data.documents.failed}</strong>
               <span>{t("failed")}</span>
-            </div>
+            </button>
           </div>
+
+          {showFailed ? (
+            <div className="panel" style={{ marginBottom: "1rem", borderColor: "rgba(185, 28, 28, 0.35)" }}>
+              <h2 style={{ marginTop: 0 }}>{t("failedListTitle")}</h2>
+              <p className="hint" style={{ marginBottom: "0.75rem" }}>
+                {t("failedTypeHint")}
+              </p>
+              {failedLoading ? <p className="hint">…</p> : null}
+              {failedError ? <p className="error">{failedError}</p> : null}
+              {!failedLoading && !failedError && failedDocs.length === 0 ? (
+                <p className="hint">{t("failedEmpty")}</p>
+              ) : null}
+              {!failedLoading && failedDocs.length > 0 ? (
+                <div className="list" style={{ maxHeight: 360, overflowY: "auto" }}>
+                  {failedDocs.map((d) => (
+                    <div key={d.id} className="doc-row">
+                      <div style={{ width: "100%" }}>
+                        <h3>
+                          <Link href={`/documents/${d.id}`}>{d.title}</Link>
+                        </h3>
+                        <div className="meta">
+                          <span className="chip">{d.source_id}</span>
+                          {d.file_url ? (
+                            <span title={d.file_url}>{truncateUrl(d.file_url)}</span>
+                          ) : null}
+                        </div>
+                        <p className="error" style={{ marginTop: "0.4rem", fontSize: "0.85rem" }}>
+                          {t("failedReason")}: {d.index_error || "—"}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="panel" style={{ marginBottom: "1rem" }}>
             <h2 style={{ marginTop: 0 }}>{t("sources")}</h2>
             <div className="list">

@@ -26,13 +26,20 @@ export async function me(token: string) {
 
 export async function listDocuments(
   token: string,
-  params: { q?: string; page?: number; page_size?: number } = {},
+  params: {
+    q?: string;
+    page?: number;
+    page_size?: number;
+    status?: string;
+    grouped?: boolean;
+  } = {},
 ) {
   const sp = new URLSearchParams();
   if (params.q) sp.set("q", params.q);
+  if (params.status) sp.set("status", params.status);
   sp.set("page", String(params.page || 1));
   sp.set("page_size", String(params.page_size || 20));
-  sp.set("grouped", "true");
+  sp.set("grouped", String(params.grouped ?? true));
   const res = await fetch(`${API_URL}/api/documents?${sp}`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error("list_failed");
   return res.json() as Promise<{

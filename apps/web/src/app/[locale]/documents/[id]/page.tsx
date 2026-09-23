@@ -19,6 +19,8 @@ type Doc = {
   status: string;
   language: string;
   file_size: number;
+  index_error?: string | null;
+  warning?: string | null;
 };
 
 type DetailStatus = "loading" | "success" | "not_found" | "error";
@@ -216,6 +218,16 @@ export default function DocumentDetailPage() {
               {t("source")}: {doc.language}
             </span>
           </div>
+          {doc.status === "failed" && doc.index_error ? (
+            <p className="error" style={{ marginBottom: "1rem" }}>
+              {t("indexError")}: {doc.index_error}
+            </p>
+          ) : null}
+          {doc.warning ? (
+            <p className="hint" style={{ marginBottom: "1rem" }}>
+              {doc.warning}
+            </p>
+          ) : null}
           <p>
             <a href={doc.source_url} target="_blank" rel="noreferrer">
               {doc.source_url}
