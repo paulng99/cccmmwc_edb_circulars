@@ -91,7 +91,7 @@ npm run cap:android   # 或 cap:ios（需 macOS）
 
 ## 資料來源
 
-見 [`config/sources.yaml`](config/sources.yaml)。P0：教育局通告系統、edb.gov.hk 附件；P1：姊妹學校、LWLSSG；P2：edcity（預設關閉）。
+見 [`config/sources.yaml`](config/sources.yaml)。P0：教育局通告系統、edb.gov.hk 附件（每日）；P1：姊妹學校、LWLSSG（每週）；P2：edcity（預設關閉）。
 
 ## 架構摘要
 

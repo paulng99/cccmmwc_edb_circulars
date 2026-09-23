@@ -1,5 +1,6 @@
 # Source registry for EDB and related public sites.
 # Enable/disable per source; collectors read this at crawl time.
+# Schedule policy: P0 = daily; P1 = weekly (deferred crawl load).
 
 sources:
   - id: edb_circulars
@@ -47,7 +48,7 @@ sources:
     file_extensions: [.pdf, .doc, .docx, .xls, .xlsx]
     max_pages: 500
     rate_limit_seconds: 1.5
-    schedule: "0 7 * * *"
+    schedule: "0 7 * * 0"  # weekly Sunday 07:00
 
   - id: edb_lwlssg
     name:
@@ -68,7 +69,7 @@ sources:
     file_extensions: [.pdf, .doc, .docx, .xls, .xlsx]
     max_pages: 200
     rate_limit_seconds: 1.5
-    schedule: "15 7 * * *"
+    schedule: "15 7 * * 0"  # weekly Sunday 07:15
 
   - id: edcity
     name:
