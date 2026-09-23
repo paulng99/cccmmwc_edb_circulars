@@ -65,7 +65,8 @@
     "localAndDify": "本庫 + Dify",
     "dify": "僅 Dify",
     "citations": "參考來源",
-    "thinking": "正在分析通告與文件…"
+    "thinking": "正在分析通告與文件…",
+    "noCitations": "未能檢索到相關通告。可改用通告編號（例如 EDBCM048/2026）或更具體的關鍵字重試。"
   },
   "status": {
     "title": "收集狀態",

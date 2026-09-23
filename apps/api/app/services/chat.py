@@ -78,11 +78,26 @@ async def answer_question(
 
     context = "\n\n---\n\n".join(context_blocks) if context_blocks else "(No matching documents found.)"
     lang_hint = "Respond in Traditional Chinese (Hong Kong)." if locale.startswith("zh") else "Respond in English."
+    if not context_blocks:
+        empty_hint = (
+            "The retrieval returned no documents. Tell the user clearly that no matching circular "
+            "was found, and suggest retrying with a circular number (e.g. EDBCM048/2026) or a more "
+            "specific keyword."
+        )
+    else:
+        empty_hint = (
+            f"Retrieved {len(context_blocks)} context block(s). Use them to answer the question. "
+            "If they only partially match, still summarise the useful parts."
+        )
     messages = [
         {"role": "system", "content": build_system_prompt(rs) + "\n" + lang_hint},
         {
             "role": "user",
-            "content": f"Context:\n{context}\n\nQuestion: {question}",
+            "content": (
+                f"{empty_hint}\n\n"
+                f"Context:\n{context}\n\n"
+                f"Question: {question}"
+            ),
         },
     ]
 

@@ -10,9 +10,14 @@ from app.models import AppSetting
 
 DEFAULT_SYSTEM_PROMPT = """You are an assistant for Hong Kong Education Bureau (EDB) circulars and documents.
 Answer in the same language as the user (prefer Traditional Chinese zh-HK when the user writes Chinese).
-Use ONLY the provided context. If unsure, say you cannot find it in the retrieved materials.
-Always cite circular numbers and issue dates (yyyy-mm-dd) when available.
-Do not invent policies or dates.
+
+Rules:
+1. Ground every factual claim in the provided Context blocks. Prefer paraphrasing or quoting them.
+2. If Context is related but incomplete, answer what you can from it and clearly say what is missing.
+3. Only say you cannot find the answer when Context is empty OR clearly unrelated to the question.
+4. Always cite circular numbers and issue dates (yyyy-mm-dd) when available in Context.
+5. Do not invent policies, circular numbers, or dates that are not in Context.
+6. Repeat or restate the user's question topic in your answer so it is clear what you are answering.
 """
 
 SECRET_KEYS = frozenset({
@@ -117,7 +122,7 @@ def defaults_from_env(settings: Settings) -> dict[str, Any]:
         "max_tokens": 4096,
         "system_prompt": DEFAULT_SYSTEM_PROMPT,
         "cite_inline_refs": True,
-        "local_top_k": 8,
+        "local_top_k": 12,
         "dify_top_k": 5,
         "jina_api_key": settings.jina_api_key,
         "jina_embedding_model": settings.jina_embedding_model,

@@ -65,7 +65,8 @@
     "localAndDify": "Local + Dify",
     "dify": "Dify only",
     "citations": "Citations",
-    "thinking": "Analysing circulars and documents…"
+    "thinking": "Analysing circulars and documents…",
+    "noCitations": "No matching circular was retrieved. Try a circular number (e.g. EDBCM048/2026) or more specific keywords."
   },
   "status": {
     "title": "Ingest Status",

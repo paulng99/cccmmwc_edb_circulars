@@ -94,6 +94,10 @@ export default function ChatPage() {
                     ))}
                   </ul>
                 </div>
+              ) : m.role === "assistant" ? (
+                <p className="hint" style={{ marginTop: "0.5rem" }}>
+                  {t("noCitations")}
+                </p>
               ) : null}
             </div>
           ))}

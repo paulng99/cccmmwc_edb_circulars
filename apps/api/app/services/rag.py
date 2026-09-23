@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import re
 import uuid
 from typing import Any
 
@@ -7,10 +9,12 @@ from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import Document, DocumentChunk
+from app.services.dify import get_dify_sync
 from app.services.embeddings import get_embedding_backend
 from app.services.ingest import chunk_text, extract_text_from_pdf
 from app.services.storage import get_object_bytes
-from app.services.dify import get_dify_sync
+
+logger = logging.getLogger(__name__)
 
 
 async def index_document(session: AsyncSession, document_id: uuid.UUID) -> dict[str, Any]:
@@ -69,17 +73,54 @@ async def index_document(session: AsyncSession, document_id: uuid.UUID) -> dict[
         return {"ok": False, "error": str(exc)}
 
 
-async def retrieve_chunks(
+def _row_to_hit(r: Any, *, score: float, match: str) -> dict[str, Any]:
+    return {
+        "chunk_id": str(r["id"]),
+        "document_id": str(r["document_id"]),
+        "content": r["content"],
+        "chunk_index": r["chunk_index"],
+        "title": r["title"],
+        "circular_no": r["circular_no"],
+        "issued_at": r["issued_at"].isoformat() if r["issued_at"] else None,
+        "source_url": r["source_url"],
+        "language": r["language"],
+        "score": score,
+        "match": match,
+    }
+
+
+def _query_terms(query: str) -> list[str]:
+    """Extract searchable terms for ILIKE hybrid retrieval."""
+    q = (query or "").strip()
+    if not q:
+        return []
+    terms: list[str] = []
+    # Full query (truncated) for phrase match
+    if len(q) >= 2:
+        terms.append(q[:80])
+    # Chinese 2–4 char grams + alphanumerics / EDBC numbers
+    for m in re.finditer(r"[\u4e00-\u9fff]{2,8}|[A-Za-z]{3,}|EDBC(?:M)?\s*\d+/\d{4}|\d{4}", q, re.I):
+        t = m.group(0).replace(" ", "")
+        if t not in terms:
+            terms.append(t)
+    return terms[:12]
+
+
+async def _vector_retrieve(
     session: AsyncSession,
     query: str,
-    top_k: int = 8,
+    top_k: int,
 ) -> list[dict[str, Any]]:
-    embedder = get_embedding_backend()
-    vectors = await embedder.embed([query])
+    try:
+        embedder = get_embedding_backend()
+        vectors = await embedder.embed([query])
+    except Exception:
+        logger.exception("Query embedding failed; falling back to keyword search")
+        return []
     if not vectors:
         return []
     qvec = vectors[0]
-    # pgvector cosine distance
+    emb_literal = "[" + ",".join(str(float(x)) for x in qvec) + "]"
     sql = text(
         """
         SELECT c.id, c.document_id, c.content, c.chunk_index,
@@ -92,22 +133,91 @@ async def retrieve_chunks(
         LIMIT :top_k
         """
     )
-    # format embedding as pgvector literal
-    emb_literal = "[" + ",".join(str(float(x)) for x in qvec) + "]"
     result = await session.execute(sql, {"embedding": emb_literal, "top_k": top_k})
-    rows = result.mappings().all()
     return [
-        {
-            "chunk_id": str(r["id"]),
-            "document_id": str(r["document_id"]),
-            "content": r["content"],
-            "chunk_index": r["chunk_index"],
-            "title": r["title"],
-            "circular_no": r["circular_no"],
-            "issued_at": r["issued_at"].isoformat() if r["issued_at"] else None,
-            "source_url": r["source_url"],
-            "language": r["language"],
-            "score": float(r["score"]) if r["score"] is not None else 0.0,
-        }
-        for r in rows
+        _row_to_hit(r, score=float(r["score"]) if r["score"] is not None else 0.0, match="vector")
+        for r in result.mappings().all()
     ]
+
+
+async def _keyword_retrieve(
+    session: AsyncSession,
+    query: str,
+    top_k: int,
+) -> list[dict[str, Any]]:
+    terms = _query_terms(query)
+    if not terms:
+        return []
+
+    params: dict[str, Any] = {"limit": max(top_k * 3, 24)}
+    clauses: list[str] = []
+    for i, term in enumerate(terms):
+        key = f"p{i}"
+        params[key] = f"%{term}%"
+        clauses.append(
+            f"(d.title ILIKE :{key} OR COALESCE(d.circular_no, '') ILIKE :{key} OR c.content ILIKE :{key})"
+        )
+    where_sql = " OR ".join(clauses)
+    sql = text(
+        f"""
+        SELECT c.id, c.document_id, c.content, c.chunk_index,
+               d.title, d.circular_no, d.issued_at, d.source_url, d.language
+        FROM document_chunks c
+        JOIN documents d ON d.id = c.document_id
+        WHERE d.status = 'ready'
+          AND ({where_sql})
+        ORDER BY d.issued_at DESC NULLS LAST
+        LIMIT :limit
+        """
+    )
+    result = await session.execute(sql, params)
+    hits: list[dict[str, Any]] = []
+    for r in result.mappings().all():
+        blob = f"{r['title'] or ''} {r['circular_no'] or ''} {r['content'] or ''}"
+        hits_count = sum(1 for t in terms if t.lower() in blob.lower() or t in blob)
+        title_blob = f"{r['title'] or ''} {r['circular_no'] or ''}"
+        title_hits = sum(1 for t in terms if t in title_blob or t.lower() in title_blob.lower())
+        score = 0.45 + 0.08 * hits_count + 0.12 * title_hits
+        hits.append(_row_to_hit(r, score=min(score, 0.99), match="keyword"))
+    hits.sort(key=lambda h: h["score"], reverse=True)
+    return hits[:top_k]
+
+
+def _merge_hits(
+    vector_hits: list[dict[str, Any]],
+    keyword_hits: list[dict[str, Any]],
+    top_k: int,
+) -> list[dict[str, Any]]:
+    by_key: dict[str, dict[str, Any]] = {}
+    for h in vector_hits:
+        key = f"{h['document_id']}:{h['chunk_index']}"
+        by_key[key] = dict(h)
+    for h in keyword_hits:
+        key = f"{h['document_id']}:{h['chunk_index']}"
+        if key in by_key:
+            # Boost when both vector and keyword agree
+            existing = by_key[key]
+            existing["score"] = min(1.0, float(existing["score"]) + 0.15)
+            existing["match"] = "hybrid"
+        else:
+            by_key[key] = dict(h)
+    merged = sorted(by_key.values(), key=lambda x: float(x["score"]), reverse=True)
+    return merged[:top_k]
+
+
+async def retrieve_chunks(
+    session: AsyncSession,
+    query: str,
+    top_k: int = 8,
+) -> list[dict[str, Any]]:
+    """Hybrid retrieval: pgvector + keyword ILIKE, merged by score."""
+    fetch_k = max(top_k * 2, 12)
+    vector_hits = await _vector_retrieve(session, query, fetch_k)
+    keyword_hits = await _keyword_retrieve(session, query, fetch_k)
+    if not vector_hits and not keyword_hits:
+        return []
+    if not vector_hits:
+        return keyword_hits[:top_k]
+    if not keyword_hits:
+        return vector_hits[:top_k]
+    return _merge_hits(vector_hits, keyword_hits, top_k)
