@@ -3,9 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
-import { ingestStatus, triggerCrawl } from "@/lib/api";
+import { ingestStatus, stopCrawl, triggerCrawl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDateTime } from "@/lib/date";
+
+type CrawlEvent = {
+  event_type: string;
+  url?: string | null;
+  title?: string | null;
+  created_at?: string | null;
+  source_id?: string | null;
+};
 
 type Run = {
   id: string;
@@ -18,6 +26,9 @@ type Run = {
   error_message?: string | null;
   started_at: string | null;
   finished_at?: string | null;
+  current?: CrawlEvent | null;
+  recent_events?: CrawlEvent[];
+  cancel_requested?: boolean;
 };
 
 type IngestData = {
@@ -39,6 +50,21 @@ type IngestData = {
   recent_runs: Run[];
 };
 
+const EVENT_I18N: Record<string, string> = {
+  discovering: "eventDiscovering",
+  page: "eventPage",
+  download_start: "eventDownloadStart",
+  download_ok: "eventDownloadOk",
+  download_fail: "eventDownloadFail",
+  done: "eventDone",
+  cancelled: "eventCancelled",
+};
+
+function truncateUrl(url: string, max = 72) {
+  if (url.length <= max) return url;
+  return `${url.slice(0, max - 1)}…`;
+}
+
 export default function StatusPage() {
   const t = useTranslations("status");
   const locale = useLocale();
@@ -47,19 +73,21 @@ export default function StatusPage() {
   const [data, setData] = useState<IngestData | null>(null);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [error, setError] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const refresh = useCallback(
-    async (tok: string) => {
-      const s = (await ingestStatus(tok)) as IngestData;
-      setData(s);
-      const running = Boolean(s.active) || s.recent_runs.some((r) => r.status === "running");
-      setBusy(running);
-      return running;
-    },
-    [],
-  );
+  const refresh = useCallback(async (tok: string) => {
+    const s = (await ingestStatus(tok)) as IngestData;
+    setData(s);
+    const running = Boolean(s.active) || s.recent_runs.some((r) => r.status === "running");
+    setBusy(running);
+    if (!running) setStopping(false);
+    else if (s.recent_runs.some((r) => r.status === "running" && r.cancel_requested)) {
+      setStopping(true);
+    }
+    return running;
+  }, []);
 
   const stopPoll = useCallback(() => {
     if (pollRef.current) {
@@ -76,7 +104,8 @@ export default function StatusPage() {
           .then((running) => {
             if (!running) {
               stopPoll();
-              setMsg(t("crawlDone"));
+              setMsg((prev) => (prev === t("stopping") ? t("cancelled") : t("crawlDone")));
+              setStopping(false);
             }
           })
           .catch(() => undefined);
@@ -102,6 +131,7 @@ export default function StatusPage() {
   async function onCrawl(sourceId?: string) {
     if (!token || busy) return;
     setError("");
+    setStopping(false);
     setMsg(t("crawling"));
     setBusy(true);
     try {
@@ -115,6 +145,25 @@ export default function StatusPage() {
     }
   }
 
+  async function onStop() {
+    if (!token || !busy || stopping) return;
+    setError("");
+    setStopping(true);
+    setMsg(t("stopping"));
+    try {
+      const res = await stopCrawl(token);
+      if (res.stopped === 0) {
+        setMsg(t("stopNone"));
+        setStopping(false);
+      }
+      await refresh(token);
+      startPoll(token);
+    } catch {
+      setStopping(false);
+      setError(t("stopError"));
+    }
+  }
+
   if (!token) return null;
 
   const activeRuns = data?.recent_runs.filter((r) => r.status === "running") || [];
@@ -124,6 +173,13 @@ export default function StatusPage() {
     return locale.startsWith("zh") ? s.name_zh_hk || s.name_en : s.name_en;
   };
 
+  const eventLabel = (type: string) => {
+    const key = EVENT_I18N[type];
+    return key ? t(key as "eventDiscovering") : type;
+  };
+
+  const currentLabel = (ev: CrawlEvent) => ev.title || (ev.url ? truncateUrl(ev.url) : "—");
+
   return (
     <div>
       <div className="hero">
@@ -132,6 +188,9 @@ export default function StatusPage() {
       <div style={{ marginBottom: "1rem", display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
         <button className="btn" type="button" disabled={busy} onClick={() => onCrawl()}>
           {busy ? t("crawlingBtn") : t("crawl")}
+        </button>
+        <button className="btn secondary" type="button" disabled={!busy || stopping} onClick={() => onStop()}>
+          {stopping ? t("stopping") : t("stop")}
         </button>
         {msg ? <span className="hint">{msg}</span> : null}
         {error ? <span className="error">{error}</span> : null}
@@ -155,6 +214,7 @@ export default function StatusPage() {
                       <h3>
                         {sourceName(r.source_id)}{" "}
                         <span className="chip">{r.status}</span>
+                        {r.cancel_requested ? <span className="chip">{t("eventCancelled")}</span> : null}
                       </h3>
                       <div className="meta">
                         <span>
@@ -187,6 +247,44 @@ export default function StatusPage() {
                       <div className="hint" style={{ marginTop: "0.35rem" }}>
                         {r.progress_message || (r.discovered === 0 ? t("discovering") : `${pct}%`)}
                       </div>
+
+                      {r.current ? (
+                        <div style={{ marginTop: "0.85rem" }}>
+                          <strong style={{ fontSize: "0.9rem" }}>{t("currentFile")}</strong>
+                          <div className="meta" style={{ marginTop: "0.25rem" }}>
+                            <span className="chip">{eventLabel(r.current.event_type)}</span>
+                            <span title={r.current.url || undefined}>{currentLabel(r.current)}</span>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {r.recent_events && r.recent_events.length > 0 ? (
+                        <div style={{ marginTop: "0.85rem" }}>
+                          <strong style={{ fontSize: "0.9rem" }}>{t("recentActivity")}</strong>
+                          <div
+                            className="list"
+                            style={{
+                              marginTop: "0.4rem",
+                              maxHeight: 220,
+                              overflowY: "auto",
+                              borderTop: "1px solid rgba(37,99,212,0.12)",
+                              paddingTop: "0.35rem",
+                            }}
+                          >
+                            {r.recent_events.map((ev, idx) => (
+                              <div
+                                key={`${r.id}-${idx}-${ev.created_at}-${ev.event_type}`}
+                                className="meta"
+                                style={{ padding: "0.25rem 0", gap: "0.5rem", flexWrap: "wrap" }}
+                              >
+                                <span>{formatHkDateTime(ev.created_at)}</span>
+                                <span className="chip">{eventLabel(ev.event_type)}</span>
+                                <span title={ev.url || undefined}>{currentLabel(ev)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 );

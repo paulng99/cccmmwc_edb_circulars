@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -94,9 +96,15 @@ async def stop_crawl(
     user: Annotated[User, Depends(get_current_user)],
     run_id: Optional[str] = None,
 ) -> dict:
-    from uuid import UUID
-
-    rid = UUID(run_id) if run_id else None
+    rid: UUID | None = None
+    if run_id:
+        try:
+            rid = UUID(run_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid run_id",
+            ) from exc
     n = await request_cancel(db, rid)
     return {"ok": True, "stopped": n}
 
