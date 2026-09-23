@@ -167,8 +167,19 @@ export default function SettingsPage() {
     return typeof val === "number" ? val : undefined;
   }, [data]);
 
-  function baseValue(key: string): unknown {
+  function baseValue(key: string, readonly = false): unknown {
+    if (readonly) return data?.readonly[key];
     return data?.editable[key];
+  }
+
+  function fieldLabel(key: string): string {
+    const label = tx(`fields.${key}`);
+    return label === `fields.${key}` ? key : label;
+  }
+
+  function formatWarning(code: string): string {
+    if (code === "reindex_required") return t("reindexWarning");
+    return code;
   }
 
   function displayString(key: string): string {
@@ -295,8 +306,8 @@ export default function SettingsPage() {
   }
 
   function renderField(key: string, readonly = false) {
-    const base = baseValue(key);
-    const label = key;
+    const base = baseValue(key, readonly);
+    const label = fieldLabel(key);
 
     if (readonly) {
       let display = "—";
@@ -387,11 +398,11 @@ export default function SettingsPage() {
       <form onSubmit={onSubmit}>
         <div style={{ marginBottom: "1rem", display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
           <button className="btn" type="submit" disabled={saving || loading}>
-            {saving ? "Saving…" : t("save")}
+            {saving ? t("saving") : t("save")}
           </button>
           {success ? <span className="hint" style={{ color: "var(--teal-500)", fontWeight: 600 }}>{success}</span> : null}
           {error ? <span className="error">{error}</span> : null}
-          {loading ? <span className="hint">Loading…</span> : null}
+          {loading ? <span className="hint">{t("loading")}</span> : null}
         </div>
 
         {warnings.length > 0 ? (
@@ -399,12 +410,9 @@ export default function SettingsPage() {
             className="panel"
             style={{ marginBottom: "1rem", borderColor: "var(--amber-500)", background: "rgba(245, 158, 11, 0.08)" }}
           >
-            <strong style={{ color: "var(--blue-900)", display: "block", marginBottom: "0.5rem" }}>
-              {t("reindexWarning")}
-            </strong>
             <ul style={{ margin: 0, paddingLeft: "1.2rem", color: "var(--muted)" }}>
               {warnings.map((w, i) => (
-                <li key={i}>{w}</li>
+                <li key={i}>{formatWarning(w)}</li>
               ))}
             </ul>
           </div>
@@ -419,13 +427,16 @@ export default function SettingsPage() {
 
         <section className="panel" style={{ marginBottom: "1rem" }}>
           <h2 style={{ marginTop: 0, color: "var(--blue-900)" }}>{t("sectionReadonly")}</h2>
-          <p className="hint" style={{ marginTop: 0, marginBottom: "1rem" }}>
+          <p className="hint" style={{ marginTop: 0, marginBottom: "0.5rem" }}>
             {t("readonlyHint")}
+          </p>
+          <p className="hint" style={{ marginTop: 0, marginBottom: "1rem" }}>
+            {t("buildTimeHint")}
           </p>
           {READONLY_KEYS.map((key) => renderField(key, true))}
           {data ? (
             <div className="field" style={{ marginBottom: 0 }}>
-              <label>updated_at</label>
+              <label>{fieldLabel("updated_at")}</label>
               <input value={data.meta.updated_at || "—"} disabled readOnly />
             </div>
           ) : null}
