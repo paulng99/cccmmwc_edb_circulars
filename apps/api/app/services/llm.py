@@ -85,7 +85,15 @@ class OpenRouterClient:
 class OllamaClient:
     async def chat(self, messages: list[dict[str, str]], stream: bool = False) -> str | AsyncIterator[str]:
         rs = resolved_settings()
-        payload = {"model": rs["ollama_model"], "messages": messages, "stream": False}
+        payload = {
+            "model": rs["ollama_model"],
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": float(rs["temperature"]),
+                "num_predict": int(rs["max_tokens"]),
+            },
+        }
         async with httpx.AsyncClient(timeout=300) as client:
             resp = await client.post(f"{rs['ollama_base_url']}/api/chat", json=payload)
             resp.raise_for_status()

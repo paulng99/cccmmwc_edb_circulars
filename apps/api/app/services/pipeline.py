@@ -13,7 +13,7 @@ from app.collectors.base import DiscoveredItem, get_collector
 from app.collectors.registry import get_enabled_sources, load_sources_config
 from app.models.entities import CrawlRun, Document, Source
 from app.services.rag import index_document
-from app.services.runtime_settings import get_merged, resolved_settings
+from app.services.runtime_settings import resolved_settings
 from app.services.storage import content_hash, put_object
 
 
@@ -133,6 +133,10 @@ async def _save_run_progress(
 
 
 async def run_source_crawl(session: AsyncSession, source_id: str | None = None) -> dict:
+    rs = resolved_settings()
+    if not rs.get("crawl_enabled", True):
+        return {"skipped": True, "reason": "crawl_disabled", "runs": []}
+
     await sync_sources_table(session)
     sources = get_enabled_sources()
     if source_id:

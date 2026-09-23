@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.entities import ChatMessage, ChatSession
 from app.services.knowledge import get_dify_knowledge, get_local_knowledge
 from app.services.llm import get_llm_client
-from app.services.runtime_settings import DEFAULT_SYSTEM_PROMPT, build_system_prompt, get_merged
+from app.services.runtime_settings import build_system_prompt, get_merged
 
 KnowledgeSource = Literal["local", "local_and_dify", "dify"]
 
