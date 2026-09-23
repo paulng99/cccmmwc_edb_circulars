@@ -6,18 +6,35 @@ import { Link, useRouter } from "@/i18n/routing";
 import { listDocuments } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
-type Doc = {
+type Variant = {
   id: string;
+  language: string;
+  status: string;
+  file_size: number;
+  title: string;
+};
+
+type DocGroup = {
+  key: string;
   title: string;
   circular_no?: string | null;
   issued_at?: string | null;
   source_id: string;
-  status: string;
+  primary_id: string;
+  variants: Variant[];
 };
 
 type ListStatus = "idle" | "loading" | "success" | "empty" | "error";
 
 const SKELETON_COUNT = 4;
+const PAGE_SIZE = 20;
+
+function langLabel(code: string, t: (key: string) => string): string {
+  if (code === "zh-HK") return t("langZhHk");
+  if (code === "zh-CN") return t("langZhCn");
+  if (code === "en") return t("langEn");
+  return code;
+}
 
 export default function DocumentsPage() {
   const t = useTranslations("documents");
@@ -25,8 +42,10 @@ export default function DocumentsPage() {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
-  const [items, setItems] = useState<Doc[]>([]);
+  const [items, setItems] = useState<DocGroup[]>([]);
   const [total, setTotal] = useState(0);
+  const [fileCount, setFileCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [status, setStatus] = useState<ListStatus>("idle");
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -35,7 +54,10 @@ export default function DocumentsPage() {
   }, [ready, token, router]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedQ(q.trim()), 300);
+    const timer = window.setTimeout(() => {
+      setDebouncedQ(q.trim());
+      setPage(1);
+    }, 300);
     return () => window.clearTimeout(timer);
   }, [q]);
 
@@ -43,28 +65,31 @@ export default function DocumentsPage() {
     if (!token) return;
     let cancelled = false;
     setStatus("loading");
-    listDocuments(token, { q: debouncedQ || undefined })
+    listDocuments(token, { q: debouncedQ || undefined, page, page_size: PAGE_SIZE })
       .then((data) => {
         if (cancelled) return;
-        const next = (data.items || []) as Doc[];
+        const next = (data.items || []) as DocGroup[];
         setItems(next);
         setTotal(typeof data.total === "number" ? data.total : next.length);
+        setFileCount(typeof data.file_count === "number" ? data.file_count : 0);
         setStatus(next.length === 0 ? "empty" : "success");
       })
       .catch(() => {
         if (cancelled) return;
         setItems([]);
         setTotal(0);
+        setFileCount(0);
         setStatus("error");
       });
     return () => {
       cancelled = true;
     };
-  }, [token, debouncedQ, reloadKey]);
+  }, [token, debouncedQ, page, reloadKey]);
 
   if (!token) return null;
 
   const hasKeyword = Boolean(debouncedQ);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="page-enter">
@@ -86,7 +111,12 @@ export default function DocumentsPage() {
 
       {status === "success" || status === "empty" ? (
         <div className="list-toolbar">
-          <p className="result-count">{t("resultCount", { count: total })}</p>
+          <p className="result-count">
+            {t("resultCount", { count: total })}
+            {fileCount > total ? (
+              <span className="result-count-sub"> · {t("fileCount", { count: fileCount })}</span>
+            ) : null}
+          </p>
         </div>
       ) : null}
 
@@ -132,25 +162,60 @@ export default function DocumentsPage() {
         ) : null}
 
         {status === "success"
-          ? items.map((doc) => (
-              <Link key={doc.id} href={`/documents/${doc.id}`} className="doc-row">
-                <h3>{doc.title}</h3>
-                <div className="meta">
-                  <span className="chip">{doc.source_id}</span>
-                  <span>
-                    {t("circularNo")}: {doc.circular_no || "—"}
-                  </span>
-                  <span>
-                    {t("issuedAt")}: {doc.issued_at || "—"}
-                  </span>
-                  <span>
-                    {t("status")}: {doc.status}
-                  </span>
+          ? items.map((group) => (
+              <div key={group.key} className="doc-row doc-group">
+                <Link href={`/documents/${group.primary_id}`} className="doc-group-main">
+                  <h3>{group.title}</h3>
+                  <div className="meta">
+                    <span className="chip">{group.source_id}</span>
+                    <span>
+                      {t("circularNo")}: {group.circular_no || "—"}
+                    </span>
+                    <span>
+                      {t("issuedAt")}: {group.issued_at || "—"}
+                    </span>
+                  </div>
+                </Link>
+                <div className="lang-variants" role="group" aria-label={t("languages")}>
+                  {group.variants.map((v) => (
+                    <Link
+                      key={v.id}
+                      href={`/documents/${v.id}`}
+                      className="lang-chip"
+                      title={v.title}
+                    >
+                      {langLabel(v.language, t)}
+                    </Link>
+                  ))}
                 </div>
-              </Link>
+              </div>
             ))
           : null}
       </div>
+
+      {status === "success" && totalPages > 1 ? (
+        <div className="pagination">
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            {t("prevPage")}
+          </button>
+          <span className="pagination-info">
+            {t("pageOf", { page, totalPages })}
+          </span>
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            {t("nextPage")}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

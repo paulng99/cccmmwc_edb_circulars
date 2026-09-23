@@ -21,7 +21,8 @@
   "documents": {
     "title": "Circulars & Documents",
     "search": "Search title or circular number",
-    "resultCount": "{count} result(s)",
+    "resultCount": "{count} circular(s)",
+    "fileCount": "{count} file(s)",
     "empty": "No documents yet. Trigger a crawl from Ingest Status.",
     "emptySearch": "No documents match “{query}”.",
     "emptySearchHint": "Clear the keyword and try again, or use a different search term.",
@@ -39,7 +40,14 @@
     "source": "Source",
     "status": "Status",
     "open": "Open",
-    "download": "Download"
+    "download": "Download",
+    "languages": "Language versions",
+    "langZhHk": "Traditional Chinese",
+    "langZhCn": "Simplified Chinese",
+    "langEn": "English",
+    "prevPage": "Previous",
+    "nextPage": "Next",
+    "pageOf": "Page {page} / {totalPages}"
   },
   "chat": {
     "title": "Ask about EDB materials",

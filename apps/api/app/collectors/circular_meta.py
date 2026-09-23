@@ -35,7 +35,6 @@ _FILENAME_RE = re.compile(
     re.IGNORECASE,
 )
 _CIRCULAR_IN_TEXT = re.compile(r"(EDBC(?:M)?)\s*(\d+)\s*/\s*(\d{4})", re.IGNORECASE)
-_DATE_RE = re.compile(r"(\d{1,2}/\d{1,2}/\d{4})")
 
 
 def is_language_label(title: str | None) -> bool:
@@ -95,7 +94,12 @@ def extract_subject(cell_text: str | None) -> str | None:
     if not cell_text:
         return None
     text = re.sub(r"\s+", " ", cell_text).strip()
-    text = re.sub(r"^(主題|Subject)\s*", "", text, flags=re.IGNORECASE)
+    # Subject cell may already be clean, or full-row text may prepend 日期…
+    m_subj = re.search(r"(?:^|[\s])(?:主題|Subject)\s*(.+)$", text, re.IGNORECASE)
+    if m_subj:
+        text = m_subj.group(1).strip()
+    else:
+        text = re.sub(r"^(主題|Subject)\s*", "", text, flags=re.IGNORECASE)
     # Cut at circular-number / abstract markers
     cut = re.search(
         r"[\(（]?\s*(通告編號|Circular\s*No\.?|摘要|Abstract)\s*[：:)]?",
@@ -103,7 +107,8 @@ def extract_subject(cell_text: str | None) -> str | None:
         re.IGNORECASE,
     )
     if cut:
-        text = text[: cut.start()].strip(" ：:（()）")
+        text = text[: cut.start()]
+    text = text.strip(" ：:\t\r\n")
     text = text.strip()
     if not text or is_language_label(text):
         return None

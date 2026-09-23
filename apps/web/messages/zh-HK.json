@@ -21,7 +21,8 @@
   "documents": {
     "title": "通告與文件",
     "search": "搜尋標題或通告編號",
-    "resultCount": "共 {count} 則",
+    "resultCount": "共 {count} 則通告",
+    "fileCount": "{count} 個檔案",
     "empty": "暫無文件。可於收集狀態頁觸發爬取。",
     "emptySearch": "找不到符合「{query}」的文件。",
     "emptySearchHint": "請清除關鍵字後再試，或換一個搜尋詞。",
@@ -39,7 +40,14 @@
     "source": "來源",
     "status": "狀態",
     "open": "開啟",
-    "download": "下載"
+    "download": "下載",
+    "languages": "語言版本",
+    "langZhHk": "繁體中文",
+    "langZhCn": "簡體中文",
+    "langEn": "英文",
+    "prevPage": "上一頁",
+    "nextPage": "下一頁",
+    "pageOf": "第 {page} / {totalPages} 頁"
   },
   "chat": {
     "title": "通告問答",

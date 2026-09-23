@@ -38,3 +38,23 @@ class DocumentOut(BaseModel):
     file_url: str | None
     status: str
     file_size: int
+
+
+class DocumentVariantOut(BaseModel):
+    id: str
+    language: str
+    status: str
+    file_size: int
+    title: str
+
+
+class DocumentGroupOut(BaseModel):
+    """One circular (or standalone doc) with zh/en/sc variants in the same box."""
+
+    key: str
+    title: str
+    circular_no: str | None
+    issued_at: str | None
+    source_id: str
+    primary_id: str
+    variants: list[DocumentVariantOut]
