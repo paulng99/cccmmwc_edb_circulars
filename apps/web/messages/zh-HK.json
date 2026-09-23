@@ -7,6 +7,7 @@
     "documents": "文件",
     "chat": "問答",
     "status": "收集狀態",
+    "settings": "設定",
     "logout": "登出",
     "login": "登入"
   },
@@ -82,5 +83,27 @@
     "failed": "失敗",
     "sources": "資料來源",
     "recentRuns": "最近執行"
+  },
+  "settings": {
+    "title": "系統設定",
+    "save": "儲存變更",
+    "saved": "設定已儲存",
+    "loadError": "無法載入設定",
+    "saveError": "無法儲存設定",
+    "sectionApp": "應用程式",
+    "sectionLlm": "LLM",
+    "sectionChat": "問答 / RAG",
+    "sectionEmbeddings": "嵌入向量",
+    "sectionDify": "Dify",
+    "sectionCrawl": "爬取",
+    "sectionStorage": "儲存",
+    "sectionOauth": "OAuth",
+    "sectionReadonly": "基礎設施（唯讀）",
+    "secretConfigured": "已設定（{masked}）",
+    "secretEmpty": "未設定",
+    "secretKeepHint": "留空以保留現有值",
+    "dimConfirm": "變更嵌入維度需要重新索引。是否繼續？",
+    "reindexWarning": "嵌入維度變更後需重新索引",
+    "readonlyHint": "請透過環境變數 / .env 更改並重啟"
   }
 }

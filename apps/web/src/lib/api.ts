@@ -87,4 +87,28 @@ export function fileUrl(documentId: string) {
   return `${API_URL}/api/documents/${documentId}/file`;
 }
 
+export type SecretField = { configured: boolean; masked: string | null };
+export type SettingsResponse = {
+  editable: Record<string, unknown>;
+  readonly: Record<string, unknown>;
+  meta: { updated_at: string | null; updated_by: string | null };
+  warnings: string[];
+};
+
+export async function getSettings(token: string) {
+  const res = await fetch(`${API_URL}/api/settings`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error("settings_get_failed");
+  return res.json() as Promise<SettingsResponse>;
+}
+
+export async function updateSettings(token: string, body: Record<string, unknown>) {
+  const res = await fetch(`${API_URL}/api/settings`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("settings_update_failed");
+  return res.json() as Promise<SettingsResponse>;
+}
+
 export { API_URL };

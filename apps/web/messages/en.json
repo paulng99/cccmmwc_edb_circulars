@@ -7,6 +7,7 @@
     "documents": "Documents",
     "chat": "Chat",
     "status": "Ingest Status",
+    "settings": "Settings",
     "logout": "Log out",
     "login": "Log in"
   },
@@ -82,5 +83,27 @@
     "failed": "Failed",
     "sources": "Sources",
     "recentRuns": "Recent runs"
+  },
+  "settings": {
+    "title": "Setup / Settings",
+    "save": "Save changes",
+    "saved": "Settings saved",
+    "loadError": "Failed to load settings",
+    "saveError": "Failed to save settings",
+    "sectionApp": "App",
+    "sectionLlm": "LLM",
+    "sectionChat": "Chat / RAG",
+    "sectionEmbeddings": "Embeddings",
+    "sectionDify": "Dify",
+    "sectionCrawl": "Crawl",
+    "sectionStorage": "Storage",
+    "sectionOauth": "OAuth",
+    "sectionReadonly": "Infrastructure (read-only)",
+    "secretConfigured": "Configured ({masked})",
+    "secretEmpty": "Not set",
+    "secretKeepHint": "Leave blank to keep current value",
+    "dimConfirm": "Changing embedding dimension requires re-indexing. Continue?",
+    "reindexWarning": "Re-index required after embedding dimension change",
+    "readonlyHint": "Change these via environment variables / .env and restart"
   }
 }
