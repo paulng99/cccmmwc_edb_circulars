@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
-import { ingestStatus, stopCrawl, triggerCrawl } from "@/lib/api";
+import { ingestStatus, stopCrawl, triggerCrawl, triggerReindex } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDateTime } from "@/lib/date";
 
@@ -18,6 +18,7 @@ type CrawlEvent = {
 type Run = {
   id: string;
   source_id: string;
+  job_type?: string;
   status: string;
   discovered: number;
   downloaded: number;
@@ -56,9 +57,14 @@ const EVENT_I18N: Record<string, string> = {
   download_start: "eventDownloadStart",
   download_ok: "eventDownloadOk",
   download_fail: "eventDownloadFail",
+  index_start: "eventIndexStart",
+  index_ok: "eventIndexOk",
+  index_fail: "eventIndexFail",
   done: "eventDone",
   cancelled: "eventCancelled",
 };
+
+const REINDEX_SOURCE_ID = "system_reindex";
 
 function truncateUrl(url: string, max = 72) {
   if (url.length <= max) return url;
@@ -73,6 +79,7 @@ export default function StatusPage() {
   const [data, setData] = useState<IngestData | null>(null);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [jobKind, setJobKind] = useState<"crawl" | "reindex" | null>(null);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -80,13 +87,22 @@ export default function StatusPage() {
   const refresh = useCallback(async (tok: string) => {
     const s = (await ingestStatus(tok)) as IngestData;
     setData(s);
-    const running = Boolean(s.active) || s.recent_runs.some((r) => r.status === "running");
+    const runningRuns = s.recent_runs.filter((r) => r.status === "running");
+    const running = Boolean(s.active) || runningRuns.length > 0;
     setBusy(running);
-    if (!running) setStopping(false);
-    else if (s.recent_runs.some((r) => r.status === "running" && r.cancel_requested)) {
-      setStopping(true);
+    let kind: "crawl" | "reindex" | null = null;
+    if (!running) {
+      setStopping(false);
+      setJobKind(null);
+    } else {
+      const isReindex = runningRuns.some(
+        (r) => r.job_type === "reindex" || r.source_id === REINDEX_SOURCE_ID,
+      );
+      kind = isReindex ? "reindex" : "crawl";
+      setJobKind(kind);
+      if (runningRuns.some((r) => r.cancel_requested)) setStopping(true);
     }
-    return running;
+    return { running, kind };
   }, []);
 
   const stopPoll = useCallback(() => {
@@ -97,15 +113,19 @@ export default function StatusPage() {
   }, []);
 
   const startPoll = useCallback(
-    (tok: string) => {
+    (tok: string, kind: "crawl" | "reindex") => {
       stopPoll();
       pollRef.current = setInterval(() => {
         refresh(tok)
-          .then((running) => {
+          .then(({ running }) => {
             if (!running) {
               stopPoll();
-              setMsg((prev) => (prev === t("stopping") ? t("cancelled") : t("crawlDone")));
+              setMsg((prev) => {
+                if (prev === t("stopping")) return t("cancelled");
+                return kind === "reindex" ? t("reindexDone") : t("crawlDone");
+              });
               setStopping(false);
+              setJobKind(null);
             }
           })
           .catch(() => undefined);
@@ -121,8 +141,8 @@ export default function StatusPage() {
   useEffect(() => {
     if (!token) return;
     refresh(token)
-      .then((running) => {
-        if (running) startPoll(token);
+      .then(({ running, kind }) => {
+        if (running && kind) startPoll(token, kind);
       })
       .catch(() => setData(null));
     return () => stopPoll();
@@ -132,15 +152,36 @@ export default function StatusPage() {
     if (!token || busy) return;
     setError("");
     setStopping(false);
+    setJobKind("crawl");
     setMsg(t("crawling"));
     setBusy(true);
     try {
       await triggerCrawl(token, sourceId);
       await refresh(token);
-      startPoll(token);
+      startPoll(token, "crawl");
     } catch {
       setBusy(false);
+      setJobKind(null);
       setError(t("crawlError"));
+      setMsg("");
+    }
+  }
+
+  async function onReindex() {
+    if (!token || busy) return;
+    setError("");
+    setStopping(false);
+    setJobKind("reindex");
+    setMsg(t("reindexing"));
+    setBusy(true);
+    try {
+      await triggerReindex(token, "all");
+      await refresh(token);
+      startPoll(token, "reindex");
+    } catch (e) {
+      setBusy(false);
+      setJobKind(null);
+      setError(e instanceof Error && e.message === "busy" ? t("reindexBusy") : t("reindexError"));
       setMsg("");
     }
   }
@@ -157,7 +198,7 @@ export default function StatusPage() {
         setStopping(false);
       }
       await refresh(token);
-      startPoll(token);
+      startPoll(token, jobKind || "crawl");
     } catch {
       setStopping(false);
       setError(t("stopError"));
@@ -168,6 +209,7 @@ export default function StatusPage() {
 
   const activeRuns = data?.recent_runs.filter((r) => r.status === "running") || [];
   const sourceName = (id: string) => {
+    if (id === REINDEX_SOURCE_ID) return t("reindexJob");
     const s = data?.sources.find((x) => x.id === id);
     if (!s) return id;
     return locale.startsWith("zh") ? s.name_zh_hk || s.name_en : s.name_en;
@@ -180,6 +222,15 @@ export default function StatusPage() {
 
   const currentLabel = (ev: CrawlEvent) => ev.title || (ev.url ? truncateUrl(ev.url) : "—");
 
+  const progressLabel = (r: Run) => {
+    const isReindex = r.job_type === "reindex" || r.source_id === REINDEX_SOURCE_ID;
+    return t(isReindex ? "progressCountsIndex" : "progressCounts", {
+      discovered: r.discovered,
+      downloaded: r.downloaded,
+      failed: r.failed,
+    });
+  };
+
   return (
     <div>
       <div className="hero">
@@ -187,7 +238,10 @@ export default function StatusPage() {
       </div>
       <div style={{ marginBottom: "1rem", display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
         <button className="btn" type="button" disabled={busy} onClick={() => onCrawl()}>
-          {busy ? t("crawlingBtn") : t("crawl")}
+          {busy && jobKind === "crawl" ? t("crawlingBtn") : t("crawl")}
+        </button>
+        <button className="btn" type="button" disabled={busy} onClick={() => onReindex()}>
+          {busy && jobKind === "reindex" ? t("reindexingBtn") : t("reindex")}
         </button>
         <button className="btn secondary" type="button" disabled={!busy || stopping} onClick={() => onStop()}>
           {stopping ? t("stopping") : t("stop")}
@@ -217,13 +271,7 @@ export default function StatusPage() {
                         {r.cancel_requested ? <span className="chip">{t("eventCancelled")}</span> : null}
                       </h3>
                       <div className="meta">
-                        <span>
-                          {t("progressCounts", {
-                            discovered: r.discovered,
-                            downloaded: r.downloaded,
-                            failed: r.failed,
-                          })}
-                        </span>
+                        <span>{progressLabel(r)}</span>
                         <span>{formatHkDateTime(r.started_at)}</span>
                       </div>
                       <div
@@ -346,13 +394,11 @@ export default function StatusPage() {
                 <div key={r.id} className="doc-row">
                   <div>
                     <h3>
-                      {r.source_id}{" "}
+                      {sourceName(r.source_id)}{" "}
                       <span className="chip">{r.status}</span>
                     </h3>
                     <div className="meta">
-                      <span>
-                        {r.discovered}/{r.downloaded}/{r.failed}
-                      </span>
+                      <span>{progressLabel(r)}</span>
                       <span>{formatHkDateTime(r.started_at)}</span>
                     </div>
                     {r.progress_message && r.status !== "running" ? (

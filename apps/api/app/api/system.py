@@ -12,6 +12,7 @@ from app.api.deps import get_current_user
 from app.core.db import get_db
 from app.models.entities import CrawlRun, Document, Source, User
 from app.services.crawl_events import list_recent, pick_current, request_cancel
+from app.services.reindex import REINDEX_SOURCE_ID
 from app.services.runtime_settings import resolved_settings
 
 router = APIRouter(prefix="/api", tags=["system"])
@@ -40,7 +41,10 @@ async def ingest_status(
     ) or 0
     failed = await db.scalar(select(func.count()).select_from(Document).where(Document.status == "failed")) or 0
     stored = await db.scalar(select(func.count()).select_from(Document).where(Document.status == "stored")) or 0
-    sources = (await db.scalars(select(Source))).all()
+    sources = (await db.scalars(select(Source).where(Source.id != REINDEX_SOURCE_ID))).all()
+    from app.services.reindex import ensure_reindex_source
+
+    await ensure_reindex_source(db)
     last_runs = (
         await db.scalars(select(CrawlRun).order_by(CrawlRun.started_at.desc()).limit(15))
     ).all()
@@ -64,18 +68,17 @@ async def ingest_status(
             }
             for s in sources
         ],
-        "recent_runs": [
-            await _run_status_payload(db, r)
-            for r in last_runs
-        ],
+        "recent_runs": [await _run_status_payload(db, r) for r in last_runs],
     }
 
 
 async def _run_status_payload(db: AsyncSession, run: CrawlRun) -> dict:
     events = await list_recent(db, run.id) if run.status == "running" else []
+    job_type = "reindex" if run.source_id == REINDEX_SOURCE_ID else "crawl"
     return {
         "id": str(run.id),
         "source_id": run.source_id,
+        "job_type": job_type,
         "status": run.status,
         "discovered": run.discovered,
         "downloaded": run.downloaded,
@@ -122,7 +125,11 @@ async def stop_crawl(
         inspect = celery_app.control.inspect(timeout=2.0)
         active = (inspect.active() if inspect else None) or {}
         reserved = (inspect.reserved() if inspect else None) or {}
-        crawl_names = {"app.worker.crawl_all", "app.worker.crawl_source"}
+        crawl_names = {
+            "app.worker.crawl_all",
+            "app.worker.crawl_source",
+            "app.worker.reindex_all",
+        }
         for bucket in (active, reserved):
             for _worker, tasks in bucket.items():
                 for task in tasks or []:
@@ -153,11 +160,19 @@ async def stop_crawl(
 
 @router.post("/ingest/crawl")
 async def trigger_crawl(
+    db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
     source_id: Optional[str] = None,
 ) -> dict:
     """Enqueue crawl on Celery worker so UI can poll live CrawlRun progress."""
     from app.worker import crawl_all, crawl_source
+
+    running = await db.scalar(select(CrawlRun).where(CrawlRun.status == "running"))
+    if running:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A crawl or re-index job is already running",
+        )
 
     if source_id:
         async_result = crawl_source.delay(source_id)
@@ -167,6 +182,39 @@ async def trigger_crawl(
         "ok": True,
         "started": True,
         "source_id": source_id,
+        "task_id": async_result.id,
+    }
+
+
+@router.post("/ingest/reindex")
+async def trigger_reindex(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+    scope: str = "all",
+) -> dict:
+    """Enqueue full (or partial) re-index of stored documents with live progress."""
+    from sqlalchemy import select
+
+    from app.worker import reindex_all
+
+    if scope not in ("all", "failed", "stored"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="scope must be all, failed, or stored",
+        )
+
+    running = await db.scalar(select(CrawlRun).where(CrawlRun.status == "running"))
+    if running:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A crawl or re-index job is already running",
+        )
+
+    async_result = reindex_all.delay(scope)
+    return {
+        "ok": True,
+        "started": True,
+        "scope": scope,
         "task_id": async_result.id,
     }
 

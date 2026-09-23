@@ -10,7 +10,7 @@ from app.models.entities import CrawlEvent, CrawlRun
 
 logger = logging.getLogger(__name__)
 
-_CURRENT_TYPES = ("download_start", "page", "discovering")
+_CURRENT_TYPES = ("index_start", "download_start", "page", "discovering")
 
 
 def pick_current(events: list[dict]) -> dict | None:

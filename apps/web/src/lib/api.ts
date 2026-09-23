@@ -83,6 +83,19 @@ export async function triggerCrawl(token: string, sourceId?: string) {
   }>;
 }
 
+export async function triggerReindex(token: string, scope: "all" | "failed" | "stored" = "all") {
+  const sp = new URLSearchParams({ scope });
+  const res = await fetch(`${API_URL}/api/ingest/reindex?${sp}`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) {
+    if (res.status === 409) throw new Error("busy");
+    throw new Error("reindex_failed");
+  }
+  return res.json() as Promise<{ ok: boolean; started: boolean; scope: string; task_id: string }>;
+}
+
 export async function stopCrawl(token: string, runId?: string) {
   const url = runId
     ? `${API_URL}/api/ingest/crawl/stop?run_id=${encodeURIComponent(runId)}`

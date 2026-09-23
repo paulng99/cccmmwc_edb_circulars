@@ -62,6 +62,19 @@ def crawl_source(source_id: str) -> dict:
     return _run_async(_inner())
 
 
+@celery_app.task(name="app.worker.reindex_all")
+def reindex_all(scope: str = "all") -> dict:
+    from app.core.db import SessionLocal
+    from app.services.reindex import run_reindex_all
+
+    async def _inner() -> dict:
+        async with SessionLocal() as session:
+            await _refresh_runtime_settings(session)
+            return await run_reindex_all(session, scope=scope)
+
+    return _run_async(_inner())
+
+
 @celery_app.task(name="app.worker.index_document")
 def index_document_task(document_id: str) -> dict:
     import uuid
