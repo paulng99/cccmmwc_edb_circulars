@@ -53,6 +53,56 @@ def mask_secret(value: str | None) -> dict[str, Any]:
     return {"configured": True, "masked": f"••••{tail}"}
 
 
+# Readonly env keys whose raw values must never be exposed
+_READONLY_SECRET_KEYS = frozenset({
+    "jwt_secret",
+    "database_url",
+    "redis_url",
+    "celery_broker_url",
+    "celery_result_backend",
+})
+
+
+def build_settings_response(
+    merged: dict[str, Any],
+    row: AppSetting | None,
+    warnings: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build the public settings payload with masked secrets."""
+    settings = get_settings()
+
+    editable: dict[str, Any] = {}
+    for key, value in merged.items():
+        if key in SECRET_KEYS:
+            editable[key] = mask_secret(value)
+        else:
+            editable[key] = value
+
+    readonly: dict[str, Any] = {
+        "app_env": settings.app_env,
+        "jwt_secret": mask_secret(settings.jwt_secret),
+        "jwt_expire_hours": settings.jwt_expire_hours,
+        "admin_username": settings.admin_username,
+        "database_url": mask_secret(settings.database_url),
+        "redis_url": mask_secret(settings.redis_url),
+        "celery_broker_url": mask_secret(settings.celery_broker_url),
+        "celery_result_backend": mask_secret(settings.celery_result_backend),
+        "sources_config_path": settings.sources_config_path,
+    }
+
+    meta: dict[str, Any] = {
+        "updated_at": row.updated_at.isoformat() if row and row.updated_at else None,
+        "updated_by": str(row.updated_by) if row and row.updated_by else None,
+    }
+
+    return {
+        "editable": editable,
+        "readonly": readonly,
+        "meta": meta,
+        "warnings": warnings or [],
+    }
+
+
 def defaults_from_env(settings: Settings) -> dict[str, Any]:
     return {
         "app_name": settings.app_name,

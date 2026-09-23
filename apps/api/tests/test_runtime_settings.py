@@ -8,6 +8,7 @@ from app.models import AppSetting
 from app.services.runtime_settings import (
     DEFAULT_SYSTEM_PROMPT,
     apply_patch,
+    build_settings_response,
     defaults_from_env,
     ensure_seeded,
     get_cached_merged,
@@ -73,6 +74,15 @@ def test_apply_patch_dim_warns():
 def test_apply_patch_rejects_unknown():
     with pytest.raises(ValueError):
         apply_patch({"temperature": 0.2}, {"not_a_key": 1})
+
+
+def test_build_settings_response_masks():
+    merged = defaults_from_env(Settings(openrouter_api_key="super-secret-key"))
+    payload = build_settings_response(merged, row=None)
+    assert payload["editable"]["openrouter_api_key"]["configured"] is True
+    assert "super-secret" not in str(payload)
+    assert "admin_password" not in str(payload)
+    assert payload["readonly"]["jwt_secret"]["configured"] is True
 
 
 def test_cache_initially_empty():
