@@ -32,12 +32,14 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
                     "Access-Control-Allow-Credentials": "true",
                     "Access-Control-Allow-Methods": "*",
                     "Access-Control-Allow-Headers": "*",
+                    "Vary": "Origin",
                 },
             )
         response = await call_next(request)
         if origin in allowed:
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Vary"] = "Origin"
         return response
 
 

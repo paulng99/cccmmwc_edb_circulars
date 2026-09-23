@@ -28,16 +28,22 @@ def _run_async(coro: Any) -> Any:
     return asyncio.run(coro)
 
 
+async def _refresh_runtime_settings(session) -> None:
+    from app.services.runtime_settings import ensure_seeded, get_merged, invalidate_cache
+
+    invalidate_cache()
+    await ensure_seeded(session)
+    await get_merged(session)
+
+
 @celery_app.task(name="app.worker.crawl_all")
 def crawl_all() -> dict:
     from app.core.db import SessionLocal
     from app.services.pipeline import run_source_crawl
-    from app.services.runtime_settings import ensure_seeded, get_merged
 
     async def _inner() -> dict:
         async with SessionLocal() as session:
-            await ensure_seeded(session)
-            await get_merged(session)
+            await _refresh_runtime_settings(session)
             return await run_source_crawl(session)
 
     return _run_async(_inner())
@@ -47,12 +53,10 @@ def crawl_all() -> dict:
 def crawl_source(source_id: str) -> dict:
     from app.core.db import SessionLocal
     from app.services.pipeline import run_source_crawl
-    from app.services.runtime_settings import ensure_seeded, get_merged
 
     async def _inner() -> dict:
         async with SessionLocal() as session:
-            await ensure_seeded(session)
-            await get_merged(session)
+            await _refresh_runtime_settings(session)
             return await run_source_crawl(session, source_id=source_id)
 
     return _run_async(_inner())
@@ -67,6 +71,7 @@ def index_document_task(document_id: str) -> dict:
 
     async def _inner() -> dict:
         async with SessionLocal() as session:
+            await _refresh_runtime_settings(session)
             return await index_document(session, uuid.UUID(document_id))
 
     return _run_async(_inner())
