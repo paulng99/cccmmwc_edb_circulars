@@ -352,9 +352,27 @@ button.stat:disabled {
     border-color var(--duration-fast) var(--ease-state);
 }
 
-.lang-chip:hover {
-  background: rgba(37, 99, 212, 0.16);
-  border-color: rgba(29, 91, 184, 0.4);
+.lang-chip.active {
+  background: rgba(37, 99, 212, 0.22);
+  border-color: rgba(29, 91, 184, 0.55);
+  color: var(--blue-950);
+  box-shadow: inset 0 0 0 1px rgba(29, 91, 184, 0.15);
+}
+
+.category-toggle {
+  margin-top: 0.35rem;
+}
+
+.category-label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.15rem;
+}
+
+.category-chip {
+  background: rgba(8, 145, 178, 0.12);
+  color: #0e7490;
 }
 
 .result-count-sub {

@@ -30,6 +30,17 @@ def _download_filename(doc: Document) -> str:
     return f"{raw}.pdf"
 
 
+_CIRCULAR_SOURCES = frozenset({"edb_circulars"})
+
+
+def document_category(doc: Document) -> str:
+    """Classify as circular (通告) or document (文件)."""
+    circ = (doc.circular_no or "").strip().upper()
+    if doc.source_id in _CIRCULAR_SOURCES or circ.startswith("EDBC"):
+        return "circular"
+    return "document"
+
+
 def _to_out(doc: Document) -> DocumentOut:
     extra = doc.extra or {}
     return DocumentOut(
@@ -95,6 +106,7 @@ def _to_groups(docs: list[Document]) -> list[DocumentGroupOut]:
                 issued_at=issued.isoformat() if issued else None,
                 source_id=primary.source_id,
                 primary_id=str(primary.id),
+                category=document_category(primary),
                 variants=[
                     DocumentVariantOut(
                         id=str(d.id),
@@ -125,6 +137,7 @@ async def list_documents(
     q: Optional[str] = None,
     source_id: Optional[str] = None,
     status_filter: Optional[str] = Query(None, alias="status"),
+    category: Optional[str] = Query(None, description="all | circular | document"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     grouped: bool = Query(True),
@@ -137,6 +150,15 @@ async def list_documents(
         stmt = stmt.where(Document.source_id == source_id)
     if status_filter:
         stmt = stmt.where(Document.status == status_filter)
+    if category in ("circular", "document"):
+        is_circular = or_(
+            Document.source_id.in_(list(_CIRCULAR_SOURCES)),
+            Document.circular_no.ilike("EDBC%"),
+        )
+        if category == "circular":
+            stmt = stmt.where(is_circular)
+        else:
+            stmt = stmt.where(~is_circular)
     stmt = stmt.order_by(Document.issued_at.desc().nullslast(), Document.created_at.desc())
     rows = list((await db.scalars(stmt)).all())
 
@@ -148,6 +170,7 @@ async def list_documents(
             "page": page,
             "page_size": page_size,
             "grouped": False,
+            "category": category or "all",
             "items": [_to_out(d) for d in page_rows],
         }
 
@@ -159,6 +182,7 @@ async def list_documents(
         "page": page,
         "page_size": page_size,
         "grouped": True,
+        "category": category or "all",
         "file_count": len(rows),
         "items": [g.model_dump() for g in page_groups],
     }

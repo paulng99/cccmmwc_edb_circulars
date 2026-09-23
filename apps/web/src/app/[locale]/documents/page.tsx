@@ -21,9 +21,11 @@ type DocGroup = {
   issued_at?: string | null;
   source_id: string;
   primary_id: string;
+  category?: "circular" | "document" | string;
   variants: Variant[];
 };
 
+type Category = "all" | "circular" | "document";
 type ListStatus = "idle" | "loading" | "success" | "empty" | "error";
 
 const SKELETON_COUNT = 4;
@@ -42,6 +44,7 @@ export default function DocumentsPage() {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
+  const [category, setCategory] = useState<Category>("all");
   const [items, setItems] = useState<DocGroup[]>([]);
   const [total, setTotal] = useState(0);
   const [fileCount, setFileCount] = useState(0);
@@ -65,7 +68,12 @@ export default function DocumentsPage() {
     if (!token) return;
     let cancelled = false;
     setStatus("loading");
-    listDocuments(token, { q: debouncedQ || undefined, page, page_size: PAGE_SIZE })
+    listDocuments(token, {
+      q: debouncedQ || undefined,
+      page,
+      page_size: PAGE_SIZE,
+      category,
+    })
       .then((data) => {
         if (cancelled) return;
         const next = (data.items || []) as DocGroup[];
@@ -84,12 +92,24 @@ export default function DocumentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, debouncedQ, page, reloadKey]);
+  }, [token, debouncedQ, page, category, reloadKey]);
 
   if (!token) return null;
 
   const hasKeyword = Boolean(debouncedQ);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  function selectCategory(next: Category) {
+    setCategory(next);
+    setPage(1);
+  }
+
+  const countLabel =
+    category === "document"
+      ? t("resultCountDocuments", { count: total })
+      : category === "circular"
+        ? t("resultCountCirculars", { count: total })
+        : t("resultCount", { count: total });
 
   return (
     <div className="page-enter">
@@ -97,6 +117,30 @@ export default function DocumentsPage() {
         <h1>{t("title")}</h1>
       </div>
       <div className="panel" style={{ marginBottom: "1rem" }}>
+        <div className="field" style={{ marginBottom: "0.85rem" }}>
+          <span className="category-label" id="cat-label">
+            {t("categoryFilter")}
+          </span>
+          <div className="lang-variants category-toggle" role="group" aria-labelledby="cat-label">
+            {(
+              [
+                ["all", "categoryAll"],
+                ["circular", "categoryCirculars"],
+                ["document", "categoryDocuments"],
+              ] as const
+            ).map(([value, key]) => (
+              <button
+                key={value}
+                type="button"
+                className={`lang-chip${category === value ? " active" : ""}`}
+                aria-pressed={category === value}
+                onClick={() => selectCategory(value)}
+              >
+                {t(key)}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="field" style={{ marginBottom: 0 }}>
           <label htmlFor="q">{t("search")}</label>
           <input
@@ -112,7 +156,7 @@ export default function DocumentsPage() {
       {status === "success" || status === "empty" ? (
         <div className="list-toolbar">
           <p className="result-count">
-            {t("resultCount", { count: total })}
+            {countLabel}
             {fileCount > total ? (
               <span className="result-count-sub"> · {t("fileCount", { count: fileCount })}</span>
             ) : null}
@@ -167,6 +211,9 @@ export default function DocumentsPage() {
                 <Link href={`/documents/${group.primary_id}`} className="doc-group-main">
                   <h3>{group.title}</h3>
                   <div className="meta">
+                    <span className="chip category-chip">
+                      {group.category === "circular" ? t("categoryCirculars") : t("categoryDocuments")}
+                    </span>
                     <span className="chip">{group.source_id}</span>
                     <span>
                       {t("circularNo")}: {group.circular_no || "—"}
@@ -203,9 +250,7 @@ export default function DocumentsPage() {
           >
             {t("prevPage")}
           </button>
-          <span className="pagination-info">
-            {t("pageOf", { page, totalPages })}
-          </span>
+          <span className="pagination-info">{t("pageOf", { page, totalPages })}</span>
           <button
             type="button"
             className="btn secondary"

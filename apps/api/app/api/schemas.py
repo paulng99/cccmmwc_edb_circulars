@@ -61,6 +61,7 @@ class DocumentGroupOut(BaseModel):
     issued_at: str | None
     source_id: str
     primary_id: str
+    category: str  # circular | document
     variants: list[DocumentVariantOut]
 
 

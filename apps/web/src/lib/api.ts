@@ -32,11 +32,13 @@ export async function listDocuments(
     page_size?: number;
     status?: string;
     grouped?: boolean;
+    category?: "all" | "circular" | "document";
   } = {},
 ) {
   const sp = new URLSearchParams();
   if (params.q) sp.set("q", params.q);
   if (params.status) sp.set("status", params.status);
+  if (params.category && params.category !== "all") sp.set("category", params.category);
   sp.set("page", String(params.page || 1));
   sp.set("page_size", String(params.page_size || 20));
   sp.set("grouped", String(params.grouped ?? true));
@@ -47,6 +49,7 @@ export async function listDocuments(
     page: number;
     page_size: number;
     grouped?: boolean;
+    category?: string;
     file_count?: number;
     items: unknown[];
   }>;
