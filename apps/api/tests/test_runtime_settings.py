@@ -134,6 +134,7 @@ def test_cache_round_trip():
 async def test_ensure_seeded_creates_row_when_missing(monkeypatch):
     session = AsyncMock()
     session.get.return_value = None
+    session.add = MagicMock()
     monkeypatch.setattr(
         "app.services.runtime_settings.defaults_from_env",
         lambda _s: {"temperature": 0.2},
