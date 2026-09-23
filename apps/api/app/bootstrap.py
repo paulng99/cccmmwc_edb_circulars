@@ -10,6 +10,7 @@ from app.models import (  # noqa: F401
     AppSetting,
     ChatMessage,
     ChatSession,
+    CrawlEvent,
     CrawlRun,
     Document,
     DocumentChunk,
@@ -30,6 +31,18 @@ async def init_db() -> None:
             text(
                 "ALTER TABLE crawl_runs "
                 "ADD COLUMN IF NOT EXISTS progress_message TEXT"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE crawl_runs "
+                "ADD COLUMN IF NOT EXISTS cancel_requested BOOLEAN DEFAULT FALSE"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE crawl_runs "
+                "ADD COLUMN IF NOT EXISTS celery_task_id VARCHAR(64)"
             )
         )
 

@@ -83,6 +83,15 @@ export async function triggerCrawl(token: string, sourceId?: string) {
   }>;
 }
 
+export async function stopCrawl(token: string, runId?: string) {
+  const url = runId
+    ? `${API_URL}/api/ingest/crawl/stop?run_id=${encodeURIComponent(runId)}`
+    : `${API_URL}/api/ingest/crawl/stop`;
+  const res = await fetch(url, { method: "POST", headers: authHeaders(token) });
+  if (!res.ok) throw new Error("stop_failed");
+  return res.json() as Promise<{ ok: boolean; stopped: number }>;
+}
+
 export function fileUrl(documentId: string) {
   return `${API_URL}/api/documents/${documentId}/file`;
 }

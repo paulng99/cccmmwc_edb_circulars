@@ -82,7 +82,21 @@
     "indexing": "Indexing",
     "failed": "Failed",
     "sources": "Sources",
-    "recentRuns": "Recent runs"
+    "recentRuns": "Recent runs",
+    "stop": "Stop crawl",
+    "stopping": "Stopping… will finish the current file",
+    "cancelled": "Crawl cancelled",
+    "currentFile": "Now processing",
+    "recentActivity": "Recent activity",
+    "eventDiscovering": "Discovering",
+    "eventPage": "Page",
+    "eventDownloadStart": "Downloading",
+    "eventDownloadOk": "Downloaded",
+    "eventDownloadFail": "Download failed",
+    "eventDone": "Done",
+    "eventCancelled": "Cancelled",
+    "stopNone": "No crawl is running",
+    "stopError": "Could not stop crawl. Try again."
   },
   "settings": {
     "title": "Setup / Settings",

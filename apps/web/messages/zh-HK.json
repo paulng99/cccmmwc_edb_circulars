@@ -82,7 +82,21 @@
     "indexing": "索引中",
     "failed": "失敗",
     "sources": "資料來源",
-    "recentRuns": "最近執行"
+    "recentRuns": "最近執行",
+    "stop": "停止爬取",
+    "stopping": "停止中…完成目前檔案後停止",
+    "cancelled": "已取消爬取",
+    "currentFile": "正在處理",
+    "recentActivity": "最近活動",
+    "eventDiscovering": "搜尋中",
+    "eventPage": "頁面",
+    "eventDownloadStart": "下載中",
+    "eventDownloadOk": "已下載",
+    "eventDownloadFail": "下載失敗",
+    "eventDone": "完成",
+    "eventCancelled": "已取消",
+    "stopNone": "目前沒有進行中的爬取",
+    "stopError": "無法停止爬取，請稍後再試"
   },
   "settings": {
     "title": "系統設定",

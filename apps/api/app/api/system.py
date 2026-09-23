@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.db import get_db
 from app.models.entities import CrawlRun, Document, Source, User
+from app.services.crawl_events import list_recent, pick_current, request_cancel
 from app.services.runtime_settings import resolved_settings
 
 router = APIRouter(prefix="/api", tags=["system"])
@@ -62,21 +65,48 @@ async def ingest_status(
             for s in sources
         ],
         "recent_runs": [
-            {
-                "id": str(r.id),
-                "source_id": r.source_id,
-                "status": r.status,
-                "discovered": r.discovered,
-                "downloaded": r.downloaded,
-                "failed": r.failed,
-                "progress_message": r.progress_message,
-                "error_message": r.error_message,
-                "started_at": r.started_at.isoformat() if r.started_at else None,
-                "finished_at": r.finished_at.isoformat() if r.finished_at else None,
-            }
+            await _run_status_payload(db, r)
             for r in last_runs
         ],
     }
+
+
+async def _run_status_payload(db: AsyncSession, run: CrawlRun) -> dict:
+    events = await list_recent(db, run.id) if run.status == "running" else []
+    return {
+        "id": str(run.id),
+        "source_id": run.source_id,
+        "status": run.status,
+        "discovered": run.discovered,
+        "downloaded": run.downloaded,
+        "failed": run.failed,
+        "progress_message": run.progress_message,
+        "error_message": run.error_message,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "current": pick_current(events),
+        "recent_events": events,
+        "cancel_requested": bool(run.cancel_requested),
+    }
+
+
+@router.post("/ingest/crawl/stop")
+async def stop_crawl(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+    run_id: Optional[str] = None,
+) -> dict:
+    rid: UUID | None = None
+    if run_id:
+        try:
+            rid = UUID(run_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid run_id",
+            ) from exc
+    n = await request_cancel(db, rid)
+    return {"ok": True, "stopped": n}
 
 
 @router.post("/ingest/crawl")
