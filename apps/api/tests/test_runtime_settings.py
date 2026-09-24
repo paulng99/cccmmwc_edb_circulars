@@ -41,7 +41,7 @@ def test_defaults_include_new_keys():
     d = defaults_from_env(s)
     assert d["temperature"] == 0.2
     assert d["max_tokens"] == 4096
-    assert d["local_top_k"] == 8
+    assert d["local_top_k"] == 12
     assert d["dify_top_k"] == 5
     assert d["cite_inline_refs"] is True
     assert d["system_prompt"] == DEFAULT_SYSTEM_PROMPT
