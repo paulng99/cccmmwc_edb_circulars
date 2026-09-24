@@ -10,12 +10,22 @@ from app.services.runtime_settings import resolved_settings
 
 
 class LlmClient(Protocol):
-    async def chat(self, messages: list[dict[str, str]], stream: bool = False) -> str | AsyncIterator[str]: ...
+    async def chat(
+        self,
+        messages: list[dict[str, str]],
+        stream: bool = False,
+        reasoning: bool = True,
+    ) -> str | AsyncIterator[str]: ...
 
 
 class OpenRouterClient:
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=4))
-    async def chat(self, messages: list[dict[str, str]], stream: bool = False) -> str | AsyncIterator[str]:
+    async def chat(
+        self,
+        messages: list[dict[str, str]],
+        stream: bool = False,
+        reasoning: bool = True,
+    ) -> str | AsyncIterator[str]:
         rs = resolved_settings()
         if not rs.get("openrouter_api_key"):
             answer = (
@@ -44,6 +54,9 @@ class OpenRouterClient:
             "temperature": float(rs["temperature"]),
             "max_tokens": min(int(rs["max_tokens"]), 2048),
         }
+        if not reasoning:
+            # Reasoning models spend the token budget before emitting JSON.
+            payload["reasoning"] = {"effort": "none"}
         if stream:
             return self._stream(headers, payload, rs)
         async with httpx.AsyncClient(timeout=60) as client:
@@ -83,7 +96,12 @@ class OpenRouterClient:
 
 
 class OllamaClient:
-    async def chat(self, messages: list[dict[str, str]], stream: bool = False) -> str | AsyncIterator[str]:
+    async def chat(
+        self,
+        messages: list[dict[str, str]],
+        stream: bool = False,
+        reasoning: bool = True,
+    ) -> str | AsyncIterator[str]:
         rs = resolved_settings()
         payload = {
             "model": rs["ollama_model"],

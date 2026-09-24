@@ -228,6 +228,7 @@
     "sourcesLoadError": "無法讀取來源",
     "sourcesSaveError": "無法儲存來源",
     "sourcesSuggestError": "無法取得建議。請確認已設定 Jina API key。",
+    "sourcesSuggestFailed": "搜尋建議沒有完成。請再試一次。",
     "sourcesDuplicateId": "識別碼已存在",
     "fields": {
       "app_name": "應用程式名稱",

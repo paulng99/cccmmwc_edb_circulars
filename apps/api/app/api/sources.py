@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import quote
@@ -20,6 +21,7 @@ from app.services.sources_config import SourceConfigError, load_sources, save_so
 from app.services.sources_suggest import suggest_sources
 
 router = APIRouter(prefix="/api/sources", tags=["sources"])
+logger = logging.getLogger(__name__)
 
 
 def sources_file_path() -> Path:
@@ -62,6 +64,9 @@ async def _jina_search(query: str) -> str:
     headers = {
         "Authorization": f"Bearer {rs['jina_api_key']}",
         "Accept": "application/json",
+        # Titles and URLs are enough to draft a source. Full page bodies
+        # are hundreds of KB and often exceed the 30s client timeout.
+        "X-Respond-With": "no-content",
     }
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(url, headers=headers)
@@ -77,6 +82,7 @@ async def _llm_complete(prompt: str) -> str:
             {"role": "user", "content": prompt},
         ],
         stream=False,
+        reasoning=False,
     )
     if not isinstance(answer, str):
         raise RuntimeError("LLM returned no text")
@@ -106,5 +112,9 @@ async def suggest_sources_api(
         raise _http_from_config_error(exc) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except httpx.TimeoutException as exc:
+        logger.warning("source suggest timed out")
+        raise HTTPException(status_code=502, detail="suggest_timeout") from exc
     except Exception as exc:
+        logger.exception("source suggest failed")
         raise HTTPException(status_code=502, detail="suggest_failed") from exc

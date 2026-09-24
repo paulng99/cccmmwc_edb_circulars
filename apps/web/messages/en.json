@@ -228,6 +228,7 @@
     "sourcesLoadError": "Could not load sources",
     "sourcesSaveError": "Could not save sources",
     "sourcesSuggestError": "Could not get suggestions. Check that a Jina API key is set.",
+    "sourcesSuggestFailed": "Suggestion search did not finish. Try again.",
     "sourcesDuplicateId": "Identifier already exists",
     "fields": {
       "app_name": "App name",

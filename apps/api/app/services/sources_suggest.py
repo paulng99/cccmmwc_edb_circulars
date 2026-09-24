@@ -82,13 +82,16 @@ async def suggest_sources(
     evidence = await search(search_query)
     prompt = (
         "Turn the search evidence into 1 to 5 crawl source objects as a JSON array only.\n"
+        "Every object needs id, name.en, name.zh-HK, enabled, priority, type, "
+        "base_url, rate_limit_seconds, and schedule.\n"
+        "base_url must be an https URL copied from the evidence, including the page path.\n"
+        "schedule must be a string of five cron fields, for example \"0 6 * * 1\", never an object.\n"
         "Allowed type: site_attachments or circular_aspnet.\n"
         "site_attachments needs allow_hosts and file_extensions from "
         ".pdf .doc .docx .xls .xlsx .ppt .pptx.\n"
         "circular_aspnet needs langs [1 and/or 2] and year_from <= year_to.\n"
-        "id must match ^[a-z][a-z0-9_]{1,62}$. Include name.en and name.zh-HK.\n"
-        "Set enabled to false, priority 0-9, rate_limit_seconds 1.5, "
-        "schedule a 5-field cron.\n"
+        "id must match ^[a-z][a-z0-9_]{1,62}$.\n"
+        "Set enabled to false, priority 0-9, rate_limit_seconds 1.5.\n"
         f"Evidence:\n{evidence[:8000]}"
     )
     raw = await complete(prompt)

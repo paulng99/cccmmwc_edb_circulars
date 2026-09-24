@@ -65,6 +65,8 @@ async def test_suggest_does_not_need_writer(tmp_path):
 
     async def complete(prompt: str) -> str:
         assert "search hit" in prompt
+        assert "base_url must be an https URL" in prompt
+        assert "never an object" in prompt
         return """[
           {
             "id": "edb_new",

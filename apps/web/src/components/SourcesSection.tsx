@@ -109,6 +109,7 @@ function apiErrorMessage(err: unknown, fallback: string, jinaMessage: string): s
     const parsed = JSON.parse(raw) as { detail?: unknown };
     const detail = parsed?.detail;
     if (detail === "jina_not_configured") return jinaMessage;
+    if (detail === "suggest_timeout" || detail === "suggest_failed") return fallback;
     if (typeof detail === "string" && detail.trim()) return detail;
     if (detail != null) return typeof detail === "string" ? detail : JSON.stringify(detail);
   } catch {
@@ -302,7 +303,7 @@ export default function SourcesSection({ token }: Props) {
       setSelectedSuggestionIds(new Set());
       setDropped(res.dropped);
     } catch (err) {
-      setSuggestError(apiErrorMessage(err, t("sourcesSuggestError"), t("sourcesSuggestError")));
+      setSuggestError(apiErrorMessage(err, t("sourcesSuggestFailed"), t("sourcesSuggestError")));
     } finally {
       setSuggesting(false);
     }
@@ -628,10 +629,19 @@ export default function SourcesSection({ token }: Props) {
                   />
                   <span style={{ fontWeight: 600 }}>{s.name["zh-HK"] || s.name.en}</span>
                   <code style={{ fontSize: "0.85rem" }}>{s.id}</code>
-                  <span className="hint">{s.type}</span>
-                  <span className="hint" style={{ wordBreak: "break-all" }}>
-                    {s.base_url}
-                  </span>
+                  {/^https?:\/\//i.test(s.base_url) ? (
+                    <a
+                      className="hint"
+                      href={s.base_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ wordBreak: "break-all", color: "var(--blue-700)", textDecoration: "underline" }}
+                    >
+                      {s.base_url}
+                    </a>
+                  ) : (
+                    <span className="hint" style={{ wordBreak: "break-all" }}>{s.base_url}</span>
+                  )}
                 </li>
               ))}
             </ul>
