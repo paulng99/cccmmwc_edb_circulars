@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
+import SourcesSection from "@/components/SourcesSection";
 import { getSettings, SecretField, SettingsResponse, updateSettings } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDateTime } from "@/lib/date";
@@ -395,6 +396,8 @@ export default function SettingsPage() {
       <div className="hero">
         <h1>{t("title")}</h1>
       </div>
+
+      <SourcesSection token={token} />
 
       <form onSubmit={onSubmit}>
         <div style={{ marginBottom: "1rem", display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>

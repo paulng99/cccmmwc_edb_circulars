@@ -179,4 +179,52 @@ export async function updateSettings(token: string, body: Record<string, unknown
   return res.json() as Promise<SettingsResponse>;
 }
 
+export type CrawlSource = {
+  id: string;
+  name: { en: string; "zh-HK": string };
+  enabled: boolean;
+  priority: number;
+  type: "site_attachments" | "circular_aspnet";
+  base_url: string;
+  rate_limit_seconds: number;
+  schedule: string;
+  allow_hosts?: string[];
+  file_extensions?: string[];
+  seed_urls?: string[];
+  path_prefixes?: string[];
+  max_pages?: number;
+  langs?: number[];
+  year_from?: number;
+  year_to?: number;
+};
+
+export async function getSourceConfig(token: string) {
+  const res = await fetch(`${API_URL}/api/sources/config`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<{ sources: CrawlSource[] }>;
+}
+
+export async function saveSourceConfig(token: string, sources: CrawlSource[]) {
+  const res = await fetch(`${API_URL}/api/sources/config`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify({ sources }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<{ sources: CrawlSource[] }>;
+}
+
+export async function suggestSources(
+  token: string,
+  body: { mode: "topic" | "url"; query: string },
+) {
+  const res = await fetch(`${API_URL}/api/sources/suggest`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<{ suggestions: CrawlSource[]; dropped: number }>;
+}
+
 export { API_URL };
