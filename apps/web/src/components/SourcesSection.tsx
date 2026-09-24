@@ -143,6 +143,7 @@ export default function SourcesSection({ token }: Props) {
 
   const [editorMode, setEditorMode] = useState<EditorMode>("closed");
   const [editingOriginalId, setEditingOriginalId] = useState<string | null>(null);
+  const [editorError, setEditorError] = useState("");
   const [form, setForm] = useState<FormState>(emptyForm());
 
   const [aiMode, setAiMode] = useState<"topic" | "url">("topic");
@@ -191,12 +192,14 @@ export default function SourcesSection({ token }: Props) {
   );
 
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
+    if (key === "id") setEditorError("");
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
   function openAdd() {
     setEditorMode("add");
     setEditingOriginalId(null);
+    setEditorError("");
     setForm(emptyForm());
     setSuccess("");
   }
@@ -204,6 +207,7 @@ export default function SourcesSection({ token }: Props) {
   function openEdit(source: CrawlSource) {
     setEditorMode("edit");
     setEditingOriginalId(source.id);
+    setEditorError("");
     setForm(sourceToForm(source));
     setSuccess("");
   }
@@ -211,6 +215,7 @@ export default function SourcesSection({ token }: Props) {
   function closeEditor() {
     setEditorMode("closed");
     setEditingOriginalId(null);
+    setEditorError("");
   }
 
   function onToggleEnabled(id: string, enabled: boolean) {
@@ -230,6 +235,10 @@ export default function SourcesSection({ token }: Props) {
     if (!next.id || !next.base_url) return;
 
     if (editorMode === "add") {
+      if (sources.some((s) => s.id === next.id)) {
+        setEditorError(t("sourcesDuplicateId"));
+        return;
+      }
       setSources((prev) => [...prev, { ...next, enabled: false }]);
     } else if (editingOriginalId) {
       setSources((prev) =>
@@ -529,6 +538,8 @@ export default function SourcesSection({ token }: Props) {
               </div>
             </>
           )}
+
+          {editorError ? <p className="error">{editorError}</p> : null}
 
           <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.5rem" }}>
             <button className="btn" type="submit">
