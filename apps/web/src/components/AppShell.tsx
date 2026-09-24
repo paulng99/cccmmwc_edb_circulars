@@ -15,7 +15,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isLogin = pathname.includes("/login");
 
   if (!ready) {
-    return <div className="login-wrap">Loading…</div>;
+    return (
+      <div className="login-wrap page-enter" aria-busy="true">
+        <div className="panel login-card" style={{ textAlign: "center" }}>
+          <div className="login-brand" style={{ borderBottom: 0, marginBottom: 0, paddingBottom: 0 }}>
+            <strong>{t("app.name")}</strong>
+            <span>{t("app.tagline")}</span>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!token || isLogin) {
@@ -25,10 +34,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="shell">
       <header className="topbar">
-        <div className="brand">
+        <Link href="/documents" className="brand">
           <strong>{t("app.name")}</strong>
           <span>{t("app.tagline")}</span>
-        </div>
+        </Link>
         <nav className="nav">
           <Link href="/documents" className={pathname.startsWith("/documents") ? "active" : ""}>
             {t("nav.documents")}

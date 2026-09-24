@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth";
 
 export default function LoginPage() {
   const t = useTranslations("login");
+  const tApp = useTranslations("app");
   const { setToken, token } = useAuth();
   const router = useRouter();
   const [username, setUsername] = useState("admin");
@@ -35,8 +36,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="login-wrap">
+    <div className="login-wrap page-enter">
       <form className="panel login-card" onSubmit={onSubmit}>
+        <div className="login-brand">
+          <strong>{tApp("name")}</strong>
+          <span>{tApp("tagline")}</span>
+        </div>
         <h1>{t("title")}</h1>
         {error ? <div className="error">{error}</div> : null}
         <div className="field">
@@ -58,7 +63,7 @@ export default function LoginPage() {
             autoComplete="current-password"
           />
         </div>
-        <button className="btn" type="submit" disabled={loading}>
+        <button className={`btn${loading ? " is-loading" : ""}`} type="submit" disabled={loading}>
           {t("submit")}
         </button>
         <p className="hint">{t("hint")}</p>

@@ -449,10 +449,10 @@ export default function SettingsPage() {
           {group !== "sources" ? (
             <form onSubmit={onSubmit}>
               <div className="settings-savebar">
-                <button className="btn" type="submit" disabled={saving || loading}>
+                <button className={`btn${saving ? " is-loading is-saving" : ""}`} type="submit" disabled={saving || loading}>
                   {saving ? t("saving") : t("save")}
                 </button>
-                {success ? <span className="hint" style={{ color: "var(--teal-500)", fontWeight: 600 }}>{success}</span> : null}
+                {success ? <span className="hint settings-save-ok">{success}</span> : null}
                 {error ? <span className="error">{error}</span> : null}
                 {loading ? <span className="hint">{t("loading")}</span> : null}
               </div>
@@ -471,14 +471,14 @@ export default function SettingsPage() {
               ) : null}
 
               {group === "chat" ? (
-                <section className="panel">
+                <section className="panel settings-section">
                   <h2 style={{ marginTop: 0, color: "var(--blue-900)" }}>{t("groupChat")}</h2>
                   {visibleChat.length === 0 ? <p className="hint">{t("searchEmpty")}</p> : visibleChat.map((key) => renderField(key))}
                 </section>
               ) : null}
 
               {group === "connect" ? (
-                <section className="panel">
+                <section className="panel settings-section">
                   <h2 style={{ marginTop: 0, color: "var(--blue-900)" }}>{t("groupConnect")}</h2>
                   {visibleConnect.length === 0 ? <p className="hint">{t("searchEmpty")}</p> : visibleConnect.map((key) => renderField(key))}
                 </section>
@@ -486,7 +486,7 @@ export default function SettingsPage() {
 
               {group === "system" ? (
                 <>
-                  <section className="panel" style={{ marginBottom: "1rem" }}>
+                  <section className="panel settings-section" style={{ marginBottom: "1rem" }}>
                     <h2 style={{ marginTop: 0, color: "var(--blue-900)" }}>{t("groupSystem")}</h2>
                     {visibleSystem.length === 0 && q ? <p className="hint">{t("searchEmpty")}</p> : visibleSystem.map((key) => renderField(key))}
                   </section>

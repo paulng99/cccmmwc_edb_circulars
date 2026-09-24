@@ -284,15 +284,15 @@ export default function StatusPage() {
   };
 
   return (
-    <div>
+    <div className="page-enter">
       <div className="hero">
         <h1>{t("title")}</h1>
       </div>
-      <div style={{ marginBottom: "1rem", display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-        <button className="btn" type="button" disabled={busy} onClick={() => onCrawl()}>
+      <div className="action-toolbar">
+        <button className={`btn${busy && jobKind === "crawl" ? " is-loading" : ""}`} type="button" disabled={busy} onClick={() => onCrawl()}>
           {busy && jobKind === "crawl" ? t("crawlingBtn") : t("crawl")}
         </button>
-        <button className="btn" type="button" disabled={busy} onClick={() => onReindex()}>
+        <button className={`btn${busy && jobKind === "reindex" ? " is-loading" : ""}`} type="button" disabled={busy} onClick={() => onReindex()}>
           {busy && jobKind === "reindex" ? t("reindexingBtn") : t("reindex")}
         </button>
         <button className="btn secondary" type="button" disabled={busy} onClick={() => onClassify()}>
@@ -323,7 +323,7 @@ export default function StatusPage() {
                       )
                     : 0;
                 return (
-                  <div key={r.id} className="doc-row">
+                  <div key={r.id} className="doc-row run-card">
                     <div style={{ width: "100%" }}>
                       <h3>
                         {sourceName(r.source_id)}{" "}
@@ -334,23 +334,8 @@ export default function StatusPage() {
                         <span>{progressLabel(r)}</span>
                         <span>{formatHkDateTime(r.started_at)}</span>
                       </div>
-                      <div
-                        style={{
-                          marginTop: "0.6rem",
-                          height: 10,
-                          borderRadius: 999,
-                          background: "rgba(37,99,212,0.12)",
-                          overflow: "hidden",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: `${pct}%`,
-                            height: "100%",
-                            background: "linear-gradient(90deg, var(--blue-700), var(--cyan-500))",
-                            transition: "width 0.4s ease",
-                          }}
-                        />
+                      <div className="progress-track">
+                        <div className="progress-fill" style={{ width: `${pct}%` }} />
                       </div>
                       <div className="hint" style={{ marginTop: "0.35rem" }}>
                         {r.progress_message || (r.discovered === 0 ? t("discovering") : `${pct}%`)}
@@ -448,7 +433,7 @@ export default function StatusPage() {
               {!failedLoading && failedDocs.length > 0 ? (
                 <div className="list" style={{ maxHeight: 360, overflowY: "auto" }}>
                   {failedDocs.map((d) => (
-                    <div key={d.id} className="doc-row">
+                    <div key={d.id} className="doc-row run-card">
                       <div style={{ width: "100%" }}>
                         <h3>
                           <Link href={`/documents/${d.id}`}>{d.title}</Link>
@@ -474,7 +459,7 @@ export default function StatusPage() {
             <h2 style={{ marginTop: 0 }}>{t("sources")}</h2>
             <div className="list">
               {data.sources.map((s) => (
-                <div key={s.id} className="doc-row">
+                <div key={s.id} className="doc-row run-card">
                   <div>
                     <h3>{locale.startsWith("zh") ? s.name_zh_hk || s.name_en : s.name_en}</h3>
                     <div className="meta">
@@ -499,7 +484,7 @@ export default function StatusPage() {
             <h2 style={{ marginTop: 0 }}>{t("recentRuns")}</h2>
             <div className="list">
               {data.recent_runs.map((r) => (
-                <div key={r.id} className="doc-row">
+                <div key={r.id} className="doc-row run-card">
                   <div>
                     <h3>
                       {sourceName(r.source_id)}{" "}

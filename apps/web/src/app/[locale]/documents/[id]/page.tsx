@@ -202,7 +202,7 @@ export default function DocumentDetailPage() {
       ) : null}
 
       {status === "success" && doc ? (
-        <div className="panel">
+        <div className="panel detail-panel">
           <div className="meta" style={{ marginBottom: "1rem" }}>
             <span className="chip">{doc.source_id}</span>
             <span>
@@ -233,8 +233,8 @@ export default function DocumentDetailPage() {
               {doc.source_url}
             </a>
           </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginTop: "1rem" }}>
-            <button className="btn" type="button" onClick={() => void openPdf()} disabled={pdfOpening}>
+          <div className="detail-actions">
+            <button className={`btn${pdfOpening ? " is-loading" : ""}`} type="button" onClick={() => void openPdf()} disabled={pdfOpening}>
               {pdfOpening ? t("pdfOpening") : t("download")}
             </button>
             {doc.file_url ? (

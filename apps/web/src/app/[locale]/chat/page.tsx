@@ -105,11 +105,11 @@ export default function ChatPage() {
   if (!token) return null;
 
   return (
-    <div>
+    <div className="page-enter">
       <div className="hero">
         <h1>{t("title")}</h1>
       </div>
-      <div className="panel">
+      <div className="panel chat-panel">
         <div className="chat-log">
           {msgs.map((m, i) => (
             <div key={i} className={`bubble ${m.role}`}>
@@ -143,12 +143,12 @@ export default function ChatPage() {
             </div>
           ))}
           {loading ? (
-            <div className="bubble assistant">
+            <div className="bubble assistant thinking" aria-live="polite">
               {loadingPromptOnly ? t("thinkingPromptOnly") : t("thinking")}
             </div>
           ) : null}
         </div>
-        <form onSubmit={onSubmit}>
+        <form className="chat-composer" onSubmit={onSubmit}>
           <div className="field">
             <label htmlFor="ks">{t("knowledge")}</label>
             <select
@@ -215,7 +215,7 @@ export default function ChatPage() {
               placeholder={t("placeholder")}
             />
           </div>
-          <button className="btn" type="submit" disabled={loading}>
+          <button className={`btn${loading ? " is-loading" : ""}`} type="submit" disabled={loading}>
             {t("send")}
           </button>
         </form>
