@@ -50,6 +50,43 @@ INLINE_CITE_INSTRUCTION = (
     "(e.g. [L1], [D2]) inline next to the claim."
 )
 
+# Human-readable labels (zh-HK + en id) for chat filter scope in system prompt
+_PROGRAMME_LABELS: dict[str, str] = {
+    "circular": "通告 (circular)",
+    "sister_school": "姊妹學校 (sister_school)",
+    "lwlssg": "全方位學習津貼 (lwlssg)",
+    "other": "其他文件 (other)",
+}
+_TOPIC_LABELS: dict[str, str] = {
+    "grant_funding": "津貼與撥款 (grant_funding)",
+    "curriculum": "課程與評估 (curriculum)",
+    "admin": "學校行政 (admin)",
+    "student_activity": "學生活動與交流 (student_activity)",
+    "parent_home": "家校與家長 (parent_home)",
+    "other": "其他 (other)",
+}
+
+
+def _filter_scope_instruction(
+    programme: str | None = None,
+    topic: str | None = None,
+) -> str | None:
+    """Build a system-prompt appendix for the user's 計劃／來源 and 主題 filters."""
+    lines: list[str] = []
+    if programme:
+        label = _PROGRAMME_LABELS.get(programme, programme)
+        lines.append(f"計劃／來源 (programme): {label}")
+    if topic:
+        label = _TOPIC_LABELS.get(topic, topic)
+        lines.append(f"主題 (topic): {label}")
+    if not lines:
+        return None
+    return (
+        "User filter scope — focus the answer on this selection; "
+        "retrieval is already filtered accordingly:\n"
+        + "\n".join(f"- {line}" for line in lines)
+    )
+
 
 def mask_secret(value: str | None) -> dict[str, Any]:
     if not value:
@@ -202,10 +239,18 @@ def resolved_settings() -> dict[str, Any]:
     return defaults_from_env(get_settings())
 
 
-def build_system_prompt(rs: dict[str, Any]) -> str:
+def build_system_prompt(
+    rs: dict[str, Any],
+    *,
+    programme: str | None = None,
+    topic: str | None = None,
+) -> str:
     system = str(rs.get("system_prompt") or DEFAULT_SYSTEM_PROMPT)
     if rs.get("cite_inline_refs"):
         system = system + "\n" + INLINE_CITE_INSTRUCTION
+    scope = _filter_scope_instruction(programme=programme, topic=topic)
+    if scope:
+        system = system + "\n" + scope
     return system
 
 

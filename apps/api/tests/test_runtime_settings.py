@@ -92,6 +92,29 @@ def test_build_system_prompt_with_cite():
     assert "[L1]" in text
 
 
+def test_build_system_prompt_includes_programme_and_topic():
+    text = build_system_prompt(
+        {"system_prompt": "BASE", "cite_inline_refs": False},
+        programme="sister_school",
+        topic="grant_funding",
+    )
+    assert "BASE" in text
+    assert "計劃／來源" in text or "programme" in text.lower()
+    assert "姊妹學校" in text or "sister_school" in text
+    assert "主題" in text or "topic" in text.lower()
+    assert "津貼與撥款" in text or "grant_funding" in text
+
+
+def test_build_system_prompt_without_filters_omits_scope():
+    text = build_system_prompt(
+        {"system_prompt": "BASE", "cite_inline_refs": False},
+        programme=None,
+        topic=None,
+    )
+    assert "計劃／來源" not in text
+    assert "主題" not in text
+
+
 def test_cache_initially_empty():
     invalidate_cache()
     assert get_cached_merged() is None

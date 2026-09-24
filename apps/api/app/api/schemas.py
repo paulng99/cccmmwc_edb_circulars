@@ -23,7 +23,7 @@ class UserOut(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=4000)
+    question: str = Field(default="", max_length=4000)
     session_id: str | None = None
     knowledge_source: str = "local"
     locale: str = "zh-HK"

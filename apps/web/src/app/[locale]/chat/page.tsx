@@ -60,6 +60,7 @@ export default function ChatPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingPromptOnly, setLoadingPromptOnly] = useState(false);
 
   useEffect(() => {
     if (ready && !token) router.replace("/login");
@@ -67,10 +68,15 @@ export default function ChatPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!token || !question.trim() || loading) return;
+    if (!token || loading) return;
     const q = question.trim();
+    const promptOnly = !q;
     setQuestion("");
-    setMsgs((m) => [...m, { role: "user", content: q }]);
+    setMsgs((m) => [
+      ...m,
+      { role: "user", content: promptOnly ? t("promptOnlyLabel") : q },
+    ]);
+    setLoadingPromptOnly(promptOnly);
     setLoading(true);
     try {
       const res = await chatAsk(token, {
@@ -92,6 +98,7 @@ export default function ChatPage() {
       setMsgs((m) => [...m, { role: "assistant", content: msg }]);
     } finally {
       setLoading(false);
+      setLoadingPromptOnly(false);
     }
   }
 
@@ -135,7 +142,11 @@ export default function ChatPage() {
               ) : null}
             </div>
           ))}
-          {loading ? <div className="bubble assistant">{t("thinking")}</div> : null}
+          {loading ? (
+            <div className="bubble assistant">
+              {loadingPromptOnly ? t("thinkingPromptOnly") : t("thinking")}
+            </div>
+          ) : null}
         </div>
         <form onSubmit={onSubmit}>
           <div className="field">
