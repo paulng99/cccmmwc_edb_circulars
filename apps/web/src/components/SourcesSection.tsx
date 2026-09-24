@@ -165,6 +165,7 @@ export default function SourcesSection({ token }: Props) {
   const [aiMode, setAiMode] = useState<"topic" | "url">("topic");
   const [aiQuery, setAiQuery] = useState("");
   const [suggesting, setSuggesting] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<CrawlSource[]>([]);
   const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<Set<string>>(new Set());
   const [dropped, setDropped] = useState(0);
@@ -213,6 +214,7 @@ export default function SourcesSection({ token }: Props) {
   }
 
   function openAdd() {
+    setAiOpen(false);
     setEditorMode("add");
     setEditingOriginalId(null);
     setEditorError("");
@@ -221,6 +223,7 @@ export default function SourcesSection({ token }: Props) {
   }
 
   function openEdit(source: CrawlSource) {
+    setAiOpen(false);
     setEditorMode("edit");
     setEditingOriginalId(source.id);
     setEditorError("");
@@ -232,6 +235,11 @@ export default function SourcesSection({ token }: Props) {
     setEditorMode("closed");
     setEditingOriginalId(null);
     setEditorError("");
+  }
+
+  function closeDrawer() {
+    closeEditor();
+    setAiOpen(false);
   }
 
   function onToggleEnabled(id: string, enabled: boolean) {
@@ -330,9 +338,12 @@ export default function SourcesSection({ token }: Props) {
         {t("sourcesHint")}
       </p>
 
-      <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap", marginBottom: "1rem" }}>
+      <div className="settings-savebar">
         <button className="btn" type="button" onClick={openAdd}>
           {t("sourcesAdd")}
+        </button>
+        <button className="btn" type="button" onClick={() => { closeEditor(); setAiOpen(true); }}>
+          {t("sourcesAi")}
         </button>
         <button className="btn" type="button" onClick={onSave} disabled={!dirty || saving || loading}>
           {saving ? t("saving") : t("sourcesSave")}
@@ -346,19 +357,9 @@ export default function SourcesSection({ token }: Props) {
         {loading ? <span className="hint">{t("loading")}</span> : null}
       </div>
 
-      <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+      <ul className="settings-source-list">
         {sources.map((s) => (
-          <li
-            key={s.id}
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "0.75rem",
-              alignItems: "center",
-              padding: "0.65rem 0",
-              borderBottom: "1px solid var(--border, rgba(15, 23, 42, 0.08))",
-            }}
-          >
+          <li key={s.id} className="settings-source-card">
             <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", margin: 0 }}>
               <input
                 type="checkbox"
@@ -380,11 +381,11 @@ export default function SourcesSection({ token }: Props) {
         ))}
       </ul>
 
+      {editorMode !== "closed" || aiOpen ? (
+        <div className="settings-drawer-backdrop" onClick={closeDrawer} />
+      ) : null}
       {editorMode !== "closed" ? (
-        <form
-          onSubmit={onSubmitEditor}
-          style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--border, rgba(15, 23, 42, 0.08))" }}
-        >
+        <form className="settings-drawer" onSubmit={onSubmitEditor}>
           <div className="field">
             <label htmlFor="src-id">{t("sourcesId")}</label>
             <input
@@ -559,20 +560,21 @@ export default function SourcesSection({ token }: Props) {
 
           <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.5rem" }}>
             <button className="btn" type="submit">
-              {editorMode === "add" ? t("sourcesAdd") : t("sourcesEdit")}
+              {editorMode === "add" ? t("sourcesAdd") : t("sourcesApply")}
             </button>
-            <button className="btn" type="button" onClick={closeEditor}>
+            <button className="btn" type="button" onClick={closeDrawer}>
               {t("sourcesCancel")}
             </button>
           </div>
         </form>
       ) : null}
 
-      <section style={{ marginTop: "1.5rem", paddingTop: "1rem", borderTop: "1px solid var(--border, rgba(15, 23, 42, 0.08))" }}>
+      {aiOpen ? (
+      <section className="settings-drawer">
         <h3 style={{ marginTop: 0, color: "var(--blue-900)" }}>{t("sourcesAi")}</h3>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-end", marginBottom: "0.75rem" }}>
           <div className="field" style={{ marginBottom: 0, minWidth: "8rem" }}>
-            <label htmlFor="ai-mode">{t("sourcesAi")}</label>
+            <label htmlFor="ai-mode">{t("sourcesAiMode")}</label>
             <select
               id="ai-mode"
               value={aiMode}
@@ -638,7 +640,11 @@ export default function SourcesSection({ token }: Props) {
             </button>
           </>
         ) : null}
+        <button className="btn" type="button" onClick={closeDrawer} style={{ marginTop: "1rem" }}>
+          {t("sourcesCancel")}
+        </button>
       </section>
+      ) : null}
     </div>
   );
 }

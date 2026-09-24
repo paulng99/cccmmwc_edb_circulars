@@ -55,67 +55,6 @@ function isSecretKey(key: string) {
   return SECRET_KEYS.has(key);
 }
 
-type SectionConfig = {
-  titleKey: string;
-  keys: string[];
-};
-
-const SECTIONS: SectionConfig[] = [
-  { titleKey: "sectionApp", keys: ["app_name", "cors_origins"] },
-  {
-    titleKey: "sectionLlm",
-    keys: [
-      "llm_provider",
-      "openrouter_api_key",
-      "openrouter_model",
-      "openrouter_base_url",
-      "ollama_base_url",
-      "ollama_model",
-      "temperature",
-      "max_tokens",
-    ],
-  },
-  {
-    titleKey: "sectionChat",
-    keys: ["system_prompt", "cite_inline_refs", "local_top_k", "dify_top_k"],
-  },
-  {
-    titleKey: "sectionEmbeddings",
-    keys: ["jina_api_key", "jina_embedding_model", "jina_embedding_dim"],
-  },
-  {
-    titleKey: "sectionDify",
-    keys: [
-      "dify_enabled",
-      "dify_api_url",
-      "dify_dataset_api_key",
-      "dify_app_api_key",
-      "dify_dataset_id",
-    ],
-  },
-  {
-    titleKey: "sectionCrawl",
-    keys: ["crawl_enabled", "crawl_user_agent", "crawl_rate_limit_seconds"],
-  },
-  {
-    titleKey: "sectionStorage",
-    keys: [
-      "storage_backend",
-      "local_storage_path",
-      "minio_endpoint",
-      "minio_access_key",
-      "minio_secret_key",
-      "minio_bucket",
-      "minio_public_url",
-      "minio_secure",
-    ],
-  },
-  {
-    titleKey: "sectionOauth",
-    keys: ["google_client_id", "google_client_secret"],
-  },
-];
-
 const READONLY_KEYS = [
   "app_env",
   "jwt_secret",
@@ -144,6 +83,8 @@ export default function SettingsPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [group, setGroup] = useState<"sources" | "chat" | "connect" | "system">("sources");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     if (ready && !token) router.replace("/login");
@@ -391,61 +332,184 @@ export default function SettingsPage() {
 
   if (!token) return null;
 
+  const provider = displayString("llm_provider") || "openrouter";
+  const storageBackend = displayString("storage_backend") || "local";
+  const difyOn = checkedValue("dify_enabled");
+  const q = query.trim().toLowerCase();
+
+  const connectKeys = [
+    "llm_provider",
+    ...(provider === "ollama"
+      ? ["ollama_base_url", "ollama_model"]
+      : ["openrouter_api_key", "openrouter_model", "openrouter_base_url"]),
+    "temperature",
+    "max_tokens",
+    "jina_api_key",
+    "jina_embedding_model",
+    "jina_embedding_dim",
+    "dify_enabled",
+    ...(difyOn
+      ? ["dify_api_url", "dify_dataset_api_key", "dify_app_api_key", "dify_dataset_id"]
+      : []),
+  ];
+  const systemKeys = [
+    "app_name",
+    "cors_origins",
+    "crawl_enabled",
+    "crawl_user_agent",
+    "crawl_rate_limit_seconds",
+    "storage_backend",
+    ...(storageBackend === "minio"
+      ? [
+          "minio_endpoint",
+          "minio_access_key",
+          "minio_secret_key",
+          "minio_bucket",
+          "minio_public_url",
+          "minio_secure",
+        ]
+      : ["local_storage_path"]),
+    "google_client_id",
+    "google_client_secret",
+  ];
+  const chatKeys = ["system_prompt", "cite_inline_refs", "local_top_k", "dify_top_k"];
+
+  function matches(label: string) {
+    return !q || label.toLowerCase().includes(q);
+  }
+
+  const groups = [
+    { id: "sources" as const, title: t("groupSources"), tone: "blue" },
+    { id: "chat" as const, title: t("groupChat"), tone: "teal" },
+    { id: "connect" as const, title: t("groupConnect"), tone: "amber" },
+    { id: "system" as const, title: t("groupSystem"), tone: "slate" },
+  ];
+
+  const visibleChat = chatKeys.filter((key) => matches(fieldLabel(key)) || matches(t("groupChat")));
+  const visibleConnect = connectKeys.filter((key) => matches(fieldLabel(key)) || matches(t("groupConnect")));
+  const visibleSystem = systemKeys.filter((key) => matches(fieldLabel(key)) || matches(t("groupSystem")));
+  const groupHasMatch = {
+    sources: !q || matches(t("groupSources")) || matches(t("sourcesTitle")),
+    chat: visibleChat.length > 0,
+    connect: visibleConnect.length > 0,
+    system: visibleSystem.length > 0 || (!q ? false : matches(t("sectionReadonly")) || matches(t("advanced"))),
+  };
+
+  function showGroup(id: typeof group) {
+    setGroup(id);
+  }
+
   return (
     <div className="page-enter">
       <div className="hero">
         <h1>{t("title")}</h1>
       </div>
 
-      <SourcesSection token={token} />
-
-      <form onSubmit={onSubmit}>
-        <div style={{ marginBottom: "1rem", display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-          <button className="btn" type="submit" disabled={saving || loading}>
-            {saving ? t("saving") : t("save")}
-          </button>
-          {success ? <span className="hint" style={{ color: "var(--teal-500)", fontWeight: 600 }}>{success}</span> : null}
-          {error ? <span className="error">{error}</span> : null}
-          {loading ? <span className="hint">{t("loading")}</span> : null}
-        </div>
-
-        {warnings.length > 0 ? (
-          <div
-            className="panel"
-            style={{ marginBottom: "1rem", borderColor: "var(--amber-500)", background: "rgba(245, 158, 11, 0.08)" }}
-          >
-            <ul style={{ margin: 0, paddingLeft: "1.2rem", color: "var(--muted)" }}>
-              {warnings.map((w, i) => (
-                <li key={i}>{formatWarning(w)}</li>
-              ))}
-            </ul>
+      <div className="settings-shell">
+        <aside className="settings-nav">
+          <input
+            className="settings-search"
+            value={query}
+            onChange={(e) => {
+              const next = e.target.value;
+              setQuery(next);
+              const needle = next.trim().toLowerCase();
+              if (!needle) return;
+              const hit = groups.find((item) => {
+                if (item.id === "sources") return item.title.toLowerCase().includes(needle);
+                if (item.id === "chat") return chatKeys.some((key) => fieldLabel(key).toLowerCase().includes(needle)) || item.title.toLowerCase().includes(needle);
+                if (item.id === "connect") return connectKeys.some((key) => fieldLabel(key).toLowerCase().includes(needle)) || item.title.toLowerCase().includes(needle);
+                return systemKeys.some((key) => fieldLabel(key).toLowerCase().includes(needle)) || item.title.toLowerCase().includes(needle) || t("advanced").toLowerCase().includes(needle);
+              });
+              if (hit) setGroup(hit.id);
+            }}
+            placeholder={t("searchSettings")}
+            aria-label={t("searchSettings")}
+          />
+          <div className="settings-nav-list" role="tablist">
+            {groups.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={group === item.id}
+                className={`settings-nav-btn${group === item.id ? " active" : ""}`}
+                onClick={() => showGroup(item.id)}
+              >
+                <span className={`settings-dot ${item.tone}`} />
+                {item.title}
+              </button>
+            ))}
           </div>
-        ) : null}
+        </aside>
 
-        {SECTIONS.map((section) => (
-          <section key={section.titleKey} className="panel" style={{ marginBottom: "1rem" }}>
-            <h2 style={{ marginTop: 0, color: "var(--blue-900)" }}>{tx(section.titleKey)}</h2>
-            {section.keys.map((key) => renderField(key))}
-          </section>
-        ))}
+        <div className="settings-main">
+          {group === "sources" ? <SourcesSection token={token} /> : null}
 
-        <section className="panel" style={{ marginBottom: "1rem" }}>
-          <h2 style={{ marginTop: 0, color: "var(--blue-900)" }}>{t("sectionReadonly")}</h2>
-          <p className="hint" style={{ marginTop: 0, marginBottom: "0.5rem" }}>
-            {t("readonlyHint")}
-          </p>
-          <p className="hint" style={{ marginTop: 0, marginBottom: "1rem" }}>
-            {t("buildTimeHint")}
-          </p>
-          {READONLY_KEYS.map((key) => renderField(key, true))}
-          {data ? (
-            <div className="field" style={{ marginBottom: 0 }}>
-              <label>{fieldLabel("updated_at")}</label>
-              <input value={formatHkDateTime(data.meta.updated_at)} disabled readOnly />
-            </div>
+          {group !== "sources" ? (
+            <form onSubmit={onSubmit}>
+              <div className="settings-savebar">
+                <button className="btn" type="submit" disabled={saving || loading}>
+                  {saving ? t("saving") : t("save")}
+                </button>
+                {success ? <span className="hint" style={{ color: "var(--teal-500)", fontWeight: 600 }}>{success}</span> : null}
+                {error ? <span className="error">{error}</span> : null}
+                {loading ? <span className="hint">{t("loading")}</span> : null}
+              </div>
+
+              {warnings.length > 0 ? (
+                <div
+                  className="panel"
+                  style={{ marginBottom: "1rem", borderColor: "var(--amber-500)", background: "rgba(245, 158, 11, 0.08)" }}
+                >
+                  <ul style={{ margin: 0, paddingLeft: "1.2rem", color: "var(--muted)" }}>
+                    {warnings.map((w, i) => (
+                      <li key={i}>{formatWarning(w)}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {group === "chat" ? (
+                <section className="panel">
+                  <h2 style={{ marginTop: 0, color: "var(--blue-900)" }}>{t("groupChat")}</h2>
+                  {visibleChat.length === 0 ? <p className="hint">{t("searchEmpty")}</p> : visibleChat.map((key) => renderField(key))}
+                </section>
+              ) : null}
+
+              {group === "connect" ? (
+                <section className="panel">
+                  <h2 style={{ marginTop: 0, color: "var(--blue-900)" }}>{t("groupConnect")}</h2>
+                  {visibleConnect.length === 0 ? <p className="hint">{t("searchEmpty")}</p> : visibleConnect.map((key) => renderField(key))}
+                </section>
+              ) : null}
+
+              {group === "system" ? (
+                <>
+                  <section className="panel" style={{ marginBottom: "1rem" }}>
+                    <h2 style={{ marginTop: 0, color: "var(--blue-900)" }}>{t("groupSystem")}</h2>
+                    {visibleSystem.length === 0 && q ? <p className="hint">{t("searchEmpty")}</p> : visibleSystem.map((key) => renderField(key))}
+                  </section>
+                  {!q || groupHasMatch.system ? (
+                    <details className="settings-advanced">
+                      <summary>{t("advanced")}</summary>
+                      <p className="hint">{t("readonlyHint")}</p>
+                      <p className="hint">{t("buildTimeHint")}</p>
+                      {READONLY_KEYS.map((key) => renderField(key, true))}
+                      {data ? (
+                        <div className="field" style={{ marginBottom: 0 }}>
+                          <label>{fieldLabel("updated_at")}</label>
+                          <input value={formatHkDateTime(data.meta.updated_at)} disabled readOnly />
+                        </div>
+                      ) : null}
+                    </details>
+                  ) : null}
+                </>
+              ) : null}
+            </form>
           ) : null}
-        </section>
-      </form>
+        </div>
+      </div>
     </div>
   );
 }
