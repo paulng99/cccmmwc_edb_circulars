@@ -8,6 +8,15 @@ import yaml
 
 ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,62}$")
 CRON_RE = re.compile(r"^\S+(?:\s+\S+){4}$")
+# Multi-label hostname, or a single label (e.g. localhost). No scheme, slash, space, or port.
+HOST_RE = re.compile(
+    r"^(?:"
+    r"[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+"
+    r"|"
+    r"[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r")$"
+)
 ALLOWED_EXTS = frozenset({".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"})
 MAX_SOURCES = 40
 HEADER = "# Source registry. Edited from Settings. Collectors read this at crawl time.\n"
@@ -82,12 +91,20 @@ def validate_source(raw: dict) -> dict:
 
     if stype == "site_attachments":
         hosts = raw.get("allow_hosts")
-        if not isinstance(hosts, list) or not hosts or not all(isinstance(h, str) and h.strip() for h in hosts):
+        if not isinstance(hosts, list) or not hosts:
             raise SourceConfigError("allow_hosts is required")
+        cleaned_hosts: list[str] = []
+        for h in hosts:
+            if not isinstance(h, str):
+                raise SourceConfigError("allow_hosts is required")
+            host = h.strip().lower()
+            if not host or not HOST_RE.fullmatch(host):
+                raise SourceConfigError("allow_hosts must be hostnames")
+            cleaned_hosts.append(host)
         exts = raw.get("file_extensions")
         if not isinstance(exts, list) or not exts or any(e not in ALLOWED_EXTS for e in exts):
             raise SourceConfigError("file_extensions is invalid")
-        out["allow_hosts"] = [h.strip() for h in hosts]
+        out["allow_hosts"] = cleaned_hosts
         out["file_extensions"] = list(exts)
         seeds = raw.get("seed_urls") or []
         if seeds:
@@ -105,7 +122,11 @@ def validate_source(raw: dict) -> dict:
         out["max_pages"] = max_pages
     else:
         langs = raw.get("langs")
-        if not isinstance(langs, list) or not langs or any(n not in (1, 2) for n in langs):
+        if (
+            not isinstance(langs, list)
+            or not langs
+            or any(isinstance(n, bool) or n not in (1, 2) for n in langs)
+        ):
             raise SourceConfigError("langs must be 1 and/or 2")
         year_from = raw.get("year_from")
         year_to = raw.get("year_to")

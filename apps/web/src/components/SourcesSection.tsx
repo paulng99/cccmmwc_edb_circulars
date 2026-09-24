@@ -101,6 +101,22 @@ function sourceToForm(s: CrawlSource): FormState {
   };
 }
 
+/** Surface FastAPI `{detail}` from `throw new Error(await res.text())`; keep i18n fallbacks. */
+function apiErrorMessage(err: unknown, fallback: string, jinaMessage: string): string {
+  const raw = (err instanceof Error ? err.message : String(err ?? "")).trim();
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw) as { detail?: unknown };
+    const detail = parsed?.detail;
+    if (detail === "jina_not_configured") return jinaMessage;
+    if (typeof detail === "string" && detail.trim()) return detail;
+    if (detail != null) return typeof detail === "string" ? detail : JSON.stringify(detail);
+  } catch {
+    return raw;
+  }
+  return raw;
+}
+
 function formToSource(form: FormState): CrawlSource {
   const source: CrawlSource = {
     id: form.id.trim(),
@@ -259,8 +275,8 @@ export default function SourcesSection({ token }: Props) {
       setSources(res.sources);
       setSavedJson(JSON.stringify(res.sources));
       setSuccess(t("sourcesSaved"));
-    } catch {
-      setError(t("sourcesSaveError"));
+    } catch (err) {
+      setError(apiErrorMessage(err, t("sourcesSaveError"), t("sourcesSuggestError")));
     } finally {
       setSaving(false);
     }
@@ -277,8 +293,8 @@ export default function SourcesSection({ token }: Props) {
       setSuggestions(res.suggestions.map((s) => ({ ...s, enabled: false })));
       setSelectedSuggestionIds(new Set());
       setDropped(res.dropped);
-    } catch {
-      setSuggestError(t("sourcesSuggestError"));
+    } catch (err) {
+      setSuggestError(apiErrorMessage(err, t("sourcesSuggestError"), t("sourcesSuggestError")));
     } finally {
       setSuggesting(false);
     }

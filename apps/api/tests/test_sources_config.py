@@ -46,39 +46,43 @@ def test_reject_bad_id_unknown_type_and_empty_hosts():
         validate_source(_site(allow_hosts=[]))
 
 
+def _circular(**overrides):
+    base = {
+        "id": "edb_circulars",
+        "name": {"en": "Circulars", "zh-HK": "通告"},
+        "enabled": True,
+        "priority": 0,
+        "type": "circular_aspnet",
+        "base_url": "https://applications.edb.gov.hk/circular/circular.aspx",
+        "langs": [2, 1],
+        "year_from": 2025,
+        "year_to": 2026,
+        "rate_limit_seconds": 1.5,
+        "schedule": "0 6 * * *",
+    }
+    base.update(overrides)
+    return base
+
+
 def test_circular_requires_langs_and_years():
-    out = validate_source(
-        {
-            "id": "edb_circulars",
-            "name": {"en": "Circulars", "zh-HK": "通告"},
-            "enabled": True,
-            "priority": 0,
-            "type": "circular_aspnet",
-            "base_url": "https://applications.edb.gov.hk/circular/circular.aspx",
-            "langs": [2, 1],
-            "year_from": 2025,
-            "year_to": 2026,
-            "rate_limit_seconds": 1.5,
-            "schedule": "0 6 * * *",
-        }
-    )
+    out = validate_source(_circular())
     assert out["langs"] == [2, 1]
     with pytest.raises(SourceConfigError):
-        validate_source(
-            {
-                "id": "edb_circulars",
-                "name": {"en": "Circulars", "zh-HK": "通告"},
-                "enabled": True,
-                "priority": 0,
-                "type": "circular_aspnet",
-                "base_url": "https://applications.edb.gov.hk/circular/circular.aspx",
-                "langs": [2],
-                "year_from": 2026,
-                "year_to": 2025,
-                "rate_limit_seconds": 1.5,
-                "schedule": "0 6 * * *",
-            }
-        )
+        validate_source(_circular(year_from=2026, year_to=2025, langs=[2]))
+
+
+def test_reject_langs_bool_true():
+    with pytest.raises(SourceConfigError):
+        validate_source(_circular(langs=[True]))
+
+
+def test_allow_hosts_hostname_only_and_lowercase():
+    with pytest.raises(SourceConfigError):
+        validate_source(_site(allow_hosts=["https://www.edb.gov.hk"]))
+    with pytest.raises(SourceConfigError):
+        validate_source(_site(allow_hosts=["www.edb.gov.hk/path"]))
+    out = validate_source(_site(allow_hosts=["WWW.EDB.GOV.HK"]))
+    assert out["allow_hosts"] == ["www.edb.gov.hk"]
 
 
 def test_duplicate_id_and_cap():
