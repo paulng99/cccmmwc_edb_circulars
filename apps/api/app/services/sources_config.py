@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from urllib.parse import urlparse
+
+import yaml
 
 ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,62}$")
 CRON_RE = re.compile(r"^\S+(?:\s+\S+){4}$")
 ALLOWED_EXTS = frozenset({".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"})
 MAX_SOURCES = 40
+HEADER = "# Source registry. Edited from Settings. Collectors read this at crawl time.\n"
 
 
 class SourceConfigError(ValueError):
@@ -131,3 +135,26 @@ def validate_sources(items: list) -> list[dict]:
         seen.add(src["id"])
         out.append(src)
     return out
+
+
+def load_sources(path: Path) -> list[dict]:
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise SourceConfigError(f"invalid sources file: {exc}") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("sources"), list):
+        raise SourceConfigError("sources file must contain a sources list")
+    return validate_sources(data["sources"])
+
+
+def save_sources(path: Path, sources: list[dict]) -> None:
+    cleaned = validate_sources(sources)
+    payload = HEADER + yaml.safe_dump(
+        {"sources": cleaned},
+        allow_unicode=True,
+        sort_keys=False,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(payload, encoding="utf-8")
+    tmp.replace(path)

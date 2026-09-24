@@ -1,6 +1,15 @@
+from pathlib import Path
+
 import pytest
 
-from app.services.sources_config import SourceConfigError, normalize_base_url, validate_source, validate_sources
+from app.services.sources_config import (
+    SourceConfigError,
+    load_sources,
+    normalize_base_url,
+    save_sources,
+    validate_source,
+    validate_sources,
+)
 
 
 def _site(**overrides):
@@ -81,3 +90,20 @@ def test_duplicate_id_and_cap():
 
 def test_normalize_base_url():
     assert normalize_base_url("https://WWW.EDB.GOV.HK/tc/example/") == "https://www.edb.gov.hk/tc/example"
+
+
+def test_save_then_load_round_trip(tmp_path: Path):
+    path = tmp_path / "sources.yaml"
+    save_sources(path, validate_sources([_site(enabled=True)]))
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("# Source registry. Edited from Settings.")
+    loaded = load_sources(path)
+    assert loaded[0]["id"] == "edb_example"
+    assert loaded[0]["name"]["zh-HK"] == "例子"
+
+
+def test_load_invalid_yaml_raises(tmp_path: Path):
+    path = tmp_path / "sources.yaml"
+    path.write_text("sources: [\n", encoding="utf-8")
+    with pytest.raises(SourceConfigError):
+        load_sources(path)
