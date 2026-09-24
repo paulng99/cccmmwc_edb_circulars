@@ -120,6 +120,46 @@ async def download_and_store(
     return doc
 
 
+async def _known_file_urls(session: AsyncSession) -> set[str]:
+    """URLs already stored with a file — skip HTTP re-download on crawl."""
+    rows = (
+        await session.scalars(
+            select(Document.file_url).where(
+                Document.file_url.isnot(None),
+                Document.storage_key.isnot(None),
+            )
+        )
+    ).all()
+    return {u for u in rows if u}
+
+
+async def _refresh_metadata_only(
+    session: AsyncSession, doc: Document, item: DiscoveredItem
+) -> None:
+    from app.collectors.circular_meta import is_language_label
+
+    changed = False
+    if item.title and (is_language_label(doc.title) or not doc.title):
+        doc.title = item.title[:1000]
+        changed = True
+    if item.circular_no and item.circular_no != doc.circular_no:
+        doc.circular_no = item.circular_no
+        changed = True
+    if item.language and item.language != doc.language:
+        doc.language = item.language
+        changed = True
+    if item.issued_at and doc.issued_at != item.issued_at:
+        doc.issued_at = item.issued_at
+        changed = True
+    if item.meta:
+        extra = dict(doc.extra or {})
+        extra.update(item.meta)
+        doc.extra = extra
+        changed = True
+    if changed:
+        await session.commit()
+
+
 async def _save_run_progress(
     session: AsyncSession,
     run: CrawlRun,
@@ -127,10 +167,12 @@ async def _save_run_progress(
     discovered: int,
     downloaded: int,
     failed: int,
+    skipped: int = 0,
     message: str | None = None,
 ) -> None:
     run.discovered = discovered
     run.downloaded = downloaded
+    run.skipped = skipped
     run.failed = failed
     if message is not None:
         run.progress_message = message[:2000]
@@ -148,6 +190,7 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
         sources = [s for s in sources if s["id"] == source_id]
     summary = {"runs": []}
     abort_remaining = False
+    known_urls = await _known_file_urls(session)
 
     for cfg in sources:
         if abort_remaining:
@@ -170,6 +213,7 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
 
         discovered = 0
         downloaded = 0
+        skipped = 0
         failed = 0
         cancelled = False
         try:
@@ -190,8 +234,9 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
                 run,
                 discovered=discovered,
                 downloaded=0,
+                skipped=0,
                 failed=0,
-                message=f"Discovered {discovered} files, downloading…",
+                message=f"Discovered {discovered} files, downloading new only…",
             )
 
             for i, item in enumerate(items, start=1):
@@ -209,6 +254,36 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
                     break
 
                 label = (item.circular_no or item.title or item.file_url or "")[:120]
+                file_url = (item.file_url or "").strip()
+
+                # Skip HTTP download when this URL is already in the DB
+                if file_url and file_url in known_urls:
+                    existing = await session.scalar(
+                        select(Document).where(Document.file_url == file_url)
+                    )
+                    if existing and existing.storage_key:
+                        await _refresh_metadata_only(session, existing, item)
+                        skipped += 1
+                        await emit_event(
+                            session,
+                            run_id=run.id,
+                            event_type="download_skip",
+                            url=file_url,
+                            title=label,
+                            source_id=cfg["id"],
+                        )
+                        if i % 10 == 0 or i == discovered:
+                            await _save_run_progress(
+                                session,
+                                run,
+                                discovered=discovered,
+                                downloaded=downloaded,
+                                skipped=skipped,
+                                failed=failed,
+                                message=f"[{i}/{discovered}] skip {label}",
+                            )
+                        continue
+
                 await emit_event(
                     session,
                     run_id=run.id,
@@ -221,6 +296,8 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
                     doc = await download_and_store(session, cfg["id"], item)
                     if doc:
                         downloaded += 1
+                        if doc.file_url:
+                            known_urls.add(doc.file_url)
                         await emit_event(
                             session,
                             run_id=run.id,
@@ -262,13 +339,16 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
                         run,
                         discovered=discovered,
                         downloaded=downloaded,
+                        skipped=skipped,
                         failed=failed,
                         message=f"[{i}/{discovered}] {label}",
                     )
 
             if not cancelled:
                 run.status = "completed"
-                run.progress_message = f"Done — downloaded {downloaded}, failed {failed}"
+                run.progress_message = (
+                    f"Done — new {downloaded}, skipped {skipped}, failed {failed}"
+                )
                 await emit_event(
                     session,
                     run_id=run.id,
@@ -289,6 +369,7 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
         if run:
             run.discovered = discovered
             run.downloaded = downloaded
+            run.skipped = skipped
             run.failed = failed
             run.finished_at = datetime.now(timezone.utc)
             await session.commit()
@@ -299,6 +380,7 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
                     "status": run.status,
                     "discovered": discovered,
                     "downloaded": downloaded,
+                    "skipped": skipped,
                     "failed": failed,
                 }
             )

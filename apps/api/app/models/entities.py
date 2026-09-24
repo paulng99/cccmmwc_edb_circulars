@@ -69,6 +69,7 @@ class CrawlRun(Base):
     status: Mapped[str] = mapped_column(String(32), default="running")
     discovered: Mapped[int] = mapped_column(Integer, default=0)
     downloaded: Mapped[int] = mapped_column(Integer, default=0)
+    skipped: Mapped[int] = mapped_column(Integer, default=0)
     failed: Mapped[int] = mapped_column(Integer, default=0)
     progress_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

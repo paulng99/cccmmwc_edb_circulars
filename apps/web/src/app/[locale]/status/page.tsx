@@ -22,6 +22,7 @@ type Run = {
   status: string;
   discovered: number;
   downloaded: number;
+  skipped?: number;
   failed: number;
   progress_message?: string | null;
   error_message?: string | null;
@@ -65,6 +66,7 @@ const EVENT_I18N: Record<string, string> = {
   page: "eventPage",
   download_start: "eventDownloadStart",
   download_ok: "eventDownloadOk",
+  download_skip: "eventDownloadSkip",
   download_fail: "eventDownloadFail",
   index_start: "eventIndexStart",
   index_ok: "eventIndexOk",
@@ -276,6 +278,7 @@ export default function StatusPage() {
     return t(isReindex ? "progressCountsIndex" : "progressCounts", {
       discovered: r.discovered,
       downloaded: r.downloaded,
+      skipped: r.skipped ?? 0,
       failed: r.failed,
     });
   };
@@ -312,7 +315,12 @@ export default function StatusPage() {
               {activeRuns.map((r) => {
                 const pct =
                   r.discovered > 0
-                    ? Math.min(100, Math.round(((r.downloaded + r.failed) / r.discovered) * 100))
+                    ? Math.min(
+                        100,
+                        Math.round(
+                          ((r.downloaded + (r.skipped ?? 0) + r.failed) / r.discovered) * 100,
+                        ),
+                      )
                     : 0;
                 return (
                   <div key={r.id} className="doc-row">

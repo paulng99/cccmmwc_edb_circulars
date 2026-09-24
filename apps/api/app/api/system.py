@@ -82,6 +82,7 @@ async def _run_status_payload(db: AsyncSession, run: CrawlRun) -> dict:
         "status": run.status,
         "discovered": run.discovered,
         "downloaded": run.downloaded,
+        "skipped": getattr(run, "skipped", 0) or 0,
         "failed": run.failed,
         "progress_message": run.progress_message,
         "error_message": run.error_message,

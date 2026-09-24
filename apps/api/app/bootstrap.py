@@ -47,6 +47,18 @@ async def init_db() -> None:
         )
         await conn.execute(
             text(
+                "ALTER TABLE crawl_runs "
+                "ADD COLUMN IF NOT EXISTS skipped INTEGER DEFAULT 0"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_documents_file_url "
+                "ON documents (file_url)"
+            )
+        )
+        await conn.execute(
+            text(
                 "ALTER TABLE documents "
                 "ADD COLUMN IF NOT EXISTS programme VARCHAR(32) DEFAULT 'other'"
             )
