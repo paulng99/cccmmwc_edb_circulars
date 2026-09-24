@@ -57,7 +57,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./config:/config:ro
+      - ./config:/config
       - filedata:/data/files
     depends_on:
       db:
