@@ -128,3 +128,12 @@ class SettingsUpdate(BaseModel):
     minio_secure: bool | None = None
     google_client_id: str | None = None
     google_client_secret: str | None = None
+
+
+class SourcesConfigBody(BaseModel):
+    sources: list[dict[str, Any]]
+
+
+class SourceSuggestBody(BaseModel):
+    mode: str
+    query: str = Field(min_length=1, max_length=500)
