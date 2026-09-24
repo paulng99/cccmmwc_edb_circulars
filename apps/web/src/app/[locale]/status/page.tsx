@@ -284,10 +284,11 @@ export default function StatusPage() {
   };
 
   return (
-    <div className="page-enter">
-      <div className="hero">
+    <div className="page-enter page-stack">
+      <header className="page-header">
         <h1>{t("title")}</h1>
-      </div>
+        <p className="page-subtitle">{t("subtitle")}</p>
+      </header>
       <div className="action-toolbar">
         <button className={`btn${busy && jobKind === "crawl" ? " is-loading" : ""}`} type="button" disabled={busy} onClick={() => onCrawl()}>
           {busy && jobKind === "crawl" ? t("crawlingBtn") : t("crawl")}

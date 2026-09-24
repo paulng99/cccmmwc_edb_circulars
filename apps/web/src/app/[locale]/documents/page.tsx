@@ -168,12 +168,24 @@ export default function DocumentsPage() {
       : t("resultCountProgramme", { count: total });
 
   return (
-    <div className="page-enter">
-      <div className="hero">
+    <div className="page-enter page-stack">
+      <header className="page-header">
         <h1>{t("title")}</h1>
-      </div>
-      <div className="panel" style={{ marginBottom: "1rem" }}>
-        <div className="field" style={{ marginBottom: "0.85rem" }}>
+        <p className="page-subtitle">{t("subtitle")}</p>
+      </header>
+
+      <div className="filter-bar panel">
+        <div className="field filter-search">
+          <label htmlFor="q">{t("search")}</label>
+          <input
+            id="q"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={t("search")}
+            autoComplete="off"
+          />
+        </div>
+        <div className="filter-block">
           <span className="category-label" id="prog-label">
             {t("programmeFilter")}
           </span>
@@ -191,7 +203,7 @@ export default function DocumentsPage() {
             ))}
           </div>
         </div>
-        <div className="field" style={{ marginBottom: "0.85rem" }}>
+        <div className="filter-block">
           <span className="category-label" id="topic-label">
             {t("topicFilter")}
           </span>
@@ -208,16 +220,6 @@ export default function DocumentsPage() {
               </button>
             ))}
           </div>
-        </div>
-        <div className="field" style={{ marginBottom: 0 }}>
-          <label htmlFor="q">{t("search")}</label>
-          <input
-            id="q"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={t("search")}
-            autoComplete="off"
-          />
         </div>
       </div>
 
@@ -277,7 +279,12 @@ export default function DocumentsPage() {
           ? items.map((group) => (
               <div key={group.key} className="doc-row doc-group">
                 <Link href={`/documents/${group.primary_id}`} className="doc-group-main">
-                  <h3>{group.title}</h3>
+                  <div className="doc-group-head">
+                    <h3>{group.title}</h3>
+                    <time className="doc-date" dateTime={group.issued_at || undefined}>
+                      {group.issued_at || "—"}
+                    </time>
+                  </div>
                   <div className="meta">
                     <span className="chip category-chip">
                       {programmeLabel(group.programme || group.category, t)}
@@ -287,13 +294,11 @@ export default function DocumentsPage() {
                         {topicLabel(tp, t)}
                       </span>
                     ))}
-                    <span className="chip">{group.source_id}</span>
-                    <span>
-                      {t("circularNo")}: {group.circular_no || "—"}
-                    </span>
-                    <span>
-                      {t("issuedAt")}: {group.issued_at || "—"}
-                    </span>
+                    {group.circular_no ? (
+                      <span className="chip chip-muted">
+                        {t("circularNo")}: {group.circular_no}
+                      </span>
+                    ) : null}
                   </div>
                 </Link>
                 <div className="lang-variants" role="group" aria-label={t("languages")}>

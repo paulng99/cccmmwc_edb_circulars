@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
 import { chatAsk, KnowledgeSource } from "@/lib/api";
@@ -61,10 +61,19 @@ export default function ChatPage() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingPromptOnly, setLoadingPromptOnly] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(true);
+  const collapsedAfterReply = useRef(false);
+  const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (ready && !token) router.replace("/login");
   }, [ready, token, router]);
+
+  useEffect(() => {
+    const el = logRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [msgs, loading]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -92,6 +101,10 @@ export default function ChatPage() {
         ...m,
         { role: "assistant", content: res.answer, citations: res.citations || [] },
       ]);
+      if (!collapsedAfterReply.current) {
+        collapsedAfterReply.current = true;
+        setFiltersOpen(false);
+      }
     } catch (err) {
       const msg =
         err instanceof Error && err.message === "chat_timeout" ? t("timeout") : t("error");
@@ -104,13 +117,108 @@ export default function ChatPage() {
 
   if (!token) return null;
 
+  const knowledgeLabel =
+    knowledge === "local"
+      ? t("local")
+      : knowledge === "local_and_dify"
+        ? t("localAndDify")
+        : t("dify");
+  const programmeKey = PROGRAMME_OPTIONS.find((o) => o.value === programme)?.key || "programmeAll";
+  const topicKey = TOPIC_OPTIONS.find((o) => o.value === topic)?.key || "topicAll";
+  const scopeSummary = `${knowledgeLabel} · ${t(programmeKey)} · ${t(topicKey)}`;
+
   return (
-    <div className="page-enter">
-      <div className="hero">
+    <div className="page-enter page-stack chat-page">
+      <header className="page-header">
         <h1>{t("title")}</h1>
-      </div>
-      <div className="panel chat-panel">
-        <div className="chat-log">
+        <p className="page-subtitle">{t("subtitle")}</p>
+      </header>
+
+      <div className="panel chat-workspace">
+        <div className="chat-scope">
+          <button
+            type="button"
+            className="chat-scope-toggle"
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen((v) => !v)}
+          >
+            <span className="chat-scope-toggle-text">
+              <span className="chat-scope-label">{t("filters")}</span>
+              {!filtersOpen ? (
+                <span className="chat-scope-summary">{scopeSummary}</span>
+              ) : null}
+            </span>
+            <span aria-hidden>{filtersOpen ? "▴" : "▾"}</span>
+          </button>
+          {filtersOpen ? (
+            <div className="chat-scope-body">
+              <div className="field chat-scope-field">
+                <label htmlFor="ks">{t("knowledge")}</label>
+                <select
+                  id="ks"
+                  value={knowledge}
+                  onChange={(e) => setKnowledge(e.target.value as KnowledgeSource)}
+                >
+                  <option value="local">{t("local")}</option>
+                  <option value="local_and_dify">{t("localAndDify")}</option>
+                  <option value="dify">{t("dify")}</option>
+                </select>
+              </div>
+              <div className="filter-block">
+                <span className="category-label" id="chat-prog-label">
+                  {t("programmeFilter")}
+                </span>
+                <div
+                  className="lang-variants category-toggle"
+                  role="group"
+                  aria-labelledby="chat-prog-label"
+                >
+                  {PROGRAMME_OPTIONS.map(({ value, key }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={`lang-chip${programme === value ? " active" : ""}`}
+                      aria-pressed={programme === value}
+                      onClick={() => setProgramme(value)}
+                    >
+                      {t(key)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="filter-block">
+                <span className="category-label" id="chat-topic-label">
+                  {t("topicFilter")}
+                </span>
+                <div
+                  className="lang-variants category-toggle"
+                  role="group"
+                  aria-labelledby="chat-topic-label"
+                >
+                  {TOPIC_OPTIONS.map(({ value, key }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={`lang-chip${topic === value ? " active" : ""}`}
+                      aria-pressed={topic === value}
+                      onClick={() => setTopic(value)}
+                    >
+                      {t(key)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="chat-log" ref={logRef}>
+          {msgs.length === 0 && !loading ? (
+            <div className="chat-empty">
+              <p>{t("subtitle")}</p>
+              <p className="hint">{t("placeholder")}</p>
+            </div>
+          ) : null}
           {msgs.map((m, i) => (
             <div key={i} className={`bubble ${m.role}`}>
               {m.content}
@@ -148,76 +256,29 @@ export default function ChatPage() {
             </div>
           ) : null}
         </div>
+
         <form className="chat-composer" onSubmit={onSubmit}>
-          <div className="field">
-            <label htmlFor="ks">{t("knowledge")}</label>
-            <select
-              id="ks"
-              value={knowledge}
-              onChange={(e) => setKnowledge(e.target.value as KnowledgeSource)}
-            >
-              <option value="local">{t("local")}</option>
-              <option value="local_and_dify">{t("localAndDify")}</option>
-              <option value="dify">{t("dify")}</option>
-            </select>
-          </div>
-          <div className="field">
-            <span className="category-label" id="chat-prog-label">
-              {t("programmeFilter")}
-            </span>
-            <div
-              className="lang-variants category-toggle"
-              role="group"
-              aria-labelledby="chat-prog-label"
-            >
-              {PROGRAMME_OPTIONS.map(({ value, key }) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`lang-chip${programme === value ? " active" : ""}`}
-                  aria-pressed={programme === value}
-                  onClick={() => setProgramme(value)}
-                >
-                  {t(key)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="field">
-            <span className="category-label" id="chat-topic-label">
-              {t("topicFilter")}
-            </span>
-            <div
-              className="lang-variants category-toggle"
-              role="group"
-              aria-labelledby="chat-topic-label"
-            >
-              {TOPIC_OPTIONS.map(({ value, key }) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`lang-chip${topic === value ? " active" : ""}`}
-                  aria-pressed={topic === value}
-                  onClick={() => setTopic(value)}
-                >
-                  {t(key)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="field">
-            <label htmlFor="q">{t("placeholder")}</label>
+          <label className="sr-only" htmlFor="q">
+            {t("placeholder")}
+          </label>
+          <div className="chat-composer-row">
             <textarea
               id="q"
-              rows={3}
+              rows={2}
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               placeholder={t("placeholder")}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  (e.currentTarget.form as HTMLFormElement | null)?.requestSubmit();
+                }
+              }}
             />
+            <button className={`btn${loading ? " is-loading" : ""}`} type="submit" disabled={loading}>
+              {t("send")}
+            </button>
           </div>
-          <button className={`btn${loading ? " is-loading" : ""}`} type="submit" disabled={loading}>
-            {t("send")}
-          </button>
         </form>
       </div>
     </div>

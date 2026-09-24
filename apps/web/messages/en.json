@@ -17,10 +17,14 @@
     "password": "Password",
     "submit": "Sign in",
     "hint": "Default admin / 000000 (change before production)",
-    "error": "Sign-in failed. Check your credentials."
+    "error": "Sign-in failed. Check your credentials.",
+    "pointCollect": "Automatically collect EDB circulars and related files",
+    "pointAsk": "Grounded Q&A backed by your circular library",
+    "pointBilingual": "Chinese / English UI · dates as yyyy-mm-dd"
   },
   "documents": {
     "title": "Circulars & Documents",
+    "subtitle": "Search first, then narrow by programme and topic",
     "search": "Search title or circular number",
     "resultCount": "{count} item(s)",
     "resultCountCirculars": "{count} circular(s)",
@@ -79,8 +83,10 @@
   },
   "chat": {
     "title": "Ask about EDB materials",
+    "subtitle": "Narrow the scope, then ask — answers cite circular sources",
     "placeholder": "e.g. How should sister school grant be used?",
     "send": "Send",
+    "filters": "Search scope",
     "knowledge": "Knowledge source",
     "local": "Local",
     "localAndDify": "Local + Dify",
@@ -109,6 +115,7 @@
   },
   "status": {
     "title": "Ingest Status",
+    "subtitle": "Run crawls, watch live progress, and re-index when embeddings change",
     "crawl": "Crawl now",
     "crawling": "Crawling… live progress updating",
     "crawlingBtn": "Crawling…",
@@ -163,6 +170,7 @@
   },
   "settings": {
     "title": "Setup / Settings",
+    "subtitle": "Configure crawl sources, LLM, and answer behaviour",
     "save": "Save changes",
     "saved": "Settings saved",
     "loadError": "Failed to load settings",

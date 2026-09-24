@@ -17,10 +17,14 @@
     "password": "密碼",
     "submit": "登入",
     "hint": "預設帳號 admin / 000000（上線前請更改）",
-    "error": "登入失敗，請檢查帳號密碼"
+    "error": "登入失敗，請檢查帳號密碼",
+    "pointCollect": "自動收集教育局通告與相關文件",
+    "pointAsk": "以通告為依據的智能問答",
+    "pointBilingual": "繁中／英文介面，日期 yyyy-mm-dd"
   },
   "documents": {
     "title": "通告與文件",
+    "subtitle": "先搜尋，再用計劃與主題收窄結果",
     "search": "搜尋標題或通告編號",
     "resultCount": "共 {count} 則",
     "resultCountCirculars": "共 {count} 則通告",
@@ -79,8 +83,10 @@
   },
   "chat": {
     "title": "通告問答",
+    "subtitle": "先選範圍，再提問；答案會附上通告來源",
     "placeholder": "例如：姊妹學校津貼如何使用？",
     "send": "傳送",
+    "filters": "檢索範圍",
     "knowledge": "知識來源",
     "local": "本庫",
     "localAndDify": "本庫 + Dify",
@@ -109,6 +115,7 @@
   },
   "status": {
     "title": "收集狀態",
+    "subtitle": "啟動爬取、觀看即時進度，並在需要時重新索引",
     "crawl": "立即爬取",
     "crawling": "正在爬取中…即時更新進度",
     "crawlingBtn": "爬取進行中…",
@@ -163,6 +170,7 @@
   },
   "settings": {
     "title": "系統設定",
+    "subtitle": "設定知識來源、語言模型與答問行為",
     "save": "儲存變更",
     "saved": "設定已儲存",
     "loadError": "無法載入設定",

@@ -400,10 +400,11 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="page-enter">
-      <div className="hero">
+    <div className="page-enter page-stack">
+      <header className="page-header">
         <h1>{t("title")}</h1>
-      </div>
+        <p className="page-subtitle">{t("subtitle")}</p>
+      </header>
 
       <div className="settings-shell">
         <aside className="settings-nav">

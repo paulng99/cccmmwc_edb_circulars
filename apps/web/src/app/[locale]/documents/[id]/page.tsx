@@ -143,11 +143,11 @@ export default function DocumentDetailPage() {
   if (!token) return null;
 
   return (
-    <div className="page-enter">
-      <div className="hero">
-        <p>
-          <Link href="/documents">{t("title")}</Link>
-        </p>
+    <div className="page-enter page-stack">
+      <header className="page-header">
+        <Link href="/documents" className="page-back">
+          ← {t("backToList")}
+        </Link>
         {status === "loading" ? (
           <span className="skeleton-line hero-title" aria-hidden />
         ) : (
@@ -161,7 +161,7 @@ export default function DocumentDetailPage() {
                   : null}
           </h1>
         )}
-      </div>
+      </header>
 
       {status === "loading" ? (
         <div className="panel">

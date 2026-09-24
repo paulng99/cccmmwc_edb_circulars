@@ -31,6 +31,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
+  const links = [
+    { href: "/documents", label: t("nav.documents"), match: "/documents" },
+    { href: "/chat", label: t("nav.chat"), match: "/chat" },
+    { href: "/status", label: t("nav.status"), match: "/status" },
+    { href: "/settings", label: t("nav.settings"), match: "/settings" },
+  ] as const;
+
   return (
     <div className="shell">
       <header className="topbar">
@@ -38,28 +45,33 @@ export function AppShell({ children }: { children: ReactNode }) {
           <strong>{t("app.name")}</strong>
           <span>{t("app.tagline")}</span>
         </Link>
-        <nav className="nav">
-          <Link href="/documents" className={pathname.startsWith("/documents") ? "active" : ""}>
-            {t("nav.documents")}
-          </Link>
-          <Link href="/chat" className={pathname.startsWith("/chat") ? "active" : ""}>
-            {t("nav.chat")}
-          </Link>
-          <Link href="/status" className={pathname.startsWith("/status") ? "active" : ""}>
-            {t("nav.status")}
-          </Link>
-          <Link href="/settings" className={pathname.startsWith("/settings") ? "active" : ""}>
-            {t("nav.settings")}
-          </Link>
-          <button
-            type="button"
-            onClick={() => router.replace(pathname, { locale: locale === "zh-HK" ? "en" : "zh-HK" })}
-          >
-            {locale === "zh-HK" ? "EN" : "繁"}
-          </button>
-          <button type="button" onClick={logout}>
-            {username ? `${username} · ${t("nav.logout")}` : t("nav.logout")}
-          </button>
+        <nav className="nav" aria-label="Main">
+          <div className="nav-primary" role="list">
+            {links.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                role="listitem"
+                className={pathname.startsWith(item.match) ? "active" : ""}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+          <div className="nav-utils">
+            <button
+              type="button"
+              className="nav-util"
+              onClick={() =>
+                router.replace(pathname, { locale: locale === "zh-HK" ? "en" : "zh-HK" })
+              }
+            >
+              {locale === "zh-HK" ? "EN" : "繁"}
+            </button>
+            <button type="button" className="nav-util nav-util-logout" onClick={logout}>
+              {username ? `${username} · ${t("nav.logout")}` : t("nav.logout")}
+            </button>
+          </div>
         </nav>
       </header>
       <main className="main">{children}</main>
