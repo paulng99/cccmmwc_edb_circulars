@@ -55,7 +55,7 @@ services:
       MINIO_ENDPOINT: minio:9000
       SOURCES_CONFIG_PATH: /config/sources.yaml
     ports:
-      - "8000:8000"
+      - "8008:8008"
     volumes:
       - ./config:/config
       - filedata:/data/files
@@ -118,7 +118,7 @@ services:
     environment:
       PORT: "4000"
       HOSTNAME: "0.0.0.0"
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8008}
       NEXT_PUBLIC_DEFAULT_LOCALE: ${NEXT_PUBLIC_DEFAULT_LOCALE:-zh-HK}
     ports:
       - "4000:4000"

@@ -1,6 +1,6 @@
 import httpx
 
-base = "http://localhost:8000"
+base = "http://localhost:8008"
 login = httpx.post(f"{base}/api/auth/login", json={"username": "admin", "password": "000000"})
 print("login", login.status_code)
 token = login.json()["access_token"]

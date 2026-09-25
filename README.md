@@ -22,7 +22,7 @@ docker compose up --build -d
 ```
 
 - Web: http://localhost:4000
-- API: http://localhost:8000/docs
+- API: http://localhost:8008/docs
 - Postgres host port: `5433`（避免與其他本機 Postgres 衝突）
 
 登入後到「收集狀態」按「立即爬取」。
@@ -48,7 +48,7 @@ python -m venv .venv
 pip install -r requirements.txt
 docker compose up -d db redis
 # DATABASE_URL 指到 localhost:5433
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8008
 ```
 
 ## 本機開發（Web）
@@ -100,20 +100,20 @@ npm run cap:android   # 或 cap:ios（需 macOS）
 
 ## Coolify（DigitalOcean）部署
 
-本機 `docker-compose.yml` 會把 API 綁到主機 `8000`；Coolify 共用 droplet 上常已有其他服務佔用該埠，會出現：
+本機 `docker-compose.yml` 會把 API 綁到主機 `8008`。若仍出現 host port 衝突，用 Coolify override（見下）避免 publish 主機埠。
 
-`Bind for 0.0.0.0:8000 failed: port is already allocated`
+舊錯誤範例（若曾用 `8000`）：`Bind for 0.0.0.0:8000 failed: port is already allocated`
 
-### 1. 在 droplet 上查誰佔用 8000（可選）
+### 1. 在 droplet 上查誰佔用 8008（可選）
 
 SSH 進 DigitalOcean droplet：
 
 ```bash
-sudo ss -tlnp | grep ':8000'
-docker ps --format 'table {{.ID}}\t{{.Names}}\t{{.Ports}}' | grep 8000
+sudo ss -tlnp | grep ':8008'
+docker ps --format 'table {{.ID}}\t{{.Names}}\t{{.Ports}}' | grep 8008
 ```
 
-若是本 stack 殘留容器，可先停掉；更穩妥的做法是改用下方 Coolify override，**不再** publish 主機 `8000`。
+若是本 stack 殘留容器，可先停掉；更穩妥的做法是改用下方 Coolify override，**不再** publish 主機 `8008`。
 
 ### 2. Compose 檔案
 
@@ -126,9 +126,9 @@ Override 會移除 `api` / `web` / `db` / `redis` 的 host port bind，改為僅
 
 ### 3. Coolify UI
 
-- **Domains**：例如 `web` → 公開網域（內部 port `4000`）；`api` → `api.` 子網域（內部 port `8000`）
-- **不要**再為 `8000` 設固定 Ports Mappings
-- **Environment**：設 `NEXT_PUBLIC_API_URL=https://api.你的網域`（勿用 `http://127.0.0.1:8000`）
+- **Domains**：例如 `web` → 公開網域（內部 port `4000`）；`api` → `api.` 子網域（內部 port `8008`）
+- **不要**再為 `8008` 設固定 Ports Mappings
+- **Environment**：設 `NEXT_PUBLIC_API_URL=https://api.你的網域`（勿用 `http://127.0.0.1:8008`）
 - 同步設好 `JWT_SECRET`、`ADMIN_PASSWORD`、`OPENROUTER_API_KEY`、`JINA_API_KEY` 等
 
 部署後確認 log 無 port bind 錯誤；以 HTTPS 網域開啟 Web / API docs。
