@@ -120,7 +120,10 @@ export async function triggerCrawl(token: string, sourceId?: string) {
     ? `${API_URL}/api/ingest/crawl?source_id=${encodeURIComponent(sourceId)}`
     : `${API_URL}/api/ingest/crawl`;
   const res = await fetch(url, { method: "POST", headers: authHeaders(token) });
-  if (!res.ok) throw new Error("crawl_failed");
+  if (!res.ok) {
+    if (res.status === 409) throw new Error("busy");
+    throw new Error("crawl_failed");
+  }
   return res.json() as Promise<{
     ok: boolean;
     started: boolean;

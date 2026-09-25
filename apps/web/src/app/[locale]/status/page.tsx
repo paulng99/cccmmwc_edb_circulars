@@ -98,6 +98,7 @@ export default function StatusPage() {
   const [failedLoading, setFailedLoading] = useState(false);
   const [failedError, setFailedError] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const actionLock = useRef(false);
 
   const refresh = useCallback(async (tok: string) => {
     const s = (await ingestStatus(tok)) as IngestData;
@@ -164,7 +165,8 @@ export default function StatusPage() {
   }, [token, refresh, startPoll, stopPoll]);
 
   async function onCrawl(sourceId?: string) {
-    if (!token || busy) return;
+    if (!token || busy || actionLock.current) return;
+    actionLock.current = true;
     setError("");
     setStopping(false);
     setJobKind("crawl");
@@ -174,11 +176,26 @@ export default function StatusPage() {
       await triggerCrawl(token, sourceId);
       await refresh(token);
       startPoll(token, "crawl");
-    } catch {
-      setBusy(false);
-      setJobKind(null);
-      setError(t("crawlError"));
-      setMsg("");
+    } catch (e) {
+      if (e instanceof Error && e.message === "busy") {
+        setError(t("reindexBusy"));
+        const status = await refresh(token).catch(() => null);
+        if (status?.running && status.kind) {
+          setMsg(status.kind === "reindex" ? t("reindexing") : t("crawling"));
+          startPoll(token, status.kind);
+        } else {
+          setBusy(false);
+          setJobKind(null);
+          setMsg("");
+        }
+      } else {
+        setBusy(false);
+        setJobKind(null);
+        setError(t("crawlError"));
+        setMsg("");
+      }
+    } finally {
+      actionLock.current = false;
     }
   }
 
