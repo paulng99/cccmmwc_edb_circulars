@@ -562,7 +562,9 @@ code {
   display: flex;
   flex-direction: column;
   gap: 1.1rem;
-  animation: page-enter var(--dur-slow) var(--ease-out) both;
+  /* `backwards` so no transform lingers after the animation; a lingering
+     transform would become the containing block for fixed drawers. */
+  animation: page-enter var(--dur-slow) var(--ease-out) backwards;
 }
 
 .page-head {
@@ -2370,7 +2372,7 @@ button.kpi:disabled {
 
 .activity-row {
   display: grid;
-  grid-template-columns: 8.2rem auto minmax(0, 1fr);
+  grid-template-columns: auto auto minmax(0, 1fr);
   align-items: center;
   gap: 0.6rem;
   font-size: 0.8rem;
@@ -2380,6 +2382,7 @@ button.kpi:disabled {
 .activity-row time {
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .activity-row .what {
@@ -2986,8 +2989,16 @@ input[type="checkbox"] {
 }
 
 @media (max-width: 900px) {
+  body {
+    overflow-x: hidden;
+  }
+
   .app {
     grid-template-columns: 1fr;
+  }
+
+  .toolbar {
+    overflow: hidden;
   }
 
   .sidebar {
@@ -3106,6 +3117,36 @@ input[type="checkbox"] {
   .filter-row .label {
     flex: none;
     padding-top: 0;
+  }
+
+  /* One horizontally scrollable row per filter keeps the toolbar short on phones. */
+  .filter-row .chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin: 0 -1.15rem;
+    padding: 0 1.15rem 0.15rem;
+    scroll-padding-left: 1.15rem;
+  }
+
+  .filter-row .chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .filter-row .segmented {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .page-head {
+    align-items: flex-start;
+    flex-wrap: nowrap;
+  }
+
+  .page-actions {
+    flex: none;
+    flex-wrap: nowrap;
   }
 
   .doc-main {
