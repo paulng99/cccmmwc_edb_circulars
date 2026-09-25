@@ -98,6 +98,41 @@ npm run cap:android   # 或 cap:ios（需 macOS）
 `Collector` → 本地檔／MinIO + Postgres → Jina embed → pgvector → `ChatService`（OpenRouter）  
 可選：`DifySync` / `DifyKnowledgeBackend`。
 
+## Coolify（DigitalOcean）部署
+
+本機 `docker-compose.yml` 會把 API 綁到主機 `8000`；Coolify 共用 droplet 上常已有其他服務佔用該埠，會出現：
+
+`Bind for 0.0.0.0:8000 failed: port is already allocated`
+
+### 1. 在 droplet 上查誰佔用 8000（可選）
+
+SSH 進 DigitalOcean droplet：
+
+```bash
+sudo ss -tlnp | grep ':8000'
+docker ps --format 'table {{.ID}}\t{{.Names}}\t{{.Ports}}' | grep 8000
+```
+
+若是本 stack 殘留容器，可先停掉；更穩妥的做法是改用下方 Coolify override，**不再** publish 主機 `8000`。
+
+### 2. Compose 檔案
+
+在 Coolify Docker Compose resource 設定 **兩個** compose 檔（順序重要）：
+
+1. `docker-compose.yml`
+2. `docker-compose.coolify.yml`
+
+Override 會移除 `api` / `web` / `db` / `redis` 的 host port bind，改為僅 `expose`（由 Coolify Traefik 反代）。本機開發繼續只用 `docker compose up` 即可。
+
+### 3. Coolify UI
+
+- **Domains**：例如 `web` → 公開網域（內部 port `4000`）；`api` → `api.` 子網域（內部 port `8000`）
+- **不要**再為 `8000` 設固定 Ports Mappings
+- **Environment**：設 `NEXT_PUBLIC_API_URL=https://api.你的網域`（勿用 `http://127.0.0.1:8000`）
+- 同步設好 `JWT_SECRET`、`ADMIN_PASSWORD`、`OPENROUTER_API_KEY`、`JINA_API_KEY` 等
+
+部署後確認 log 無 port bind 錯誤；以 HTTPS 網域開啟 Web / API docs。
+
 ## 注意
 
 - 只收集公開內容；遵守 rate limit
