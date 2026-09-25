@@ -4,6 +4,8 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
 import SourcesSection from "@/components/SourcesSection";
+import { Icon, type IconName } from "@/components/Icon";
+import { Switch } from "@/components/Switch";
 import { getSettings, SecretField, SettingsResponse, updateSettings } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDateTime } from "@/lib/date";
@@ -42,6 +44,20 @@ const SELECT_KEYS: Record<string, string[]> = {
 
 const TEXTAREA_KEYS = new Set(["system_prompt", "cors_origins"]);
 
+/** Fields that are long enough to deserve the full width of the grid. */
+const WIDE_KEYS = new Set([
+  "system_prompt",
+  "cors_origins",
+  "openrouter_base_url",
+  "ollama_base_url",
+  "dify_api_url",
+  "crawl_user_agent",
+  "local_storage_path",
+  "minio_public_url",
+  "google_client_id",
+  "google_client_secret",
+]);
+
 function isSecretField(value: unknown): value is SecretField {
   return (
     typeof value === "object" &&
@@ -67,6 +83,8 @@ const READONLY_KEYS = [
   "sources_config_path",
 ];
 
+type Group = "sources" | "chat" | "connect" | "system";
+
 export default function SettingsPage() {
   const t = useTranslations("settings");
   const tx = useMemo(
@@ -83,8 +101,9 @@ export default function SettingsPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [group, setGroup] = useState<"sources" | "chat" | "connect" | "system">("sources");
+  const [group, setGroup] = useState<Group>("sources");
   const [query, setQuery] = useState("");
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (ready && !token) router.replace("/login");
@@ -110,6 +129,19 @@ export default function SettingsPage() {
     return typeof val === "number" ? val : undefined;
   }, [data]);
 
+  const dirtyCount = useMemo(() => {
+    if (!data) return 0;
+    let n = 0;
+    for (const key of Object.keys(draft)) {
+      if (isSecretKey(key)) {
+        if (typeof draft[key] === "string" && (draft[key] as string).trim() !== "") n += 1;
+        continue;
+      }
+      if (draft[key] !== data.editable[key]) n += 1;
+    }
+    return n;
+  }, [draft, data]);
+
   function baseValue(key: string, readonly = false): unknown {
     if (readonly) return data?.readonly[key];
     return data?.editable[key];
@@ -118,6 +150,11 @@ export default function SettingsPage() {
   function fieldLabel(key: string): string {
     const label = tx(`fields.${key}`);
     return label === `fields.${key}` ? key : label;
+  }
+
+  function fieldHelp(key: string): string | null {
+    const help = tx(`help.${key}`);
+    return help === `help.${key}` ? null : help;
   }
 
   function formatWarning(code: string): string {
@@ -154,8 +191,14 @@ export default function SettingsPage() {
     return t("secretEmpty");
   }
 
+  function secretConfigured(key: string): boolean {
+    const base = baseValue(key);
+    return isSecretField(base) && base.configured;
+  }
+
   function updateDraft(key: string, value: unknown) {
     setDraft((prev) => ({ ...prev, [key]: value }));
+    setSuccess("");
   }
 
   function onInputChange(key: string, raw: string) {
@@ -173,10 +216,6 @@ export default function SettingsPage() {
       return;
     }
     updateDraft(key, raw);
-  }
-
-  function onCheckboxChange(key: string, checked: boolean) {
-    updateDraft(key, checked);
   }
 
   function buildPatch(): Record<string, unknown> | null {
@@ -248,9 +287,17 @@ export default function SettingsPage() {
     }
   }
 
+  function onDiscard() {
+    setDraft({});
+    setSuccess("");
+    setError("");
+  }
+
   function renderField(key: string, readonly = false) {
     const base = baseValue(key, readonly);
     const label = fieldLabel(key);
+    const help = fieldHelp(key);
+    const wide = WIDE_KEYS.has(key) || readonly;
 
     if (readonly) {
       let display = "—";
@@ -260,7 +307,7 @@ export default function SettingsPage() {
         display = String(base);
       }
       return (
-        <div className="field" key={key}>
+        <div className={`field${wide ? " span-2" : ""}`} key={key}>
           <label>{label}</label>
           <input value={display} disabled readOnly />
         </div>
@@ -278,29 +325,26 @@ export default function SettingsPage() {
               </option>
             ))}
           </select>
+          {help ? <span className="field-hint">{help}</span> : null}
         </div>
       );
     }
 
     if (BOOLEAN_KEYS.has(key)) {
       return (
-        <div className="field" key={key} style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>
-          <input
-            id={key}
-            type="checkbox"
-            checked={checkedValue(key)}
-            onChange={(e) => onCheckboxChange(key, e.target.checked)}
-          />
-          <label htmlFor={key} style={{ margin: 0 }}>
-            {label}
-          </label>
+        <div className="switch-row span-2" key={key} style={{ gridColumn: "1 / -1" }}>
+          <div className="switch-row-text">
+            <strong id={`${key}-label`}>{label}</strong>
+            {help ? <span>{help}</span> : null}
+          </div>
+          <Switch id={key} checked={checkedValue(key)} onChange={(v) => updateDraft(key, v)} label={label} />
         </div>
       );
     }
 
     if (TEXTAREA_KEYS.has(key)) {
       return (
-        <div className="field" key={key}>
+        <div className="field span-2" key={key}>
           <label htmlFor={key}>{label}</label>
           <textarea
             id={key}
@@ -309,23 +353,57 @@ export default function SettingsPage() {
             onChange={(e) => updateDraft(key, e.target.value)}
             placeholder={isSecretKey(key) ? secretPlaceholder(key) : undefined}
           />
-          {isSecretKey(key) ? <span className="hint">{t("secretKeepHint")}</span> : null}
+          {help ? <span className="field-hint">{help}</span> : null}
+        </div>
+      );
+    }
+
+    if (isSecretKey(key)) {
+      const configured = secretConfigured(key);
+      return (
+        <div className={`field${wide ? " span-2" : ""}`} key={key}>
+          <label htmlFor={key} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            {label}
+            <span className={`badge ${configured ? "green" : "amber"}`}>
+              {configured ? <Icon name="check" /> : <Icon name="alert-circle" />}
+              {configured ? t("secretSet") : t("secretEmpty")}
+            </span>
+          </label>
+          <div className="input-wrap has-trailing">
+            <Icon name="lock" />
+            <input
+              id={key}
+              type={revealed[key] ? "text" : "password"}
+              value={displayString(key)}
+              onChange={(e) => onInputChange(key, e.target.value)}
+              placeholder={secretPlaceholder(key)}
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              className="input-trailing"
+              onClick={() => setRevealed((r) => ({ ...r, [key]: !r[key] }))}
+              aria-label={revealed[key] ? t("hideSecret") : t("showSecret")}
+            >
+              <Icon name={revealed[key] ? "eye-off" : "eye"} />
+            </button>
+          </div>
+          <span className="field-hint">{t("secretKeepHint")}</span>
         </div>
       );
     }
 
     return (
-      <div className="field" key={key}>
+      <div className={`field${wide ? " span-2" : ""}`} key={key}>
         <label htmlFor={key}>{label}</label>
         <input
           id={key}
-          type={isSecretKey(key) ? "password" : NUMBER_KEYS.has(key) ? "number" : "text"}
+          type={NUMBER_KEYS.has(key) ? "number" : "text"}
           value={displayString(key)}
           onChange={(e) => onInputChange(key, e.target.value)}
-          placeholder={isSecretKey(key) ? secretPlaceholder(key) : undefined}
           step={key === "temperature" ? 0.1 : key === "crawl_rate_limit_seconds" ? 0.1 : undefined}
         />
-        {isSecretKey(key) ? <span className="hint">{t("secretKeepHint")}</span> : null}
+        {help ? <span className="field-hint">{help}</span> : null}
       </div>
     );
   }
@@ -378,11 +456,11 @@ export default function SettingsPage() {
     return !q || label.toLowerCase().includes(q);
   }
 
-  const groups = [
-    { id: "sources" as const, title: t("groupSources"), tone: "blue" },
-    { id: "chat" as const, title: t("groupChat"), tone: "teal" },
-    { id: "connect" as const, title: t("groupConnect"), tone: "amber" },
-    { id: "system" as const, title: t("groupSystem"), tone: "slate" },
+  const groups: { id: Group; title: string; desc: string; icon: IconName }[] = [
+    { id: "sources", title: t("groupSources"), desc: t("groupSourcesDesc"), icon: "database" },
+    { id: "chat", title: t("groupChat"), desc: t("groupChatDesc"), icon: "message-square" },
+    { id: "connect", title: t("groupConnect"), desc: t("groupConnectDesc"), icon: "plug-zap" },
+    { id: "system", title: t("groupSystem"), desc: t("groupSystemDesc"), icon: "server" },
   ];
 
   const visibleChat = chatKeys.filter((key) => matches(fieldLabel(key)) || matches(t("groupChat")));
@@ -395,39 +473,42 @@ export default function SettingsPage() {
     system: visibleSystem.length > 0 || (!q ? false : matches(t("sectionReadonly")) || matches(t("advanced"))),
   };
 
-  function showGroup(id: typeof group) {
-    setGroup(id);
-  }
+  const current = groups.find((g) => g.id === group)!;
 
   return (
-    <div className="page-enter page-stack">
-      <header className="page-header">
-        <h1>{t("title")}</h1>
-        <p className="page-subtitle">{t("subtitle")}</p>
+    <div className="page">
+      <header className="page-head">
+        <div>
+          <h1>{t("title")}</h1>
+          <p className="page-subtitle">{t("subtitle")}</p>
+        </div>
       </header>
 
       <div className="settings-shell">
         <aside className="settings-nav">
-          <input
-            className="settings-search"
-            value={query}
-            onChange={(e) => {
-              const next = e.target.value;
-              setQuery(next);
-              const needle = next.trim().toLowerCase();
-              if (!needle) return;
-              const hit = groups.find((item) => {
-                if (item.id === "sources") return item.title.toLowerCase().includes(needle);
-                if (item.id === "chat") return chatKeys.some((key) => fieldLabel(key).toLowerCase().includes(needle)) || item.title.toLowerCase().includes(needle);
-                if (item.id === "connect") return connectKeys.some((key) => fieldLabel(key).toLowerCase().includes(needle)) || item.title.toLowerCase().includes(needle);
-                return systemKeys.some((key) => fieldLabel(key).toLowerCase().includes(needle)) || item.title.toLowerCase().includes(needle) || t("advanced").toLowerCase().includes(needle);
-              });
-              if (hit) setGroup(hit.id);
-            }}
-            placeholder={t("searchSettings")}
-            aria-label={t("searchSettings")}
-          />
-          <div className="settings-nav-list" role="tablist">
+          <div className="input-wrap">
+            <Icon name="search" />
+            <input
+              className="input"
+              value={query}
+              onChange={(e) => {
+                const next = e.target.value;
+                setQuery(next);
+                const needle = next.trim().toLowerCase();
+                if (!needle) return;
+                const hit = groups.find((item) => {
+                  if (item.id === "sources") return item.title.toLowerCase().includes(needle);
+                  if (item.id === "chat") return chatKeys.some((key) => fieldLabel(key).toLowerCase().includes(needle)) || item.title.toLowerCase().includes(needle);
+                  if (item.id === "connect") return connectKeys.some((key) => fieldLabel(key).toLowerCase().includes(needle)) || item.title.toLowerCase().includes(needle);
+                  return systemKeys.some((key) => fieldLabel(key).toLowerCase().includes(needle)) || item.title.toLowerCase().includes(needle) || t("advanced").toLowerCase().includes(needle);
+                });
+                if (hit) setGroup(hit.id);
+              }}
+              placeholder={t("searchSettings")}
+              aria-label={t("searchSettings")}
+            />
+          </div>
+          <div className="settings-nav-list" role="tablist" aria-label={t("title")}>
             {groups.map((item) => (
               <button
                 key={item.id}
@@ -435,9 +516,10 @@ export default function SettingsPage() {
                 role="tab"
                 aria-selected={group === item.id}
                 className={`settings-nav-btn${group === item.id ? " active" : ""}`}
-                onClick={() => showGroup(item.id)}
+                onClick={() => setGroup(item.id)}
+                style={q && !groupHasMatch[item.id] ? { opacity: 0.45 } : undefined}
               >
-                <span className={`settings-dot ${item.tone}`} />
+                <Icon name={item.icon} />
                 {item.title}
               </button>
             ))}
@@ -450,20 +532,40 @@ export default function SettingsPage() {
           {group !== "sources" ? (
             <form onSubmit={onSubmit}>
               <div className="settings-savebar">
-                <button className={`btn${saving ? " is-loading is-saving" : ""}`} type="submit" disabled={saving || loading}>
-                  {saving ? t("saving") : t("save")}
+                <button className={`btn${saving ? " is-loading" : ""}`} type="submit" disabled={saving || loading}>
+                  {saving ? <span className="spinner" /> : <Icon name="check" />}
+                  {saving ? t("saving") : dirtyCount > 0 ? t("saveCount", { count: dirtyCount }) : t("save")}
                 </button>
-                {success ? <span className="hint settings-save-ok">{success}</span> : null}
-                {error ? <span className="error">{error}</span> : null}
-                {loading ? <span className="hint">{t("loading")}</span> : null}
+                {dirtyCount > 0 ? (
+                  <button className="btn ghost" type="button" onClick={onDiscard} disabled={saving}>
+                    {t("discard")}
+                  </button>
+                ) : null}
+                <span className="savebar-spacer" />
+                {loading ? (
+                  <span className="savebar-status">
+                    <span className="spinner" /> {t("loading")}
+                  </span>
+                ) : null}
+                {success ? (
+                  <span className="savebar-status ok">
+                    <Icon name="check-circle" /> {success}
+                  </span>
+                ) : null}
+                {error ? (
+                  <span className="savebar-status err">
+                    <Icon name="alert-circle" /> {error}
+                  </span>
+                ) : null}
+                {!success && !error && !loading && dirtyCount > 0 ? (
+                  <span className="savebar-status">{t("unsaved", { count: dirtyCount })}</span>
+                ) : null}
               </div>
 
               {warnings.length > 0 ? (
-                <div
-                  className="panel"
-                  style={{ marginBottom: "1rem", borderColor: "var(--amber-500)", background: "rgba(245, 158, 11, 0.08)" }}
-                >
-                  <ul style={{ margin: 0, paddingLeft: "1.2rem", color: "var(--muted)" }}>
+                <div className="alert warning" style={{ margin: "1rem 0" }}>
+                  <Icon name="alert-triangle" />
+                  <ul>
                     {warnings.map((w, i) => (
                       <li key={i}>{formatWarning(w)}</li>
                     ))}
@@ -471,41 +573,69 @@ export default function SettingsPage() {
                 </div>
               ) : null}
 
-              {group === "chat" ? (
-                <section className="panel settings-section">
-                  <h2 style={{ marginTop: 0, color: "var(--blue-900)" }}>{t("groupChat")}</h2>
-                  {visibleChat.length === 0 ? <p className="hint">{t("searchEmpty")}</p> : visibleChat.map((key) => renderField(key))}
-                </section>
-              ) : null}
+              <section className="card" style={{ marginTop: "1rem" }}>
+                <div className="card-head">
+                  <h2>
+                    <Icon name={current.icon} />
+                    {current.title}
+                  </h2>
+                </div>
+                <div className="card-pad">
+                  <p className="section-desc">{current.desc}</p>
 
-              {group === "connect" ? (
-                <section className="panel settings-section">
-                  <h2 style={{ marginTop: 0, color: "var(--blue-900)" }}>{t("groupConnect")}</h2>
-                  {visibleConnect.length === 0 ? <p className="hint">{t("searchEmpty")}</p> : visibleConnect.map((key) => renderField(key))}
-                </section>
-              ) : null}
+                  {group === "chat" ? (
+                    visibleChat.length === 0 ? (
+                      <p className="muted">{t("searchEmpty")}</p>
+                    ) : (
+                      <div className="field-grid">{visibleChat.map((key) => renderField(key))}</div>
+                    )
+                  ) : null}
 
-              {group === "system" ? (
-                <>
-                  <section className="panel settings-section" style={{ marginBottom: "1rem" }}>
-                    <h2 style={{ marginTop: 0, color: "var(--blue-900)" }}>{t("groupSystem")}</h2>
-                    {visibleSystem.length === 0 && q ? <p className="hint">{t("searchEmpty")}</p> : visibleSystem.map((key) => renderField(key))}
-                  </section>
-                  {!q || groupHasMatch.system ? (
-                    <details className="settings-advanced">
-                      <summary>{t("advanced")}</summary>
-                      <p className="hint">{t("readonlyHint")}</p>
-                      <p className="hint">{t("buildTimeHint")}</p>
+                  {group === "connect" ? (
+                    visibleConnect.length === 0 ? (
+                      <p className="muted">{t("searchEmpty")}</p>
+                    ) : (
+                      <div className="field-grid">{visibleConnect.map((key) => renderField(key))}</div>
+                    )
+                  ) : null}
+
+                  {group === "system" ? (
+                    visibleSystem.length === 0 && q ? (
+                      <p className="muted">{t("searchEmpty")}</p>
+                    ) : (
+                      <div className="field-grid">{visibleSystem.map((key) => renderField(key))}</div>
+                    )
+                  ) : null}
+                </div>
+              </section>
+
+              {group === "system" && (!q || groupHasMatch.system) ? (
+                <details className="settings-advanced" style={{ marginTop: "1rem" }}>
+                  <summary>
+                    <Icon name="chevron-down" className="chev" />
+                    {t("advanced")}
+                    <span className="muted" style={{ fontWeight: 400, fontSize: "0.8rem" }}>
+                      · {t("sectionReadonly")}
+                    </span>
+                  </summary>
+                  <div className="settings-advanced-body">
+                    <div className="alert" style={{ marginBottom: "1rem" }}>
+                      <Icon name="info" />
+                      <span>
+                        {t("readonlyHint")} {t("buildTimeHint")}
+                      </span>
+                    </div>
+                    <div className="field-grid">
                       {READONLY_KEYS.map((key) => renderField(key, true))}
                       {data ? (
-                        <div className="field" style={{ marginBottom: 0 }}>
+                        <div className="field span-2" style={{ marginBottom: 0 }}>
                           <label>{fieldLabel("updated_at")}</label>
                           <input value={formatHkDateTime(data.meta.updated_at)} disabled readOnly />
                         </div>
                       ) : null}
-                    </details>
-                  ) : null}
-                </>
+                    </div>
+                  </div>
+                </details>
               ) : null}
             </form>
           ) : null}

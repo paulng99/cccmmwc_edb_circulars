@@ -7,6 +7,8 @@ import { Link, useRouter } from "@/i18n/routing";
 import PdfPreview from "@/components/PdfPreview";
 import { API_URL, fileUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { Icon } from "@/components/Icon";
+import { langLabel, statusTone } from "@/lib/taxonomy";
 
 type Doc = {
   id: string;
@@ -32,6 +34,13 @@ function pdfFilename(doc: Doc) {
   return `${circ || doc.title || doc.id}.pdf`;
 }
 
+function formatBytes(n: number) {
+  if (!n || n <= 0) return "—";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function DocumentDetailPage() {
   const t = useTranslations("documents");
   const { token, ready } = useAuth();
@@ -44,10 +53,7 @@ export default function DocumentDetailPage() {
   const [pdfFailed, setPdfFailed] = useState(false);
   const [blobDownloadUrl, setBlobDownloadUrl] = useState<string | null>(null);
 
-  const pdfApiUrl = useMemo(
-    () => (params?.id ? fileUrl(params.id) : ""),
-    [params?.id],
-  );
+  const pdfApiUrl = useMemo(() => (params?.id ? fileUrl(params.id) : ""), [params?.id]);
 
   useEffect(() => {
     if (ready && !token) router.replace("/login");
@@ -142,43 +148,81 @@ export default function DocumentDetailPage() {
 
   if (!token) return null;
 
+  const statusLabelKey: Record<string, string> = {
+    ready: "statusReady",
+    indexing: "statusIndexing",
+    stored: "statusStored",
+    failed: "statusFailed",
+  };
+
   return (
-    <div className="page-enter page-stack">
-      <header className="page-header">
-        <Link href="/documents" className="page-back">
-          ← {t("backToList")}
-        </Link>
-        {status === "loading" ? (
-          <span className="skeleton-line hero-title" aria-hidden />
-        ) : (
-          <h1>
-            {status === "success" && doc
-              ? doc.title
-              : status === "not_found"
-                ? t("notFound")
-                : status === "error"
-                  ? t("detailLoadError")
-                  : null}
-          </h1>
-        )}
+    <div className="page">
+      <header className="page-head">
+        <div style={{ minWidth: 0 }}>
+          <Link href="/documents" className="page-back">
+            <Icon name="arrow-left" />
+            {t("backToList")}
+          </Link>
+          {status === "loading" ? (
+            <span className="skeleton" style={{ height: "1.6rem", width: "min(70%, 28rem)" }} aria-hidden />
+          ) : (
+            <h1>
+              {status === "success" && doc
+                ? doc.title
+                : status === "not_found"
+                  ? t("notFound")
+                  : status === "error"
+                    ? t("detailLoadError")
+                    : null}
+            </h1>
+          )}
+          {status === "success" && doc ? (
+            <div className="doc-meta" style={{ marginTop: "0.6rem" }}>
+              <span className={`badge ${statusTone(doc.status)}`}>
+                {doc.status === "ready" ? <Icon name="check-circle" /> : null}
+                {statusLabelKey[doc.status] ? t(statusLabelKey[doc.status]) : doc.status}
+              </span>
+              {doc.circular_no ? (
+                <span className="badge">
+                  <Icon name="hash" />
+                  {doc.circular_no}
+                </span>
+              ) : null}
+              <span className="badge">
+                <Icon name="calendar" />
+                {doc.issued_at || "—"}
+              </span>
+              <span className="badge">
+                <Icon name="globe" />
+                {langLabel(doc.language, t)}
+              </span>
+            </div>
+          ) : null}
+        </div>
       </header>
 
       {status === "loading" ? (
-        <div className="panel">
-          <div className="meta" style={{ marginBottom: "1rem" }}>
-            <span className="skeleton-line meta" style={{ width: "5rem", display: "inline-block" }} />
-            <span className="skeleton-line meta" style={{ width: "8rem", display: "inline-block" }} />
-            <span className="skeleton-line meta" style={{ width: "7rem", display: "inline-block" }} />
+        <div className="detail-grid" aria-busy="true">
+          <div className="card card-pad">
+            <span className="skeleton" style={{ height: 420 }} />
           </div>
-          <span className="skeleton-line title" style={{ width: "90%" }} />
+          <div className="card card-pad">
+            <span className="skeleton" style={{ height: "0.9rem", width: "70%", marginBottom: "0.8rem" }} />
+            <span className="skeleton" style={{ height: "0.9rem", width: "55%", marginBottom: "0.8rem" }} />
+            <span className="skeleton" style={{ height: "0.9rem", width: "62%" }} />
+          </div>
         </div>
       ) : null}
 
       {status === "not_found" ? (
-        <div className="panel state-panel">
-          <p>{t("notFound")}</p>
-          <div className="state-actions">
+        <div className="card empty">
+          <div className="empty-icon">
+            <Icon name="file-search" />
+          </div>
+          <h3>{t("notFound")}</h3>
+          <div className="empty-actions">
             <Link className="btn" href="/documents">
+              <Icon name="arrow-left" />
               {t("backToList")}
             </Link>
           </div>
@@ -186,12 +230,14 @@ export default function DocumentDetailPage() {
       ) : null}
 
       {status === "error" ? (
-        <div className="panel state-panel">
-          <p className="error" style={{ marginBottom: "0.5rem" }}>
-            {t("detailLoadError")}
-          </p>
-          <div className="state-actions">
+        <div className="card empty">
+          <div className="empty-icon danger">
+            <Icon name="alert-triangle" />
+          </div>
+          <h3>{t("detailLoadError")}</h3>
+          <div className="empty-actions">
             <button type="button" className="btn" onClick={() => setReloadKey((k) => k + 1)}>
+              <Icon name="refresh-cw" />
               {t("retry")}
             </button>
             <Link className="btn secondary" href="/documents">
@@ -202,61 +248,118 @@ export default function DocumentDetailPage() {
       ) : null}
 
       {status === "success" && doc ? (
-        <div className="panel detail-panel">
-          <div className="meta" style={{ marginBottom: "1rem" }}>
-            <span className="chip">{doc.source_id}</span>
-            <span>
-              {t("circularNo")}: {doc.circular_no || "—"}
-            </span>
-            <span>
-              {t("issuedAt")}: {doc.issued_at || "—"}
-            </span>
-            <span>
-              {t("status")}: {doc.status}
-            </span>
-            <span>
-              {t("source")}: {doc.language}
-            </span>
-          </div>
-          {doc.status === "failed" && doc.index_error ? (
-            <p className="error" style={{ marginBottom: "1rem" }}>
-              {t("indexError")}: {doc.index_error}
-            </p>
-          ) : null}
-          {doc.warning ? (
-            <p className="hint" style={{ marginBottom: "1rem" }}>
-              {doc.warning}
-            </p>
-          ) : null}
-          <p>
-            <a href={doc.source_url} target="_blank" rel="noreferrer">
-              {doc.source_url}
-            </a>
-          </p>
-          <div className="detail-actions">
-            <button className={`btn${pdfOpening ? " is-loading" : ""}`} type="button" onClick={() => void openPdf()} disabled={pdfOpening}>
-              {pdfOpening ? t("pdfOpening") : t("download")}
-            </button>
-            {doc.file_url ? (
-              <a className="btn secondary" href={doc.file_url} target="_blank" rel="noreferrer">
-                {t("openSource")}
-              </a>
-            ) : null}
-          </div>
-          {pdfFailed ? (
-            <div style={{ marginTop: "1rem" }}>
-              <p className="error" style={{ marginBottom: "0.5rem" }}>
-                {t("pdfOpenFail")}
-              </p>
-              <button className="btn secondary" type="button" onClick={() => void handleDownloadFallback()}>
-                {t("pdfDownloadFallback")}
-              </button>
+        <div className="detail-grid">
+          <section className="card">
+            <div className="card-head">
+              <h2>
+                <Icon name="file-text" />
+                {t("preview")}
+              </h2>
+              <div className="row-actions">
+                <button
+                  className={`btn sm${pdfOpening ? " is-loading" : ""}`}
+                  type="button"
+                  onClick={() => void openPdf()}
+                  disabled={pdfOpening}
+                >
+                  {pdfOpening ? <span className="spinner" /> : <Icon name="download" />}
+                  {pdfOpening ? t("pdfOpening") : t("download")}
+                </button>
+              </div>
             </div>
-          ) : null}
-          <div style={{ marginTop: "1.25rem" }}>
-            <h2 style={{ fontSize: "1.05rem", margin: "0 0 0.75rem" }}>{t("preview")}</h2>
-            <PdfPreview fileUrl={pdfApiUrl} token={token} />
-          </div>
+            <div className="card-pad">
+              {doc.status === "failed" && doc.index_error ? (
+                <div className="alert danger" style={{ marginBottom: "1rem" }}>
+                  <Icon name="alert-circle" />
+                  <span>
+                    <strong>{t("indexError")}:</strong> {doc.index_error}
+                  </span>
+                </div>
+              ) : null}
+              {doc.warning ? (
+                <div className="alert warning" style={{ marginBottom: "1rem" }}>
+                  <Icon name="alert-triangle" />
+                  <span>{doc.warning}</span>
+                </div>
+              ) : null}
+              {pdfFailed ? (
+                <div className="alert danger" style={{ marginBottom: "1rem", alignItems: "center" }}>
+                  <Icon name="alert-circle" />
+                  <span style={{ flex: 1 }}>{t("pdfOpenFail")}</span>
+                  <button className="btn secondary sm" type="button" onClick={() => void handleDownloadFallback()}>
+                    {t("pdfDownloadFallback")}
+                  </button>
+                </div>
+              ) : null}
+              <PdfPreview fileUrl={pdfApiUrl} token={token} />
+            </div>
+          </section>
+
+          <aside className="detail-side">
+            <section className="card">
+              <div className="card-head">
+                <h2>
+                  <Icon name="info" />
+                  {t("details")}
+                </h2>
+              </div>
+              <div className="card-pad" style={{ paddingTop: "0.35rem", paddingBottom: "0.5rem" }}>
+                <dl className="meta-list">
+                  <div>
+                    <dt>{t("circularNo")}</dt>
+                    <dd>{doc.circular_no || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>{t("issuedAt")}</dt>
+                    <dd>{doc.issued_at || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>{t("language")}</dt>
+                    <dd>{langLabel(doc.language, t)}</dd>
+                  </div>
+                  <div>
+                    <dt>{t("status")}</dt>
+                    <dd>{statusLabelKey[doc.status] ? t(statusLabelKey[doc.status]) : doc.status}</dd>
+                  </div>
+                  <div>
+                    <dt>{t("fileSize")}</dt>
+                    <dd>{formatBytes(doc.file_size)}</dd>
+                  </div>
+                  <div>
+                    <dt>{t("source")}</dt>
+                    <dd>
+                      <code>{doc.source_id}</code>
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            </section>
+
+            <section className="card card-pad">
+              <div className="detail-actions">
+                <button
+                  className={`btn${pdfOpening ? " is-loading" : ""}`}
+                  type="button"
+                  onClick={() => void openPdf()}
+                  disabled={pdfOpening}
+                >
+                  {pdfOpening ? <span className="spinner" /> : <Icon name="download" />}
+                  {pdfOpening ? t("pdfOpening") : t("download")}
+                </button>
+                {doc.file_url ? (
+                  <a className="btn secondary" href={doc.file_url} target="_blank" rel="noreferrer">
+                    <Icon name="external-link" />
+                    {t("openSource")}
+                  </a>
+                ) : null}
+              </div>
+              <p className="detail-source" style={{ marginTop: "0.85rem" }}>
+                <a href={doc.source_url} target="_blank" rel="noreferrer">
+                  {doc.source_url}
+                </a>
+              </p>
+            </section>
+          </aside>
         </div>
       ) : null}
     </div>
