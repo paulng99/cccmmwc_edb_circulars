@@ -5,6 +5,18 @@ import { useTranslations } from "next-intl";
 import { Link, useRouter } from "@/i18n/routing";
 import { listDocuments } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { Icon } from "@/components/Icon";
+import {
+  PROGRAMME_OPTIONS,
+  PROGRAMME_TONE,
+  TOPIC_OPTIONS,
+  TOPIC_TONE,
+  langLabel,
+  programmeLabel,
+  topicLabel,
+  type Programme,
+  type Topic,
+} from "@/lib/taxonomy";
 
 type Variant = {
   id: string;
@@ -27,66 +39,16 @@ type DocGroup = {
   variants: Variant[];
 };
 
-type Programme = "all" | "circular" | "sister_school" | "lwlssg" | "other";
-type Topic =
-  | "all"
-  | "grant_funding"
-  | "curriculum"
-  | "admin"
-  | "student_activity"
-  | "parent_home"
-  | "other";
 type ListStatus = "idle" | "loading" | "success" | "empty" | "error";
 
-const SKELETON_COUNT = 4;
+const SKELETON_COUNT = 5;
 const PAGE_SIZE = 20;
 
-const PROGRAMME_OPTIONS: { value: Programme; key: string }[] = [
-  { value: "all", key: "programmeAll" },
-  { value: "circular", key: "programmeCircular" },
-  { value: "sister_school", key: "programmeSisterSchool" },
-  { value: "lwlssg", key: "programmeLwlssg" },
-  { value: "other", key: "programmeOther" },
-];
-
-const TOPIC_OPTIONS: { value: Topic; key: string }[] = [
-  { value: "all", key: "topicAll" },
-  { value: "grant_funding", key: "topicGrantFunding" },
-  { value: "curriculum", key: "topicCurriculum" },
-  { value: "admin", key: "topicAdmin" },
-  { value: "student_activity", key: "topicStudentActivity" },
-  { value: "parent_home", key: "topicParentHome" },
-  { value: "other", key: "topicOther" },
-];
-
-function langLabel(code: string, t: (key: string) => string): string {
-  if (code === "zh-HK") return t("langZhHk");
-  if (code === "zh-CN") return t("langZhCn");
-  if (code === "en") return t("langEn");
-  return code;
-}
-
-function programmeLabel(prog: string | undefined, t: (key: string) => string): string {
-  const map: Record<string, string> = {
-    circular: "programmeCircular",
-    sister_school: "programmeSisterSchool",
-    lwlssg: "programmeLwlssg",
-    other: "programmeOther",
-  };
-  const key = map[prog || ""] || "programmeOther";
-  return t(key);
-}
-
-function topicLabel(topic: string, t: (key: string) => string): string {
-  const map: Record<string, string> = {
-    grant_funding: "topicGrantFunding",
-    curriculum: "topicCurriculum",
-    admin: "topicAdmin",
-    student_activity: "topicStudentActivity",
-    parent_home: "topicParentHome",
-    other: "topicOther",
-  };
-  return t(map[topic] || "topicOther");
+function docIconClass(prog?: string) {
+  if (prog === "sister_school") return "doc-icon sister";
+  if (prog === "lwlssg") return "doc-icon lwlssg";
+  if (prog === "other") return "doc-icon other";
+  return "doc-icon";
 }
 
 export default function DocumentsPage() {
@@ -150,6 +112,7 @@ export default function DocumentsPage() {
   if (!token) return null;
 
   const hasKeyword = Boolean(debouncedQ);
+  const hasFilters = programme !== "all" || topic !== "all" || hasKeyword;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   function selectProgramme(next: Programme) {
@@ -162,39 +125,56 @@ export default function DocumentsPage() {
     setPage(1);
   }
 
+  function clearAll() {
+    setQ("");
+    setProgramme("all");
+    setTopic("all");
+    setPage(1);
+  }
+
   const countLabel =
     programme === "circular"
       ? t("resultCountCirculars", { count: total })
       : t("resultCountProgramme", { count: total });
 
   return (
-    <div className="page-enter page-stack">
-      <header className="page-header">
-        <h1>{t("title")}</h1>
-        <p className="page-subtitle">{t("subtitle")}</p>
+    <div className="page">
+      <header className="page-head">
+        <div>
+          <h1>{t("title")}</h1>
+          <p className="page-subtitle">{t("subtitle")}</p>
+        </div>
       </header>
 
-      <div className="filter-bar panel">
-        <div className="field filter-search">
-          <label htmlFor="q">{t("search")}</label>
+      <section className="card toolbar" aria-label={t("filtersLabel")}>
+        <div className={`input-wrap${q ? " has-trailing" : ""}`}>
+          <Icon name="search" />
           <input
             id="q"
+            className="input"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={t("search")}
             autoComplete="off"
+            aria-label={t("search")}
           />
+          {q ? (
+            <button type="button" className="input-trailing" onClick={() => setQ("")} aria-label={t("clearSearch")}>
+              <Icon name="x" />
+            </button>
+          ) : null}
         </div>
-        <div className="filter-block">
-          <span className="category-label" id="prog-label">
+
+        <div className="filter-row">
+          <span className="label" id="prog-label">
             {t("programmeFilter")}
           </span>
-          <div className="lang-variants category-toggle" role="group" aria-labelledby="prog-label">
+          <div className="chips" role="group" aria-labelledby="prog-label">
             {PROGRAMME_OPTIONS.map(({ value, key }) => (
               <button
                 key={value}
                 type="button"
-                className={`lang-chip${programme === value ? " active" : ""}`}
+                className="chip"
                 aria-pressed={programme === value}
                 onClick={() => selectProgramme(value)}
               >
@@ -203,16 +183,17 @@ export default function DocumentsPage() {
             ))}
           </div>
         </div>
-        <div className="filter-block">
-          <span className="category-label" id="topic-label">
+
+        <div className="filter-row">
+          <span className="label" id="topic-label">
             {t("topicFilter")}
           </span>
-          <div className="lang-variants category-toggle" role="group" aria-labelledby="topic-label">
+          <div className="chips" role="group" aria-labelledby="topic-label">
             {TOPIC_OPTIONS.map(({ value, key }) => (
               <button
                 key={value}
                 type="button"
-                className={`lang-chip${topic === value ? " active" : ""}`}
+                className="chip"
                 aria-pressed={topic === value}
                 onClick={() => selectTopic(value)}
               >
@@ -221,123 +202,161 @@ export default function DocumentsPage() {
             ))}
           </div>
         </div>
-      </div>
+      </section>
 
       {status === "success" || status === "empty" ? (
-        <div className="list-toolbar">
+        <div className="list-head">
           <p className="result-count">
-            {countLabel}
+            <strong>{countLabel}</strong>
             {fileCount > total ? (
               <span className="result-count-sub"> · {t("fileCount", { count: fileCount })}</span>
             ) : null}
           </p>
+          {hasFilters ? (
+            <button type="button" className="btn ghost sm" onClick={clearAll}>
+              <Icon name="x" />
+              {t("clearFilters")}
+            </button>
+          ) : null}
         </div>
       ) : null}
 
-      <div className="list">
-        {status === "loading" || status === "idle"
-          ? Array.from({ length: SKELETON_COUNT }, (_, i) => (
-              <div key={i} className="doc-row skeleton-row" aria-hidden>
-                <span className="skeleton-line title" />
-                <span className="skeleton-line meta" />
-              </div>
-            ))
-          : null}
-
-        {status === "error" ? (
-          <div className="panel state-panel">
-            <p className="error" style={{ marginBottom: "0.5rem" }}>
-              {t("loadError")}
-            </p>
-            <div className="state-actions">
-              <button type="button" className="btn" onClick={() => setReloadKey((k) => k + 1)}>
-                {t("retry")}
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {status === "empty" ? (
-          <div className="panel state-panel">
-            {hasKeyword ? (
-              <>
-                <p>{t("emptySearch", { query: debouncedQ })}</p>
-                <p className="hint">{t("emptySearchHint")}</p>
-                <div className="state-actions">
-                  <button type="button" className="btn secondary" onClick={() => setQ("")}>
-                    {t("clearSearch")}
-                  </button>
+      {status === "loading" || status === "idle" ? (
+        <div className="card doc-list" aria-busy="true">
+          {Array.from({ length: SKELETON_COUNT }, (_, i) => (
+            <div key={i} className="doc-item" aria-hidden>
+              <div className="doc-main">
+                <span className="skeleton" style={{ width: 40, height: 40, borderRadius: 10 }} />
+                <div className="doc-body">
+                  <span className="skeleton" style={{ height: "1rem", width: `${60 + (i % 3) * 12}%` }} />
+                  <div className="doc-meta">
+                    <span className="skeleton" style={{ height: 22, width: 64 }} />
+                    <span className="skeleton" style={{ height: 22, width: 90 }} />
+                  </div>
                 </div>
-              </>
-            ) : (
-              <p>{t("empty")}</p>
-            )}
-          </div>
-        ) : null}
+                <span className="skeleton" style={{ height: "0.85rem", width: 84 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
-        {status === "success"
-          ? items.map((group) => (
-              <div key={group.key} className="doc-row doc-group">
-                <Link href={`/documents/${group.primary_id}`} className="doc-group-main">
-                  <div className="doc-group-head">
-                    <h3>{group.title}</h3>
-                    <time className="doc-date" dateTime={group.issued_at || undefined}>
-                      {group.issued_at || "—"}
-                    </time>
-                  </div>
-                  <div className="meta">
-                    <span className="chip category-chip">
-                      {programmeLabel(group.programme || group.category, t)}
-                    </span>
-                    {(group.topics || []).slice(0, 3).map((tp) => (
-                      <span key={tp} className="chip">
-                        {topicLabel(tp, t)}
-                      </span>
-                    ))}
-                    {group.circular_no ? (
-                      <span className="chip chip-muted">
-                        {t("circularNo")}: {group.circular_no}
-                      </span>
-                    ) : null}
-                  </div>
+      {status === "error" ? (
+        <div className="card empty">
+          <div className="empty-icon danger">
+            <Icon name="alert-triangle" />
+          </div>
+          <h3>{t("loadError")}</h3>
+          <div className="empty-actions">
+            <button type="button" className="btn" onClick={() => setReloadKey((k) => k + 1)}>
+              <Icon name="refresh-cw" />
+              {t("retry")}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {status === "empty" ? (
+        <div className="card empty">
+          <div className="empty-icon">
+            <Icon name={hasKeyword ? "file-search" : "inbox"} />
+          </div>
+          {hasKeyword ? (
+            <>
+              <h3>{t("emptySearch", { query: debouncedQ })}</h3>
+              <p>{t("emptySearchHint")}</p>
+              <div className="empty-actions">
+                <button type="button" className="btn secondary" onClick={clearAll}>
+                  {t("clearFilters")}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h3>{t("emptyTitle")}</h3>
+              <p>{t("empty")}</p>
+              <div className="empty-actions">
+                <Link className="btn" href="/status">
+                  <Icon name="play" />
+                  {t("goToStatus")}
                 </Link>
-                <div className="lang-variants" role="group" aria-label={t("languages")}>
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {status === "success" ? (
+        <div className="card doc-list">
+          {items.map((group) => {
+            const prog = group.programme || group.category;
+            return (
+              <article key={group.key} className="doc-item">
+                <Link href={`/documents/${group.primary_id}`} className="doc-main">
+                  <span className={docIconClass(prog)} aria-hidden>
+                    <Icon name="file-text" />
+                  </span>
+                  <div className="doc-body">
+                    <h3>{group.title}</h3>
+                    <div className="doc-meta">
+                      <span className={`badge ${PROGRAMME_TONE[prog || ""] || "slate"}`}>
+                        {programmeLabel(prog, t)}
+                      </span>
+                      {(group.topics || []).slice(0, 3).map((tp) => (
+                        <span key={tp} className={`badge outline ${TOPIC_TONE[tp] || "slate"}`}>
+                          {topicLabel(tp, t)}
+                        </span>
+                      ))}
+                      {group.circular_no ? (
+                        <span className="circ">
+                          <Icon name="hash" style={{ width: 12, height: 12 }} />
+                          {group.circular_no}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <time className="doc-date" dateTime={group.issued_at || undefined}>
+                    <Icon name="calendar" />
+                    {group.issued_at || "—"}
+                  </time>
+                </Link>
+                <div className="doc-langs" role="group" aria-label={t("languages")}>
+                  <span className="label">{t("languages")}</span>
                   {group.variants.map((v) => (
-                    <Link
-                      key={v.id}
-                      href={`/documents/${v.id}`}
-                      className="lang-chip"
-                      title={v.title}
-                    >
+                    <Link key={v.id} href={`/documents/${v.id}`} className="lang-pill" title={v.title}>
+                      <Icon name="globe" />
                       {langLabel(v.language, t)}
                     </Link>
                   ))}
                 </div>
-              </div>
-            ))
-          : null}
-      </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
 
       {status === "success" && totalPages > 1 ? (
-        <div className="pagination">
+        <nav className="pagination" aria-label={t("pagination")}>
           <button
             type="button"
-            className="btn secondary"
+            className="btn secondary sm"
             disabled={page <= 1}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
           >
+            <Icon name="chevron-left" />
             {t("prevPage")}
           </button>
           <span className="pagination-info">{t("pageOf", { page, totalPages })}</span>
           <button
             type="button"
-            className="btn secondary"
+            className="btn secondary sm"
             disabled={page >= totalPages}
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
           >
             {t("nextPage")}
+            <Icon name="chevron-right" />
           </button>
-        </div>
+        </nav>
       ) : null}
     </div>
   );

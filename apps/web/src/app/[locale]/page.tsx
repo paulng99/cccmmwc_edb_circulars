@@ -16,9 +16,11 @@ export default function HomePage() {
   }, [ready, token, router]);
 
   return (
-    <div className="hero">
-      <h1>{t("app.name")}</h1>
-      <p>{t("app.tagline")}</p>
+    <div className="boot" aria-busy="true">
+      <div className="boot-inner">
+        <span className="spinner lg" />
+        <span>{t("app.name")}</span>
+      </div>
     </div>
   );
 }

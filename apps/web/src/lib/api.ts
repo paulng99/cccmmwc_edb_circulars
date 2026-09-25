@@ -71,11 +71,13 @@ export async function chatAsk(
     programme?: string | null;
     topic?: string | null;
   },
-  opts?: { timeoutMs?: number },
+  opts?: { timeoutMs?: number; signal?: AbortSignal },
 ) {
   const timeoutMs = opts?.timeoutMs ?? 90_000;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort("timeout"), timeoutMs);
+  const onExternalAbort = () => controller.abort("user");
+  opts?.signal?.addEventListener("abort", onExternalAbort, { once: true });
   try {
     const res = await fetch(`${API_URL}/api/chat`, {
       method: "POST",
@@ -89,12 +91,13 @@ export async function chatAsk(
     }
     return res.json();
   } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") {
-      throw new Error("chat_timeout");
+    if (controller.signal.aborted) {
+      throw new Error(controller.signal.reason === "user" ? "chat_cancelled" : "chat_timeout");
     }
     throw e;
   } finally {
     clearTimeout(timer);
+    opts?.signal?.removeEventListener("abort", onExternalAbort);
   }
 }
 

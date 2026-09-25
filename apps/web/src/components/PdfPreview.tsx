@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { Icon } from "@/components/Icon";
 
 type Props = {
   fileUrl: string;
@@ -73,10 +74,23 @@ export default function PdfPreview({ fileUrl, token }: Props) {
 
   return (
     <div className="pdf-preview">
-      {loading ? <p className="pdf-status">{t("previewLoading")}</p> : null}
-      {error ? <p className="pdf-status pdf-error">{t("previewFailed")}</p> : null}
+      {loading ? (
+        <p className="pdf-status">
+          <span className="spinner" />
+          {t("previewLoading")}
+        </p>
+      ) : null}
+      {error ? (
+        <p className="pdf-status error">
+          <Icon name="alert-circle" />
+          {t("previewFailed")}
+        </p>
+      ) : null}
       {!loading && !error && pageCount > 0 ? (
-        <p className="pdf-status">{t("previewPages", { count: pageCount })}</p>
+        <p className="pdf-status">
+          <Icon name="file-text" />
+          {t("previewPages", { count: pageCount })}
+        </p>
       ) : null}
       <div ref={hostRef} className="pdf-pages" />
     </div>

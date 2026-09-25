@@ -8,6 +8,8 @@ import {
   saveSourceConfig,
   suggestSources,
 } from "@/lib/api";
+import { Icon } from "@/components/Icon";
+import { Switch } from "@/components/Switch";
 
 type Props = { token: string };
 
@@ -162,6 +164,7 @@ export default function SourcesSection({ token }: Props) {
   const [editingOriginalId, setEditingOriginalId] = useState<string | null>(null);
   const [editorError, setEditorError] = useState("");
   const [form, setForm] = useState<FormState>(emptyForm());
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   const [aiMode, setAiMode] = useState<"topic" | "url">("topic");
   const [aiQuery, setAiQuery] = useState("");
@@ -192,6 +195,16 @@ export default function SourcesSection({ token }: Props) {
       cancelled = true;
     };
   }, [token, t]);
+
+  useEffect(() => {
+    if (editorMode === "closed" && !aiOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeDrawer();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorMode, aiOpen]);
 
   const dirty = useMemo(() => JSON.stringify(sources) !== savedJson, [sources, savedJson]);
 
@@ -251,6 +264,7 @@ export default function SourcesSection({ token }: Props) {
   function onDelete(id: string) {
     setSources((prev) => prev.filter((s) => s.id !== id));
     if (editingOriginalId === id) closeEditor();
+    setPendingDelete(null);
     setSuccess("");
   }
 
@@ -289,6 +303,15 @@ export default function SourcesSection({ token }: Props) {
     } finally {
       setSaving(false);
     }
+  }
+
+  function onDiscard() {
+    try {
+      setSources(JSON.parse(savedJson) as CrawlSource[]);
+    } catch {
+      /* ignore */
+    }
+    setSuccess("");
   }
 
   async function onSuggest() {
@@ -331,330 +354,414 @@ export default function SourcesSection({ token }: Props) {
   }
 
   const idDisabled = editorMode === "edit";
+  const enabledCount = sources.filter((s) => s.enabled).length;
 
   return (
-    <div className="panel" style={{ marginBottom: "1rem" }}>
-      <h2 style={{ marginTop: 0, color: "var(--blue-900)" }}>{t("sourcesTitle")}</h2>
-      <p className="hint" style={{ marginTop: 0 }}>
-        {t("sourcesHint")}
-      </p>
-
+    <>
       <div className="settings-savebar">
         <button className="btn" type="button" onClick={openAdd}>
+          <Icon name="plus" />
           {t("sourcesAdd")}
         </button>
-        <button className="btn" type="button" onClick={() => { closeEditor(); setAiOpen(true); }}>
+        <button
+          className="btn soft"
+          type="button"
+          onClick={() => {
+            closeEditor();
+            setAiOpen(true);
+          }}
+        >
+          <Icon name="wand" />
           {t("sourcesAi")}
         </button>
-        <button className="btn" type="button" onClick={onSave} disabled={!dirty || saving || loading}>
-          {saving ? t("saving") : t("sourcesSave")}
-        </button>
-        {success ? (
-          <span className="hint" style={{ color: "var(--teal-500)", fontWeight: 600 }}>
-            {success}
+        <span className="savebar-spacer" />
+        {loading ? (
+          <span className="savebar-status">
+            <span className="spinner" /> {t("loading")}
           </span>
         ) : null}
-        {error ? <span className="error">{error}</span> : null}
-        {loading ? <span className="hint">{t("loading")}</span> : null}
+        {success ? (
+          <span className="savebar-status ok">
+            <Icon name="check-circle" /> {success}
+          </span>
+        ) : null}
+        {error ? (
+          <span className="savebar-status err">
+            <Icon name="alert-circle" /> {error}
+          </span>
+        ) : null}
+        {dirty && !success ? <span className="savebar-status">{t("sourcesUnsaved")}</span> : null}
+        {dirty ? (
+          <button className="btn ghost" type="button" onClick={onDiscard} disabled={saving}>
+            {t("discard")}
+          </button>
+        ) : null}
+        <button className="btn" type="button" onClick={onSave} disabled={!dirty || saving || loading}>
+          {saving ? <span className="spinner" /> : <Icon name="check" />}
+          {saving ? t("saving") : t("sourcesSave")}
+        </button>
       </div>
 
-      <ul className="settings-source-list">
-        {sources.map((s) => (
-          <li key={s.id} className="settings-source-card">
-            <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", margin: 0 }}>
-              <input
-                type="checkbox"
-                checked={s.enabled}
-                onChange={(e) => onToggleEnabled(s.id, e.target.checked)}
-              />
-              <span>{t("sourcesEnabled")}</span>
-            </label>
-            <span style={{ fontWeight: 600, minWidth: "8rem" }}>{s.name["zh-HK"]}</span>
-            <code style={{ fontSize: "0.85rem" }}>{s.id}</code>
-            <span className="hint">{s.type}</span>
-            <button className="btn" type="button" onClick={() => openEdit(s)} style={{ marginLeft: "auto" }}>
-              {t("sourcesEdit")}
-            </button>
-            <button className="btn" type="button" onClick={() => onDelete(s.id)}>
-              {t("sourcesDelete")}
-            </button>
-          </li>
-        ))}
-      </ul>
+      <section className="card" style={{ marginTop: "1rem" }}>
+        <div className="card-head">
+          <h2>
+            <Icon name="database" />
+            {t("sourcesTitle")}
+            <span className="count">{t("sourcesEnabledCount", { enabled: enabledCount, total: sources.length })}</span>
+          </h2>
+        </div>
+        <div className="card-pad" style={{ paddingBottom: 0 }}>
+          <p className="section-desc">{t("sourcesHint")}</p>
+        </div>
 
-      {editorMode !== "closed" || aiOpen ? (
-        <div className="settings-drawer-backdrop" onClick={closeDrawer} />
-      ) : null}
-      {editorMode !== "closed" ? (
-        <form className="settings-drawer" onSubmit={onSubmitEditor}>
-          <div className="field">
-            <label htmlFor="src-id">{t("sourcesId")}</label>
-            <input
-              id="src-id"
-              value={form.id}
-              onChange={(e) => updateForm("id", e.target.value)}
-              disabled={idDisabled}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="src-name-en">{t("sourcesNameEn")}</label>
-            <input
-              id="src-name-en"
-              value={form.nameEn}
-              onChange={(e) => updateForm("nameEn", e.target.value)}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="src-name-zh">{t("sourcesNameZh")}</label>
-            <input
-              id="src-name-zh"
-              value={form.nameZh}
-              onChange={(e) => updateForm("nameZh", e.target.value)}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="src-type">{t("sourcesType")}</label>
-            <select
-              id="src-type"
-              value={form.type}
-              onChange={(e) => updateForm("type", e.target.value as CrawlSource["type"])}
-            >
-              <option value="site_attachments">site_attachments</option>
-              <option value="circular_aspnet">circular_aspnet</option>
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="src-base">{t("sourcesBaseUrl")}</label>
-            <input
-              id="src-base"
-              value={form.baseUrl}
-              onChange={(e) => updateForm("baseUrl", e.target.value)}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="src-rate">{t("sourcesRateLimit")}</label>
-            <input
-              id="src-rate"
-              type="number"
-              step="0.1"
-              min="0.5"
-              value={form.rateLimit}
-              onChange={(e) => updateForm("rateLimit", e.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="src-schedule">{t("sourcesSchedule")}</label>
-            <input
-              id="src-schedule"
-              value={form.schedule}
-              onChange={(e) => updateForm("schedule", e.target.value)}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="src-priority">{t("sourcesPriority")}</label>
-            <input
-              id="src-priority"
-              type="number"
-              min="0"
-              max="9"
-              value={form.priority}
-              onChange={(e) => updateForm("priority", e.target.value)}
-            />
-          </div>
-          {editorMode === "edit" ? (
-            <div className="field" style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>
-              <input
-                id="src-enabled"
-                type="checkbox"
-                checked={form.enabled}
-                onChange={(e) => updateForm("enabled", e.target.checked)}
-              />
-              <label htmlFor="src-enabled" style={{ margin: 0 }}>
-                {t("sourcesEnabled")}
-              </label>
+        {loading ? (
+          <ul className="source-list" aria-busy="true">
+            {Array.from({ length: 3 }, (_, i) => (
+              <li key={i} className="source-row">
+                <span className="skeleton" style={{ width: 40, height: 22, borderRadius: 999 }} />
+                <div className="row-main">
+                  <span className="skeleton" style={{ height: "0.95rem", width: `${45 + i * 10}%` }} />
+                  <span className="skeleton" style={{ height: "0.75rem", width: "30%" }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : sources.length === 0 ? (
+          <div className="empty">
+            <div className="empty-icon">
+              <Icon name="database" />
             </div>
-          ) : null}
+            <h3>{t("sourcesEmptyTitle")}</h3>
+            <p>{t("sourcesEmptyHint")}</p>
+            <div className="empty-actions">
+              <button className="btn" type="button" onClick={openAdd}>
+                <Icon name="plus" />
+                {t("sourcesAdd")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <ul className="source-list">
+            {sources.map((s) => (
+              <li key={s.id} className={`source-row${s.enabled ? "" : " disabled"}`}>
+                <Switch
+                  checked={s.enabled}
+                  onChange={(v) => onToggleEnabled(s.id, v)}
+                  label={`${t("sourcesEnabled")}: ${s.name["zh-HK"] || s.name.en}`}
+                />
+                <div className="row-main">
+                  <div className="row-title">
+                    {s.name["zh-HK"] || s.name.en}
+                    <code>{s.id}</code>
+                    <span className={`badge ${s.type === "circular_aspnet" ? "blue" : "teal"}`}>
+                      {s.type === "circular_aspnet" ? t("typeCircular") : t("typeSite")}
+                    </span>
+                  </div>
+                  <div className="row-sub">
+                    <span title={s.base_url}>
+                      <Icon name="link" />
+                      {s.base_url}
+                    </span>
+                    <span>
+                      <Icon name="clock" />
+                      {s.schedule}
+                    </span>
+                  </div>
+                </div>
+                <div className="row-actions">
+                  {pendingDelete === s.id ? (
+                    <>
+                      <span className="muted" style={{ fontSize: "0.8rem" }}>
+                        {t("sourcesDeleteConfirm")}
+                      </span>
+                      <button className="btn danger sm" type="button" onClick={() => onDelete(s.id)}>
+                        <Icon name="trash" />
+                        {t("sourcesDelete")}
+                      </button>
+                      <button className="btn ghost sm" type="button" onClick={() => setPendingDelete(null)}>
+                        {t("sourcesCancel")}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button className="btn secondary sm" type="button" onClick={() => openEdit(s)}>
+                        <Icon name="pencil" />
+                        {t("sourcesEdit")}
+                      </button>
+                      <button
+                        className="btn ghost sm icon-only"
+                        type="button"
+                        onClick={() => setPendingDelete(s.id)}
+                        aria-label={t("sourcesDelete")}
+                        title={t("sourcesDelete")}
+                      >
+                        <Icon name="trash" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-          {form.type === "site_attachments" ? (
-            <>
-              <div className="field">
-                <label htmlFor="src-hosts">{t("sourcesHosts")}</label>
-                <input
-                  id="src-hosts"
-                  value={form.hosts}
-                  onChange={(e) => updateForm("hosts", e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="src-exts">{t("sourcesExts")}</label>
-                <input
-                  id="src-exts"
-                  value={form.exts}
-                  onChange={(e) => updateForm("exts", e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="src-seeds">{t("sourcesSeeds")}</label>
-                <input
-                  id="src-seeds"
-                  value={form.seeds}
-                  onChange={(e) => updateForm("seeds", e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="src-paths">{t("sourcesPaths")}</label>
-                <input
-                  id="src-paths"
-                  value={form.paths}
-                  onChange={(e) => updateForm("paths", e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="src-max">{t("sourcesMaxPages")}</label>
-                <input
-                  id="src-max"
-                  type="number"
-                  min="1"
-                  max="5000"
-                  value={form.maxPages}
-                  onChange={(e) => updateForm("maxPages", e.target.value)}
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="field">
-                <label htmlFor="src-langs">{t("sourcesLangs")}</label>
-                <input
-                  id="src-langs"
-                  value={form.langs}
-                  onChange={(e) => updateForm("langs", e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="src-year-from">{t("sourcesYearFrom")}</label>
-                <input
-                  id="src-year-from"
-                  type="number"
-                  value={form.yearFrom}
-                  onChange={(e) => updateForm("yearFrom", e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="src-year-to">{t("sourcesYearTo")}</label>
-                <input
-                  id="src-year-to"
-                  type="number"
-                  value={form.yearTo}
-                  onChange={(e) => updateForm("yearTo", e.target.value)}
-                />
-              </div>
-            </>
-          )}
+      {editorMode !== "closed" || aiOpen ? <div className="drawer-backdrop" onClick={closeDrawer} /> : null}
 
-          {editorError ? <p className="error">{editorError}</p> : null}
-
-          <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.5rem" }}>
-            <button className="btn" type="submit">
-              {editorMode === "add" ? t("sourcesAdd") : t("sourcesApply")}
+      {editorMode !== "closed" ? (
+        <form className="drawer" onSubmit={onSubmitEditor} role="dialog" aria-modal="true" aria-labelledby="src-drawer-title">
+          <div className="drawer-head">
+            <div>
+              <h3 id="src-drawer-title">{editorMode === "add" ? t("sourcesAddTitle") : t("sourcesEditTitle")}</h3>
+              <p>{editorMode === "add" ? t("sourcesAddHint") : form.id}</p>
+            </div>
+            <button type="button" className="btn ghost sm icon-only" onClick={closeDrawer} aria-label={t("sourcesCancel")}>
+              <Icon name="x" />
             </button>
-            <button className="btn" type="button" onClick={closeDrawer}>
+          </div>
+
+          <div className="drawer-body">
+            <div className="drawer-section">{t("sectionBasics")}</div>
+            <div className="field">
+              <label htmlFor="src-id">{t("sourcesId")}</label>
+              <input
+                id="src-id"
+                value={form.id}
+                onChange={(e) => updateForm("id", e.target.value)}
+                disabled={idDisabled}
+                required
+                placeholder="e.g. edb_circulars"
+              />
+            </div>
+            <div className="field-grid">
+              <div className="field">
+                <label htmlFor="src-name-zh">{t("sourcesNameZh")}</label>
+                <input id="src-name-zh" value={form.nameZh} onChange={(e) => updateForm("nameZh", e.target.value)} required />
+              </div>
+              <div className="field">
+                <label htmlFor="src-name-en">{t("sourcesNameEn")}</label>
+                <input id="src-name-en" value={form.nameEn} onChange={(e) => updateForm("nameEn", e.target.value)} required />
+              </div>
+            </div>
+            <div className="field">
+              <label htmlFor="src-type">{t("sourcesType")}</label>
+              <select id="src-type" value={form.type} onChange={(e) => updateForm("type", e.target.value as CrawlSource["type"])}>
+                <option value="site_attachments">{t("typeSite")} (site_attachments)</option>
+                <option value="circular_aspnet">{t("typeCircular")} (circular_aspnet)</option>
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="src-base">{t("sourcesBaseUrl")}</label>
+              <div className="input-wrap">
+                <Icon name="link" />
+                <input id="src-base" value={form.baseUrl} onChange={(e) => updateForm("baseUrl", e.target.value)} required placeholder="https://" />
+              </div>
+            </div>
+            {editorMode === "edit" ? (
+              <div className="switch-row">
+                <div className="switch-row-text">
+                  <strong>{t("sourcesEnabled")}</strong>
+                  <span>{t("sourcesEnabledHint")}</span>
+                </div>
+                <Switch checked={form.enabled} onChange={(v) => updateForm("enabled", v)} label={t("sourcesEnabled")} />
+              </div>
+            ) : null}
+
+            <div className="drawer-section">{t("sectionSchedule")}</div>
+            <div className="field-grid">
+              <div className="field">
+                <label htmlFor="src-schedule">{t("sourcesSchedule")}</label>
+                <input id="src-schedule" value={form.schedule} onChange={(e) => updateForm("schedule", e.target.value)} required />
+                <span className="field-hint">{t("sourcesScheduleHint")}</span>
+              </div>
+              <div className="field">
+                <label htmlFor="src-rate">{t("sourcesRateLimit")}</label>
+                <input id="src-rate" type="number" step="0.1" min="0.5" value={form.rateLimit} onChange={(e) => updateForm("rateLimit", e.target.value)} />
+              </div>
+              <div className="field">
+                <label htmlFor="src-priority">{t("sourcesPriority")}</label>
+                <input id="src-priority" type="number" min="0" max="9" value={form.priority} onChange={(e) => updateForm("priority", e.target.value)} />
+                <span className="field-hint">{t("sourcesPriorityHint")}</span>
+              </div>
+            </div>
+
+            <div className="drawer-section">{t("sectionCrawlRules")}</div>
+            {form.type === "site_attachments" ? (
+              <>
+                <div className="field">
+                  <label htmlFor="src-hosts">{t("sourcesHosts")}</label>
+                  <input id="src-hosts" value={form.hosts} onChange={(e) => updateForm("hosts", e.target.value)} />
+                </div>
+                <div className="field">
+                  <label htmlFor="src-exts">{t("sourcesExts")}</label>
+                  <input id="src-exts" value={form.exts} onChange={(e) => updateForm("exts", e.target.value)} />
+                </div>
+                <div className="field">
+                  <label htmlFor="src-seeds">{t("sourcesSeeds")}</label>
+                  <input id="src-seeds" value={form.seeds} onChange={(e) => updateForm("seeds", e.target.value)} />
+                </div>
+                <div className="field">
+                  <label htmlFor="src-paths">{t("sourcesPaths")}</label>
+                  <input id="src-paths" value={form.paths} onChange={(e) => updateForm("paths", e.target.value)} />
+                </div>
+                <div className="field">
+                  <label htmlFor="src-max">{t("sourcesMaxPages")}</label>
+                  <input id="src-max" type="number" min="1" max="5000" value={form.maxPages} onChange={(e) => updateForm("maxPages", e.target.value)} />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="field">
+                  <label htmlFor="src-langs">{t("sourcesLangs")}</label>
+                  <input id="src-langs" value={form.langs} onChange={(e) => updateForm("langs", e.target.value)} />
+                </div>
+                <div className="field-grid">
+                  <div className="field">
+                    <label htmlFor="src-year-from">{t("sourcesYearFrom")}</label>
+                    <input id="src-year-from" type="number" value={form.yearFrom} onChange={(e) => updateForm("yearFrom", e.target.value)} />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="src-year-to">{t("sourcesYearTo")}</label>
+                    <input id="src-year-to" type="number" value={form.yearTo} onChange={(e) => updateForm("yearTo", e.target.value)} />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {editorError ? (
+              <div className="alert danger" role="alert">
+                <Icon name="alert-circle" />
+                <span>{editorError}</span>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="drawer-foot">
+            <button className="btn ghost" type="button" onClick={closeDrawer}>
               {t("sourcesCancel")}
+            </button>
+            <button className="btn" type="submit">
+              <Icon name="check" />
+              {editorMode === "add" ? t("sourcesAdd") : t("sourcesApply")}
             </button>
           </div>
         </form>
       ) : null}
 
       {aiOpen ? (
-      <section className="settings-drawer">
-        <h3 style={{ marginTop: 0, color: "var(--blue-900)" }}>{t("sourcesAi")}</h3>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-end", marginBottom: "0.75rem" }}>
-          <div className="field" style={{ marginBottom: 0, minWidth: "8rem" }}>
-            <label htmlFor="ai-mode">{t("sourcesAiMode")}</label>
-            <select
-              id="ai-mode"
-              value={aiMode}
-              onChange={(e) => setAiMode(e.target.value as "topic" | "url")}
-            >
-              <option value="topic">{t("sourcesModeTopic")}</option>
-              <option value="url">{t("sourcesModeUrl")}</option>
-            </select>
-          </div>
-          <div className="field" style={{ marginBottom: 0, flex: "1 1 16rem" }}>
-            <label htmlFor="ai-query">
-              {aiMode === "topic" ? t("sourcesModeTopic") : t("sourcesModeUrl")}
-            </label>
-            <input
-              id="ai-query"
-              value={aiQuery}
-              onChange={(e) => setAiQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  onSuggest();
-                }
-              }}
-            />
-          </div>
-          <button className="btn" type="button" onClick={onSuggest} disabled={suggesting || !aiQuery.trim()}>
-            {suggesting ? t("sourcesSearching") : t("sourcesSearch")}
-          </button>
-        </div>
-        {suggestError ? <p className="error">{suggestError}</p> : null}
-        {dropped > 0 ? <p className="hint">{t("sourcesDropped", { count: dropped })}</p> : null}
-
-        {visibleSuggestions.length > 0 ? (
-          <>
-            <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-              {visibleSuggestions.map((s) => (
-                <li
-                  key={s.id}
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "0.75rem",
-                    alignItems: "center",
-                    padding: "0.5rem 0",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedSuggestionIds.has(s.id)}
-                    onChange={(e) => toggleSuggestion(s.id, e.target.checked)}
-                  />
-                  <span style={{ fontWeight: 600 }}>{s.name["zh-HK"] || s.name.en}</span>
-                  <code style={{ fontSize: "0.85rem" }}>{s.id}</code>
-                  {/^https?:\/\//i.test(s.base_url) ? (
-                    <a
-                      className="hint"
-                      href={s.base_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ wordBreak: "break-all", color: "var(--blue-700)", textDecoration: "underline" }}
-                    >
-                      {s.base_url}
-                    </a>
-                  ) : (
-                    <span className="hint" style={{ wordBreak: "break-all" }}>{s.base_url}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <button className="btn" type="button" onClick={addSelectedSuggestions} style={{ marginTop: "0.5rem" }}>
-              {t("sourcesAddSelected")}
+        <section className="drawer" role="dialog" aria-modal="true" aria-labelledby="ai-drawer-title">
+          <div className="drawer-head">
+            <div>
+              <h3 id="ai-drawer-title">{t("sourcesAi")}</h3>
+              <p>{t("sourcesAiHint")}</p>
+            </div>
+            <button type="button" className="btn ghost sm icon-only" onClick={closeDrawer} aria-label={t("sourcesCancel")}>
+              <Icon name="x" />
             </button>
-          </>
-        ) : null}
-        <button className="btn" type="button" onClick={closeDrawer} style={{ marginTop: "1rem" }}>
-          {t("sourcesCancel")}
-        </button>
-      </section>
+          </div>
+
+          <div className="drawer-body">
+            <div className="field">
+              <span className="label" id="ai-mode-label">
+                {t("sourcesAiMode")}
+              </span>
+              <div className="segmented" role="group" aria-labelledby="ai-mode-label">
+                <button type="button" aria-pressed={aiMode === "topic"} onClick={() => setAiMode("topic")}>
+                  {t("sourcesModeTopic")}
+                </button>
+                <button type="button" aria-pressed={aiMode === "url"} onClick={() => setAiMode("url")}>
+                  {t("sourcesModeUrl")}
+                </button>
+              </div>
+            </div>
+            <div className="field">
+              <label htmlFor="ai-query">{aiMode === "topic" ? t("sourcesModeTopic") : t("sourcesModeUrl")}</label>
+              <div className="input-wrap">
+                <Icon name={aiMode === "topic" ? "search" : "link"} />
+                <input
+                  id="ai-query"
+                  value={aiQuery}
+                  onChange={(e) => setAiQuery(e.target.value)}
+                  placeholder={aiMode === "topic" ? t("sourcesTopicPlaceholder") : "https://"}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      onSuggest();
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            <button className="btn block" type="button" onClick={onSuggest} disabled={suggesting || !aiQuery.trim()}>
+              {suggesting ? <span className="spinner" /> : <Icon name="wand" />}
+              {suggesting ? t("sourcesSearching") : t("sourcesSearch")}
+            </button>
+
+            {suggestError ? (
+              <div className="alert danger" role="alert" style={{ marginTop: "0.85rem" }}>
+                <Icon name="alert-circle" />
+                <span>{suggestError}</span>
+              </div>
+            ) : null}
+            {dropped > 0 ? (
+              <div className="alert" style={{ marginTop: "0.85rem" }}>
+                <Icon name="info" />
+                <span>{t("sourcesDropped", { count: dropped })}</span>
+              </div>
+            ) : null}
+
+            {visibleSuggestions.length > 0 ? (
+              <ul className="suggest-list">
+                {visibleSuggestions.map((s) => {
+                  const checked = selectedSuggestionIds.has(s.id);
+                  return (
+                    <li
+                      key={s.id}
+                      className={`suggest-item${checked ? " selected" : ""}`}
+                      onClick={() => toggleSuggestion(s.id, !checked)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => toggleSuggestion(s.id, e.target.checked)}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={s.name["zh-HK"] || s.name.en}
+                      />
+                      <div className="t">
+                        <strong>{s.name["zh-HK"] || s.name.en}</strong>
+                        <code style={{ alignSelf: "flex-start" }}>{s.id}</code>
+                        {/^https?:\/\//i.test(s.base_url) ? (
+                          <a href={s.base_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+                            {s.base_url}
+                          </a>
+                        ) : (
+                          <span>{s.base_url}</span>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+          </div>
+
+          <div className="drawer-foot">
+            <button className="btn ghost" type="button" onClick={closeDrawer}>
+              {t("sourcesCancel")}
+            </button>
+            <button
+              className="btn"
+              type="button"
+              onClick={addSelectedSuggestions}
+              disabled={selectedSuggestionIds.size === 0}
+            >
+              <Icon name="plus" />
+              {t("sourcesAddSelected")}
+              {selectedSuggestionIds.size > 0 ? ` (${selectedSuggestionIds.size})` : ""}
+            </button>
+          </div>
+        </section>
       ) : null}
-    </div>
+    </>
   );
 }
