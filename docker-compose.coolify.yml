@@ -1,7 +1,8 @@
 # Coolify / production override — no fixed host port binds.
 # Use with: docker compose -f docker-compose.yml -f docker-compose.coolify.yml up -d
 # Coolify: set Compose files to both docker-compose.yml and this file.
-# Route via Coolify proxy: web → 4000, api → 8008. Set NEXT_PUBLIC_API_URL to the public API HTTPS URL.
+# Route via Coolify proxy: web → 4000. The web container proxies /api to http://api:8008.
+# Do not publish 8008. Set NEXT_PUBLIC_API_URL only if the browser must call a separate public API URL.
 
 services:
   db:

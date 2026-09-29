@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/routing";
 import PdfPreview from "@/components/PdfPreview";
-import { API_URL, fileUrl } from "@/lib/api";
+import { apiBase, fileUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Icon } from "@/components/Icon";
 import { langLabel, statusTone } from "@/lib/taxonomy";
@@ -72,7 +72,7 @@ export default function DocumentDetailPage() {
     setDoc(null);
     setPdfFailed(false);
     setPdfOpening(false);
-    fetch(`${API_URL}/api/documents/${params.id}`, {
+    fetch(`${apiBase()}/api/documents/${params.id}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(async (r) => {

@@ -115,10 +115,14 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        # Build-time only. Leave empty so browsers call this site and the server proxies /api.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
     environment:
       PORT: "4000"
       HOSTNAME: "0.0.0.0"
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8008}
+      # Reached from inside the web container, not from the visitor's browser.
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8008}
       NEXT_PUBLIC_DEFAULT_LOCALE: ${NEXT_PUBLIC_DEFAULT_LOCALE:-zh-HK}
     ports:
       - "4000:4000"

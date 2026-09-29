@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/routing";
 import PdfPreview from "@/components/PdfPreview";
 import { Icon } from "@/components/Icon";
-import { API_URL, fileUrl } from "@/lib/api";
+import { apiBase, fileUrl } from "@/lib/api";
 
 type Props = {
   token: string;
@@ -46,7 +46,7 @@ export default function ChatDocPanel({
     let cancelled = false;
     setFailed(false);
     setMeta(null);
-    fetch(`${API_URL}/api/documents/${documentId}`, {
+    fetch(`${apiBase()}/api/documents/${documentId}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(async (res) => {

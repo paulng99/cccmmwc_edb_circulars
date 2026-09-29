@@ -74,7 +74,7 @@ npm run cap:android   # 或 cap:ios（需 macOS）
 
 - Android：Android Studio 開啟 `android/`
 - iOS：需 macOS + Xcode 開啟 `ios/`
-- 實機請將 `NEXT_PUBLIC_API_URL` 與 Capacitor `server.url` 設為可連線的伺服器／區網位址（勿用 localhost）
+- 實機請將 Capacitor `server.url` 設為可連線的網站位址（勿用 localhost）。瀏覽器經由網站轉送 `/api`，不必另開 API 埠
 
 ## 環境變數重點
 
@@ -88,6 +88,8 @@ npm run cap:android   # 或 cap:ios（需 macOS）
 | `DIFY_ENABLED` | 預設 `false` |
 | `GOOGLE_CLIENT_ID` | 預留；未設則 `/api/auth/google` 回 501 |
 | `LLM_PROVIDER` | `openrouter`（預設）或 `ollama` |
+| `API_INTERNAL_URL` | Web 容器轉送 `/api` 的目標。Compose 預設 `http://api:8008`；本機 `npm run dev` 未設時為 `http://127.0.0.1:8008` |
+| `NEXT_PUBLIC_API_URL` | 留空。瀏覽器走同一個網站。只有要直連另一個公開 API 網址時才在**建置**時設定 |
 
 ## 資料來源
 
@@ -126,12 +128,13 @@ Override 會移除 `api` / `web` / `db` / `redis` 的 host port bind，改為僅
 
 ### 3. Coolify UI
 
-- **Domains**：例如 `web` → 公開網域（內部 port `4000`）；`api` → `api.` 子網域（內部 port `8008`）
-- **不要**再為 `8008` 設固定 Ports Mappings
-- **Environment**：設 `NEXT_PUBLIC_API_URL=https://api.你的網域`（勿用 `http://127.0.0.1:8008`）
+- **Domains**：`web` → 公開網域或 `http://主機:4000`（內部 port `4000`）。不必再為 API 另開網域
+- **不要**把 `8008` 暴露到公網。瀏覽器只連網站；網站容器把 `/api` 轉送到 `http://api:8008`
+- **Environment**：保留 `API_INTERNAL_URL=http://api:8008`（compose 已是這個預設）。`NEXT_PUBLIC_API_URL` 留空。若填 `http://127.0.0.1:8008` 或 `http://localhost:8008`，遠端瀏覽器會去連訪客自己的電腦，登入會失敗
+- 改完網頁後必須**重新建置** web image（`NEXT_PUBLIC_*` 在 build 時寫入）
 - 同步設好 `JWT_SECRET`、`ADMIN_PASSWORD`、`OPENROUTER_API_KEY`、`JINA_API_KEY` 等
 
-部署後確認 log 無 port bind 錯誤；以 HTTPS 網域開啟 Web / API docs。
+部署後確認 log 無 port bind 錯誤；用公開網址開啟登入頁。登入請求應打到同一個 host 的 `/api/auth/login`，而不是 `localhost:8008`。
 
 ## 注意
 
