@@ -31,8 +31,9 @@ export default function LoginPage() {
       const res = await login(username, password);
       setToken(res.access_token);
       router.replace("/documents");
-    } catch {
-      setError(t("error"));
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "";
+      setError(code === "api_unreachable" ? t("unreachable") : t("error"));
     } finally {
       setLoading(false);
     }

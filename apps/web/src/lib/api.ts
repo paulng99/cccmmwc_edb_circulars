@@ -1,4 +1,23 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8008";
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
+
+/** Browser base for API calls. Empty means same-origin `/api` (proxied by the web server). */
+export function resolveApiBase(configured?: string | null): string {
+  const value = (configured ?? "").trim().replace(/\/$/, "");
+  if (!value) return "";
+  try {
+    const host = new URL(value).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    // Loopback is only reachable from the machine running the browser.
+    // A public site must use the same-origin proxy instead.
+    if (LOOPBACK_HOSTS.has(host)) return "";
+  } catch {
+    return value;
+  }
+  return value;
+}
+
+export function apiBase(): string {
+  return resolveApiBase(process.env.NEXT_PUBLIC_API_URL);
+}
 
 export type KnowledgeSource = "local" | "local_and_dify" | "dify";
 
@@ -9,17 +28,23 @@ function authHeaders(token?: string | null): HeadersInit {
 }
 
 export async function login(username: string, password: string) {
-  const res = await fetch(`${API_URL}/api/auth/login`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({ username, password }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${apiBase()}/api/auth/login`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ username, password }),
+    });
+  } catch {
+    throw new Error("api_unreachable");
+  }
+  if (res.status === 502) throw new Error("api_unreachable");
   if (!res.ok) throw new Error("login_failed");
   return res.json() as Promise<{ access_token: string }>;
 }
 
 export async function me(token: string) {
-  const res = await fetch(`${API_URL}/api/auth/me`, { headers: authHeaders(token) });
+  const res = await fetch(`${apiBase()}/api/auth/me`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error("unauthorized");
   return res.json();
 }
@@ -46,7 +71,7 @@ export async function listDocuments(
   sp.set("page", String(params.page || 1));
   sp.set("page_size", String(params.page_size || 20));
   sp.set("grouped", String(params.grouped ?? true));
-  const res = await fetch(`${API_URL}/api/documents?${sp}`, { headers: authHeaders(token) });
+  const res = await fetch(`${apiBase()}/api/documents?${sp}`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error("list_failed");
   return res.json() as Promise<{
     total: number;
@@ -80,7 +105,7 @@ export async function chatAsk(
   const onExternalAbort = () => controller.abort("user");
   opts?.signal?.addEventListener("abort", onExternalAbort, { once: true });
   try {
-    const res = await fetch(`${API_URL}/api/chat`, {
+    const res = await fetch(`${apiBase()}/api/chat`, {
       method: "POST",
       headers: authHeaders(token),
       body: JSON.stringify(body),
@@ -132,19 +157,19 @@ async function errorCode(res: Response, fallback: string) {
 }
 
 export async function listChatSessions(token: string) {
-  const res = await fetch(`${API_URL}/api/chat/sessions`, { headers: authHeaders(token) });
+  const res = await fetch(`${apiBase()}/api/chat/sessions`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error(await errorCode(res, "history_failed"));
   return res.json() as Promise<{ items: ChatSessionSummary[] }>;
 }
 
 export async function getChatSession(token: string, sessionId: string) {
-  const res = await fetch(`${API_URL}/api/chat/sessions/${sessionId}`, { headers: authHeaders(token) });
+  const res = await fetch(`${apiBase()}/api/chat/sessions/${sessionId}`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error(await errorCode(res, "history_failed"));
   return res.json() as Promise<ChatSessionSummary & { messages: ChatHistoryMessage[] }>;
 }
 
 export async function deleteChatSession(token: string, sessionId: string) {
-  const res = await fetch(`${API_URL}/api/chat/sessions/${sessionId}`, {
+  const res = await fetch(`${apiBase()}/api/chat/sessions/${sessionId}`, {
     method: "DELETE",
     headers: authHeaders(token),
   });
@@ -154,7 +179,7 @@ export async function deleteChatSession(token: string, sessionId: string) {
 export async function extractChatFile(token: string, file: File) {
   const body = new FormData();
   body.append("file", file);
-  const res = await fetch(`${API_URL}/api/chat/extract`, {
+  const res = await fetch(`${apiBase()}/api/chat/extract`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body,
@@ -166,7 +191,7 @@ export async function extractChatFile(token: string, file: File) {
 export async function triggerClassify(token: string, force = false) {
   const sp = new URLSearchParams();
   if (force) sp.set("force", "true");
-  const res = await fetch(`${API_URL}/api/ingest/classify?${sp}`, {
+  const res = await fetch(`${apiBase()}/api/ingest/classify?${sp}`, {
     method: "POST",
     headers: authHeaders(token),
   });
@@ -175,15 +200,15 @@ export async function triggerClassify(token: string, force = false) {
 }
 
 export async function ingestStatus(token: string) {
-  const res = await fetch(`${API_URL}/api/ingest/status`, { headers: authHeaders(token) });
+  const res = await fetch(`${apiBase()}/api/ingest/status`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error("status_failed");
   return res.json();
 }
 
 export async function triggerCrawl(token: string, sourceId?: string) {
   const url = sourceId
-    ? `${API_URL}/api/ingest/crawl?source_id=${encodeURIComponent(sourceId)}`
-    : `${API_URL}/api/ingest/crawl`;
+    ? `${apiBase()}/api/ingest/crawl?source_id=${encodeURIComponent(sourceId)}`
+    : `${apiBase()}/api/ingest/crawl`;
   const res = await fetch(url, { method: "POST", headers: authHeaders(token) });
   if (!res.ok) {
     if (res.status === 409) throw new Error("busy");
@@ -199,7 +224,7 @@ export async function triggerCrawl(token: string, sourceId?: string) {
 
 export async function triggerReindex(token: string, scope: "all" | "failed" | "stored" = "all") {
   const sp = new URLSearchParams({ scope });
-  const res = await fetch(`${API_URL}/api/ingest/reindex?${sp}`, {
+  const res = await fetch(`${apiBase()}/api/ingest/reindex?${sp}`, {
     method: "POST",
     headers: authHeaders(token),
   });
@@ -212,15 +237,15 @@ export async function triggerReindex(token: string, scope: "all" | "failed" | "s
 
 export async function stopCrawl(token: string, runId?: string) {
   const url = runId
-    ? `${API_URL}/api/ingest/crawl/stop?run_id=${encodeURIComponent(runId)}`
-    : `${API_URL}/api/ingest/crawl/stop`;
+    ? `${apiBase()}/api/ingest/crawl/stop?run_id=${encodeURIComponent(runId)}`
+    : `${apiBase()}/api/ingest/crawl/stop`;
   const res = await fetch(url, { method: "POST", headers: authHeaders(token) });
   if (!res.ok) throw new Error("stop_failed");
   return res.json() as Promise<{ ok: boolean; stopped: number }>;
 }
 
 export function fileUrl(documentId: string) {
-  return `${API_URL}/api/documents/${documentId}/file`;
+  return `${apiBase()}/api/documents/${documentId}/file`;
 }
 
 export type SecretField = { configured: boolean; masked: string | null };
@@ -232,13 +257,13 @@ export type SettingsResponse = {
 };
 
 export async function getSettings(token: string) {
-  const res = await fetch(`${API_URL}/api/settings`, { headers: authHeaders(token) });
+  const res = await fetch(`${apiBase()}/api/settings`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error("settings_get_failed");
   return res.json() as Promise<SettingsResponse>;
 }
 
 export async function updateSettings(token: string, body: Record<string, unknown>) {
-  const res = await fetch(`${API_URL}/api/settings`, {
+  const res = await fetch(`${apiBase()}/api/settings`, {
     method: "PUT",
     headers: authHeaders(token),
     body: JSON.stringify(body),
@@ -267,13 +292,13 @@ export type CrawlSource = {
 };
 
 export async function getSourceConfig(token: string) {
-  const res = await fetch(`${API_URL}/api/sources/config`, { headers: authHeaders(token) });
+  const res = await fetch(`${apiBase()}/api/sources/config`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error(await res.text());
   return res.json() as Promise<{ sources: CrawlSource[] }>;
 }
 
 export async function saveSourceConfig(token: string, sources: CrawlSource[]) {
-  const res = await fetch(`${API_URL}/api/sources/config`, {
+  const res = await fetch(`${apiBase()}/api/sources/config`, {
     method: "PUT",
     headers: authHeaders(token),
     body: JSON.stringify({ sources }),
@@ -286,7 +311,7 @@ export async function suggestSources(
   token: string,
   body: { mode: "topic" | "url"; query: string },
 ) {
-  const res = await fetch(`${API_URL}/api/sources/suggest`, {
+  const res = await fetch(`${apiBase()}/api/sources/suggest`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(body),
@@ -337,9 +362,7 @@ export type UsageReport = {
 };
 
 export async function getUsage(token: string, days: number) {
-  const res = await fetch(`${API_URL}/api/usage?days=${days}`, { headers: authHeaders(token) });
+  const res = await fetch(`${apiBase()}/api/usage?days=${days}`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error("usage_get_failed");
   return res.json() as Promise<UsageReport>;
 }
-
-export { API_URL };
