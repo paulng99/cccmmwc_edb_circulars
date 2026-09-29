@@ -157,6 +157,7 @@
     "thinkingPromptOnly": "Responding from system prompt…",
     "history": "History",
     "historyEmpty": "No conversations yet. They appear here after you ask a question.",
+    "restoring": "Restoring conversation…",
     "historyLoadError": "Could not open this conversation.",
     "historyFailed": "Could not load conversation history.",
     "historyClose": "Close history",

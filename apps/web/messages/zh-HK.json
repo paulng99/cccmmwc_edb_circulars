@@ -157,6 +157,7 @@
     "thinkingPromptOnly": "正在按系統提示回應…",
     "history": "對話紀錄",
     "historyEmpty": "尚未有對話。提問後會留在這裡。",
+    "restoring": "正在還原對話…",
     "historyLoadError": "無法載入這段對話。",
     "historyFailed": "無法載入對話紀錄。",
     "historyClose": "關閉對話紀錄",

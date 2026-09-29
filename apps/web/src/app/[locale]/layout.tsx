@@ -3,6 +3,7 @@ import { getMessages, setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { AuthProvider } from "@/lib/auth";
+import { ChatProvider } from "@/lib/chat-store";
 import { AppShell } from "@/components/AppShell";
 import { routing } from "@/i18n/routing";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
@@ -33,7 +34,9 @@ export default async function LocaleLayout({
       <body>
         <NextIntlClientProvider messages={messages}>
           <AuthProvider>
-            <AppShell>{children}</AppShell>
+            <ChatProvider>
+              <AppShell>{children}</AppShell>
+            </ChatProvider>
           </AuthProvider>
         </NextIntlClientProvider>
       </body>
