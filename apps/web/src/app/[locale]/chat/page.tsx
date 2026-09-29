@@ -1,43 +1,13 @@
 "use client";
 
-import { ChangeEvent, FormEvent, Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { useLocale, useTranslations } from "next-intl";
+import { FormEvent, Fragment, useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
 import ChatDocPanel from "@/components/ChatDocPanel";
-import {
-  chatAsk,
-  deleteChatSession,
-  extractChatFile,
-  getChatSession,
-  KnowledgeSource,
-  listChatSessions,
-  type ChatAttachmentMeta,
-  type ChatSessionSummary,
-} from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Icon } from "@/components/Icon";
-import { PROGRAMME_OPTIONS, TOPIC_OPTIONS, type Programme, type Topic } from "@/lib/taxonomy";
-
-type Citation = {
-  ref: string;
-  title?: string;
-  circular_no?: string | null;
-  issued_at?: string | null;
-  source_url?: string;
-  document_id?: string;
-  backend?: string;
-};
-
-type PendingFile = { filename: string; text: string; charCount: number };
-
-type Msg = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  citations?: Citation[];
-  attachments?: ChatAttachmentMeta[];
-  error?: boolean;
-};
+import { CHAT_MAX_FILES, type Citation, useChat } from "@/lib/chat-store";
+import { PROGRAMME_OPTIONS, TOPIC_OPTIONS } from "@/lib/taxonomy";
 
 type Preview = {
   ref: string;
@@ -48,40 +18,13 @@ type Preview = {
   issuedAt?: string | null;
 };
 
-const KNOWLEDGE_OPTIONS: { value: KnowledgeSource; key: string }[] = [
+const KNOWLEDGE_OPTIONS: { value: "local" | "local_and_dify" | "dify"; key: string }[] = [
   { value: "local", key: "local" },
   { value: "local_and_dify", key: "localAndDify" },
   { value: "dify", key: "dify" },
 ];
 
 const SUGGESTED_PROMPT_KEYS = ["prompt1", "prompt2", "prompt3", "prompt4"] as const;
-const SESSION_KEY = "edb_chat_session";
-
-function storedSessionId() {
-  if (typeof window === "undefined") return null;
-  const fromUrl = new URLSearchParams(window.location.search).get("session");
-  if (fromUrl) return fromUrl;
-  return sessionStorage.getItem(SESSION_KEY);
-}
-
-function rememberSession(id: string | null) {
-  if (typeof window === "undefined") return;
-  if (id) sessionStorage.setItem(SESSION_KEY, id);
-  else sessionStorage.removeItem(SESSION_KEY);
-  const url = new URL(window.location.href);
-  if (id) url.searchParams.set("session", id);
-  else url.searchParams.delete("session");
-  const next = `${url.pathname}${url.search}${url.hash}`;
-  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-  if (next !== current) window.history.replaceState(window.history.state, "", next);
-}
-
-const MAX_FILES = 3;
-const MAX_FILE_BYTES = 8 * 1024 * 1024;
-
-function newId() {
-  return crypto.randomUUID();
-}
 
 function formatStamp(iso: string | null | undefined) {
   if (!iso) return "";
@@ -125,31 +68,42 @@ function renderWithCitations(
 
 export default function ChatPage() {
   const t = useTranslations("chat");
-  const locale = useLocale();
   const { token, ready } = useAuth();
   const router = useRouter();
-  const [question, setQuestion] = useState("");
-  const [knowledge, setKnowledge] = useState<KnowledgeSource>("local");
-  const [programme, setProgramme] = useState<Programme>("all");
-  const [topic, setTopic] = useState<Topic>("all");
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
-  const [sessionsError, setSessionsError] = useState(false);
+  const {
+    question,
+    setQuestion,
+    knowledge,
+    setKnowledge,
+    programme,
+    setProgramme,
+    topic,
+    setTopic,
+    sessionId,
+    sessions,
+    sessionsError,
+    msgs,
+    loading,
+    loadingPromptOnly,
+    restoring,
+    pending,
+    setPending,
+    extracting,
+    attachError,
+    ask,
+    onNewChat,
+    openSession,
+    deleteSession,
+    onStop,
+    onPickFiles,
+  } = useChat();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [msgs, setMsgs] = useState<Msg[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingPromptOnly, setLoadingPromptOnly] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [pending, setPending] = useState<PendingFile[]>([]);
-  const [extracting, setExtracting] = useState(false);
-  const [attachError, setAttachError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const viewGen = useRef(0);
 
   useEffect(() => {
     if (ready && !token) router.replace("/login");
@@ -168,21 +122,6 @@ export default function ChatPage() {
     el.style.height = `${Math.min(el.scrollHeight, 176)}px`;
   }, [question]);
 
-  const refreshSessions = useCallback(async () => {
-    if (!token) return;
-    try {
-      const data = await listChatSessions(token);
-      setSessions(data.items || []);
-      setSessionsError(false);
-    } catch {
-      setSessionsError(true);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    void refreshSessions();
-  }, [refreshSessions]);
-
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
@@ -194,7 +133,7 @@ export default function ChatPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const openCitation = useCallback((c: Citation) => {
+  function openCitation(c: Citation) {
     setPreview({
       ref: c.ref,
       title: c.title || c.ref,
@@ -204,80 +143,6 @@ export default function ChatPage() {
       issuedAt: c.issued_at,
     });
     setHistoryOpen(false);
-  }, []);
-
-  const ask = useCallback(
-    async (raw: string, files: PendingFile[] = pending) => {
-      if (!token || loading) return;
-      const gen = viewGen.current;
-      const q = raw.trim();
-      const promptOnly = !q && files.length === 0;
-      const sentFiles = files;
-      setQuestion("");
-      if (sentFiles.length) {
-        setPending((current) => current.filter((f) => !sentFiles.includes(f)));
-      }
-      setAttachError(null);
-      setMsgs((m) => [
-        ...m,
-        {
-          id: newId(),
-          role: "user",
-          content: promptOnly ? t("promptOnlyLabel") : q,
-          attachments: sentFiles.map((f) => ({ filename: f.filename, char_count: f.charCount })),
-        },
-      ]);
-      setLoadingPromptOnly(promptOnly);
-      setLoading(true);
-      const controller = new AbortController();
-      abortRef.current = controller;
-      try {
-        const res = await chatAsk(
-          token,
-          {
-            question: q,
-            session_id: sessionId,
-            knowledge_source: knowledge,
-            locale,
-            programme: programme === "all" ? null : programme,
-            topic: topic === "all" ? null : topic,
-            attachments: sentFiles.map((f) => ({ filename: f.filename, text: f.text })),
-          },
-          { signal: controller.signal },
-        );
-        if (gen !== viewGen.current) return;
-        setActiveSession(res.session_id);
-        setMsgs((m) => [
-          ...m,
-          { id: newId(), role: "assistant", content: res.answer, citations: res.citations || [] },
-        ]);
-        void refreshSessions();
-      } catch (err) {
-        if (gen !== viewGen.current) return;
-        if (sentFiles.length) {
-          setPending((current) => [...sentFiles.filter((f) => !current.includes(f)), ...current]);
-        }
-        const code = err instanceof Error ? err.message : "";
-        if (code === "chat_cancelled") {
-          setMsgs((m) => [...m, { id: newId(), role: "assistant", content: t("cancelled"), error: true }]);
-        } else {
-          const msg = code === "chat_timeout" ? t("timeout") : t("error");
-          setMsgs((m) => [...m, { id: newId(), role: "assistant", content: msg, error: true }]);
-        }
-      } finally {
-        abortRef.current = null;
-        if (gen === viewGen.current) {
-          setLoading(false);
-          setLoadingPromptOnly(false);
-        }
-      }
-    },
-    [token, loading, pending, sessionId, knowledge, locale, programme, topic, t, refreshSessions],
-  );
-
-  function setActiveSession(id: string | null) {
-    rememberSession(id);
-    setSessionId(id);
   }
 
   function onSubmit(e: FormEvent) {
@@ -285,123 +150,34 @@ export default function ChatPage() {
     void ask(question);
   }
 
-  function onStop() {
-    abortRef.current?.abort();
-  }
-
-  function onNewChat() {
-    viewGen.current += 1;
-    if (loading) abortRef.current?.abort();
-    setLoading(false);
-    setLoadingPromptOnly(false);
-    setMsgs([]);
-    setActiveSession(null);
-    setQuestion("");
-    setPending([]);
-    setAttachError(null);
-    setPreview(null);
-    setHistoryOpen(false);
-    textareaRef.current?.focus();
-  }
-
-  async function openSession(id: string) {
-    if (!token || id === sessionId) {
-      setHistoryOpen(false);
-      return;
-    }
-    viewGen.current += 1;
-    const gen = viewGen.current;
-    if (loading) abortRef.current?.abort();
-    setLoading(false);
-    setLoadingPromptOnly(false);
-    setActiveSession(id);
-    setMsgs([]);
-    setQuestion("");
-    setPending([]);
+  function handleNewChat() {
+    onNewChat();
     setPreview(null);
     setHistoryOpen(false);
     setConfirmDeleteId(null);
-    try {
-      const data = await getChatSession(token, id);
-      if (gen !== viewGen.current) return;
-      if (data.knowledge_source === "local" || data.knowledge_source === "dify" || data.knowledge_source === "local_and_dify") {
-        setKnowledge(data.knowledge_source);
-      }
-      setMsgs(
-        (data.messages || []).map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content === "（僅系統提示）" ? t("promptOnlyLabel") : m.content,
-          citations: (m.citations || []) as Citation[],
-          attachments: m.attachments || [],
-        })),
-      );
-    } catch {
-      if (gen !== viewGen.current) return;
-      setMsgs([{ id: newId(), role: "assistant", content: t("historyLoadError"), error: true }]);
-    }
+    textareaRef.current?.focus();
   }
 
-  const restoredRef = useRef(false);
-  useEffect(() => {
-    if (!token || restoredRef.current) return;
-    restoredRef.current = true;
-    const id = storedSessionId();
-    if (id) void openSession(id);
-  }, [token]);
+  function handleOpenSession(id: string) {
+    setHistoryOpen(false);
+    setConfirmDeleteId(null);
+    if (id === sessionId) return;
+    setPreview(null);
+    void openSession(id);
+  }
 
   async function onDelete(id: string) {
-    if (!token) return;
     if (confirmDeleteId !== id) {
       setConfirmDeleteId(id);
       return;
     }
     setConfirmDeleteId(null);
-    try {
-      await deleteChatSession(token, id);
-      setSessions((items) => items.filter((s) => s.id !== id));
-      if (sessionId === id) onNewChat();
-    } catch {
-      setSessionsError(true);
-    }
+    if (sessionId === id) setPreview(null);
+    await deleteSession(id);
   }
 
-  async function onPickFiles(e: ChangeEvent<HTMLInputElement>) {
-    const list = Array.from(e.target.files || []);
-    e.target.value = "";
-    if (!token || list.length === 0) return;
-    const room = MAX_FILES - pending.length;
-    if (room <= 0) {
-      setAttachError(t("attachTooMany"));
-      return;
-    }
-    const batch = list.slice(0, room);
-    if (list.length > room) setAttachError(t("attachTooMany"));
-    else setAttachError(null);
-    setExtracting(true);
-    try {
-      for (const file of batch) {
-        if (file.size > MAX_FILE_BYTES) {
-          setAttachError(t("attachTooLarge"));
-          continue;
-        }
-        try {
-          const res = await extractChatFile(token, file);
-          setPending((p) => {
-            if (p.length >= MAX_FILES) return p;
-            return [...p, { filename: res.filename, text: res.text, charCount: res.char_count }];
-          });
-        } catch (err) {
-          const code = err instanceof Error ? err.message : "";
-          if (code === "no_text") setAttachError(t("attachEmpty"));
-          else if (code === "file_too_large") setAttachError(t("attachTooLarge"));
-          else if (code === "unsupported_type") setAttachError(t("attachType"));
-          else setAttachError(t("attachFailed"));
-        }
-      }
-    } finally {
-      setExtracting(false);
-    }
+  function onChooseFiles(list: File[]) {
+    void onPickFiles(list);
   }
 
   if (!token) return null;
@@ -428,7 +204,7 @@ export default function ChatPage() {
             <Icon name="clock" />
             <span>{t("history")}</span>
           </button>
-          <button type="button" className="btn secondary sm" onClick={onNewChat} disabled={msgs.length === 0 && !loading && !sessionId}>
+          <button type="button" className="btn secondary sm" onClick={handleNewChat} disabled={msgs.length === 0 && !loading && !sessionId && !question.trim() && pending.length === 0}>
             <Icon name="plus" />
             <span>{t("newChat")}</span>
           </button>
@@ -454,7 +230,7 @@ export default function ChatPage() {
             {!sessionsError && sessions.length === 0 ? <p className="chat-history-empty">{t("historyEmpty")}</p> : null}
             {sessions.map((s) => (
               <div key={s.id} className={`chat-history-item${s.id === sessionId ? " active" : ""}`}>
-                <button type="button" className="chat-history-open" onClick={() => void openSession(s.id)}>
+                <button type="button" className="chat-history-open" onClick={() => handleOpenSession(s.id)}>
                   <span className="chat-history-title">{s.title}</span>
                   <time className="chat-history-time" dateTime={s.updated_at || undefined}>
                     {formatStamp(s.updated_at || s.created_at)}
@@ -566,7 +342,14 @@ export default function ChatPage() {
           </div>
 
           <div className="chat-log" ref={logRef} aria-live="polite">
-            {msgs.length === 0 && !loading ? (
+            {restoring ? (
+              <div className="chat-empty">
+                <span className="spinner lg" />
+                <p>{t("restoring")}</p>
+              </div>
+            ) : null}
+
+            {msgs.length === 0 && !loading && !restoring ? (
               <div className="chat-empty">
                 <div className="chat-empty-mark">
                   <Icon name="sparkles" />
@@ -707,14 +490,18 @@ export default function ChatPage() {
                 accept=".pdf,.txt,.md,.csv,text/plain,application/pdf"
                 multiple
                 hidden
-                onChange={(e) => void onPickFiles(e)}
+                onChange={(e) => {
+                  const list = Array.from(e.target.files || []);
+                  e.target.value = "";
+                  onChooseFiles(list);
+                }}
               />
               <button
                 className="btn ghost icon-only"
                 type="button"
                 aria-label={t("attach")}
                 title={t("attach")}
-                disabled={loading || extracting || pending.length >= MAX_FILES}
+                disabled={loading || extracting || pending.length >= CHAT_MAX_FILES}
                 onClick={() => fileRef.current?.click()}
               >
                 <Icon name="paperclip" />
