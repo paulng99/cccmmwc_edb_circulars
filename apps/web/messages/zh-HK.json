@@ -31,6 +31,7 @@
     "hint": "預設帳號 admin / 000000（上線前請更改）",
     "error": "登入失敗，請檢查帳號密碼",
     "unreachable": "無法連線伺服器，請稍後再試",
+    "unreachableDetail": "無法連線 API（{host}，{reason}）。請確認 API 容器已啟動，並與網站在同一個 Docker 網絡。",
     "pointCollect": "自動收集通告與附件",
     "pointCollectDesc": "按排程爬取教育局通告系統及相關網站，新文件自動索引",
     "pointAsk": "有依據的智能問答",

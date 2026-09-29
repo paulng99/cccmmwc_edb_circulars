@@ -21,7 +21,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 ENV PORT=4000
+# Prefer IPv4. Node on Alpine otherwise tries unreachable IPv6 answers from Docker DNS.
+ENV NODE_OPTIONS=--dns-result-order=ipv4first
 # Docker network hostname of the API service. Override for a non-compose layout.
 ENV API_INTERNAL_URL=http://api:8008
+RUN echo "hosts: files dns" > /etc/nsswitch.conf
 EXPOSE 4000
 CMD ["node", "server.js"]

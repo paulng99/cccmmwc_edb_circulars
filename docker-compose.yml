@@ -124,6 +124,8 @@ services:
       # Reached from inside the web container, not from the visitor's browser.
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8008}
       NEXT_PUBLIC_DEFAULT_LOCALE: ${NEXT_PUBLIC_DEFAULT_LOCALE:-zh-HK}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "4000:4000"
     depends_on:

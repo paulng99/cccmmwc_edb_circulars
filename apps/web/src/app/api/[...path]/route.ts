@@ -1,54 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ApiProxyError, apiOrigins, proxyApiRequest } from "@/lib/api-proxy";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const HOP_BY_HOP = [
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailers",
-  "transfer-encoding",
-  "upgrade",
-  "host",
-  "content-encoding",
-  "content-length",
-];
-
-function internalApiOrigin(): string {
-  return (process.env.API_INTERNAL_URL || "http://127.0.0.1:8008").replace(/\/$/, "");
-}
+let preferredOrigin: string | null = null;
 
 async function proxy(req: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
-  const target = `${internalApiOrigin()}/api/${path.map((segment) => encodeURIComponent(segment)).join("/")}${req.nextUrl.search}`;
-  const headers = new Headers(req.headers);
-  for (const name of HOP_BY_HOP) headers.delete(name);
-  const host = req.headers.get("host");
-  if (host) headers.set("x-forwarded-host", host);
-  headers.set("x-forwarded-proto", req.nextUrl.protocol.replace(":", ""));
-
+  const suffix = `/api/${path.map((segment) => encodeURIComponent(segment)).join("/")}${req.nextUrl.search}`;
+  const origins = apiOrigins(process.env.API_INTERNAL_URL);
+  const ordered = preferredOrigin && origins.includes(preferredOrigin)
+    ? [preferredOrigin, ...origins.filter((origin) => origin !== preferredOrigin)]
+    : origins;
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   try {
-    const upstream = await fetch(target, {
+    const upstream = await proxyApiRequest({
+      origins: ordered,
+      path: suffix,
       method: req.method,
-      headers,
-      body: hasBody ? await req.arrayBuffer() : undefined,
-      redirect: "manual",
-      cache: "no-store",
+      headers: req.headers,
+      body: hasBody ? new Uint8Array(await req.arrayBuffer()) : undefined,
+      forwardedHost: req.headers.get("host"),
+      forwardedProto: req.nextUrl.protocol.replace(":", ""),
     });
-    const out = new Headers(upstream.headers);
-    for (const name of HOP_BY_HOP) out.delete(name);
-    return new Response(upstream.body, {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers: out,
-    });
-  } catch {
-    return NextResponse.json({ detail: "api_unreachable" }, { status: 502 });
+    preferredOrigin = upstream.origin;
+    return new Response(upstream.body, { status: upstream.status, headers: upstream.headers });
+  } catch (err) {
+    const failure = err instanceof ApiProxyError ? err : new ApiProxyError({ host: "API", reason: "unreachable" });
+    console.error(`API proxy failed: ${failure.host} ${failure.reason}`);
+    if (preferredOrigin === failure.host || preferredOrigin?.includes(failure.host)) preferredOrigin = null;
+    return NextResponse.json(
+      { detail: "api_unreachable", host: failure.host, reason: failure.reason },
+      { status: 502 },
+    );
   }
 }
 

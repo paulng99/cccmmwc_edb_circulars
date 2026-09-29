@@ -27,6 +27,17 @@ function authHeaders(token?: string | null): HeadersInit {
   return h;
 }
 
+export class ApiUnreachableError extends Error {
+  host: string;
+  reason: string;
+  constructor(host = "", reason = "") {
+    super("api_unreachable");
+    this.name = "ApiUnreachableError";
+    this.host = host;
+    this.reason = reason;
+  }
+}
+
 export async function login(username: string, password: string) {
   let res: Response;
   try {
@@ -36,9 +47,20 @@ export async function login(username: string, password: string) {
       body: JSON.stringify({ username, password }),
     });
   } catch {
-    throw new Error("api_unreachable");
+    throw new ApiUnreachableError();
   }
-  if (res.status === 502) throw new Error("api_unreachable");
+  if (res.status === 502) {
+    let host = "";
+    let reason = "";
+    try {
+      const data = await res.json();
+      if (typeof data?.host === "string") host = data.host;
+      if (typeof data?.reason === "string") reason = data.reason;
+    } catch {
+      /* ignore */
+    }
+    throw new ApiUnreachableError(host, reason);
+  }
   if (!res.ok) throw new Error("login_failed");
   return res.json() as Promise<{ access_token: string }>;
 }

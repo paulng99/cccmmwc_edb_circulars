@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { Link, useRouter } from "@/i18n/routing";
-import { login } from "@/lib/api";
+import { ApiUnreachableError, login } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Icon } from "@/components/Icon";
 
@@ -32,8 +32,13 @@ export default function LoginPage() {
       setToken(res.access_token);
       router.replace("/documents");
     } catch (err) {
-      const code = err instanceof Error ? err.message : "";
-      setError(code === "api_unreachable" ? t("unreachable") : t("error"));
+      if (err instanceof ApiUnreachableError && err.reason) {
+        setError(t("unreachableDetail", { host: err.host || "API", reason: err.reason }));
+      } else if (err instanceof ApiUnreachableError) {
+        setError(t("unreachable"));
+      } else {
+        setError(t("error"));
+      }
     } finally {
       setLoading(false);
     }

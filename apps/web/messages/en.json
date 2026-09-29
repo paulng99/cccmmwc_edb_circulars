@@ -31,6 +31,7 @@
     "hint": "Default admin / 000000 (change before production)",
     "error": "Sign-in failed. Check your credentials.",
     "unreachable": "Could not reach the server. Try again shortly.",
+    "unreachableDetail": "Could not reach the API ({host}, {reason}). Check that the API container is running on the same Docker network as the website.",
     "pointCollect": "Automatic collection",
     "pointCollectDesc": "Scheduled crawls of the EDB circular system and related sites, with new files indexed automatically",
     "pointAsk": "Grounded Q&A",
