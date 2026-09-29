@@ -25,7 +25,26 @@ celery_app.conf.beat_schedule = {
 
 
 def _run_async(coro: Any) -> Any:
-    return asyncio.run(coro)
+    """Run an async coroutine in a fresh event loop.
+
+    Celery prefork workers call this once per task. The module-level async
+    SQLAlchemy engine keeps a connection pool; connections created on loop N
+    cannot be reused on loop N+1 ("attached to a different loop"). Dispose the
+    pool before and after each run so every task gets a clean loop binding.
+    """
+    from app.core.db import engine
+
+    # Drop pooled connections tied to a previous (now closed) loop without
+    # awaiting their async close — that would fail with "Event loop is closed".
+    engine.sync_engine.dispose(close=False)
+
+    async def _wrapped() -> Any:
+        try:
+            return await coro
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(_wrapped())
 
 
 async def _refresh_runtime_settings(session) -> None:
