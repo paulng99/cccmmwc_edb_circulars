@@ -7,6 +7,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.services.runtime_settings import resolved_settings
+from app.services.usage import parse_ollama_usage, parse_openrouter_usage, record_usage
 
 
 class LlmClient(Protocol):
@@ -67,7 +68,9 @@ class OpenRouterClient:
             )
             resp.raise_for_status()
             data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            content = data["choices"][0]["message"]["content"]
+            await record_usage(parse_openrouter_usage(data, fallback_model=str(rs["openrouter_model"])))
+            return content
 
     async def _stream(self, headers: dict[str, str], payload: dict[str, Any], rs: dict[str, Any]) -> AsyncIterator[str]:
         async with httpx.AsyncClient(timeout=None) as client:
@@ -115,7 +118,9 @@ class OllamaClient:
         async with httpx.AsyncClient(timeout=300) as client:
             resp = await client.post(f"{rs['ollama_base_url']}/api/chat", json=payload)
             resp.raise_for_status()
-            content = resp.json()["message"]["content"]
+            data = resp.json()
+            content = data["message"]["content"]
+            await record_usage(parse_ollama_usage(data, model=str(rs["ollama_model"])))
             if stream:
 
                 async def _gen() -> AsyncIterator[str]:

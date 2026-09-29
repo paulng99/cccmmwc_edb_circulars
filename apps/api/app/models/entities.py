@@ -7,7 +7,9 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -149,6 +151,32 @@ class ChatSession(Base):
     title: Mapped[str] = mapped_column(String(255), default="New chat")
     knowledge_source: Mapped[str] = mapped_column(String(32), default="local")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ApiUsage(Base):
+    """One billed (or local) model/API call.
+
+    Classified by feature — what the app was doing — not by circular type.
+    """
+
+    __tablename__ = "api_usage"
+    __table_args__ = (Index("ix_api_usage_created_feature", "created_at", "feature"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    provider: Mapped[str] = mapped_column(String(32), index=True)  # openrouter | jina | ollama
+    feature: Mapped[str] = mapped_column(String(32), index=True)
+    model: Mapped[str] = mapped_column(String(128), default="")
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Numeric(14, 8), default=0)
+    # provider = billed amount from the API; estimate = public list rate; local = $0; unknown = tokens missing
+    cost_source: Mapped[str] = mapped_column(String(16), default="unknown")
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    request_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
 
 
 class ChatMessage(Base):

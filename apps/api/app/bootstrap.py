@@ -7,6 +7,7 @@ from app.core.config import get_settings
 from app.core.db import Base, engine
 from app.core.security import hash_password
 from app.models import (  # noqa: F401
+    ApiUsage,
     AppSetting,
     ChatMessage,
     ChatSession,

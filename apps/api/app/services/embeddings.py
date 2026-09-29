@@ -6,6 +6,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.services.runtime_settings import resolved_settings
+from app.services.usage import parse_jina_embed_usage, record_usage
 
 
 class EmbeddingBackend(Protocol):
@@ -43,7 +44,9 @@ class JinaEmbeddingBackend:
             resp.raise_for_status()
             data = resp.json()
             items = sorted(data["data"], key=lambda x: x["index"])
-            return [item["embedding"] for item in items]
+            vectors = [item["embedding"] for item in items]
+            await record_usage(parse_jina_embed_usage(data, model=str(rs["jina_embedding_model"])))
+            return vectors
 
 
 def get_embedding_backend() -> EmbeddingBackend:

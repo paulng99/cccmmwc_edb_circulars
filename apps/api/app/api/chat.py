@@ -11,6 +11,7 @@ from app.api.schemas import ChatRequest
 from app.core.db import get_db
 from app.models.entities import User
 from app.services.chat import answer_question
+from app.services.usage import usage_user
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -30,16 +31,17 @@ async def chat(
     session_id = uuid.UUID(body.session_id) if body.session_id else None
     log.info("chat start user=%s q_len=%s source=%s", user.username, len(body.question), ks)
     try:
-        result = await answer_question(
-            db,
-            user_id=user.id,
-            question=body.question,
-            knowledge_source=ks,  # type: ignore[arg-type]
-            session_id=session_id,
-            locale=body.locale,
-            programme=body.programme,
-            topic=body.topic,
-        )
+        with usage_user(user.id):
+            result = await answer_question(
+                db,
+                user_id=user.id,
+                question=body.question,
+                knowledge_source=ks,  # type: ignore[arg-type]
+                session_id=session_id,
+                locale=body.locale,
+                programme=body.programme,
+                topic=body.topic,
+            )
         log.info("chat done cites=%s", len(result.get("citations") or []))
         return result
     except Exception as exc:

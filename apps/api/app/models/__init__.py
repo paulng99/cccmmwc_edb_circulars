@@ -1,4 +1,5 @@
 from app.models.entities import (
+    ApiUsage,
     AppSetting,
     ChatMessage,
     ChatSession,
@@ -11,6 +12,7 @@ from app.models.entities import (
 )
 
 __all__ = [
+    "ApiUsage",
     "AppSetting",
     "User",
     "Source",

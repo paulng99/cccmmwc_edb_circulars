@@ -176,9 +176,9 @@ async def trigger_crawl(
         )
 
     if source_id:
-        async_result = crawl_source.delay(source_id)
+        async_result = crawl_source.delay(source_id, str(user.id))
     else:
-        async_result = crawl_all.delay()
+        async_result = crawl_all.delay(str(user.id))
     return {
         "ok": True,
         "started": True,
@@ -211,7 +211,7 @@ async def trigger_reindex(
             detail="A crawl or re-index job is already running",
         )
 
-    async_result = reindex_all.delay(scope)
+    async_result = reindex_all.delay(scope, str(user.id))
     return {
         "ok": True,
         "started": True,
@@ -244,13 +244,15 @@ async def trigger_classify(
 
     if sync:
         from app.services.classify import backfill_classifications
+        from app.services.usage import usage_user
 
-        result = await backfill_classifications(
-            db, use_llm=True, force_topics=force
-        )
+        with usage_user(user.id):
+            result = await backfill_classifications(
+                db, use_llm=True, force_topics=force
+            )
         return {"ok": True, "started": False, "sync": True, **result}
 
-    async_result = classify_documents.delay(force_topics=force, use_llm=True)
+    async_result = classify_documents.delay(force_topics=force, use_llm=True, user_id=str(user.id))
     return {
         "ok": True,
         "started": True,

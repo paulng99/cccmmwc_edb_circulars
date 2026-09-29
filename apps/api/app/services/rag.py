@@ -14,6 +14,7 @@ from app.services.dify import get_dify_sync
 from app.services.embeddings import get_embedding_backend
 from app.services.ingest import chunk_text, extract_text_from_pdf
 from app.services.storage import get_object_bytes
+from app.services.usage import usage_scope
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,8 @@ async def index_document(session: AsyncSession, document_id: uuid.UUID) -> dict[
         all_vectors: list[list[float]] = []
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i : i + batch_size]
-            all_vectors.extend(await embedder.embed(batch))
+            with usage_scope("embed_index"):
+                all_vectors.extend(await embedder.embed(batch))
 
         for idx, (content, vec) in enumerate(zip(chunks, all_vectors)):
             session.add(
@@ -157,7 +159,8 @@ async def _vector_retrieve(
 ) -> list[dict[str, Any]]:
     try:
         embedder = get_embedding_backend()
-        vectors = await embedder.embed([query])
+        with usage_scope("embed_query"):
+            vectors = await embedder.embed([query])
     except Exception:
         logger.exception("Query embedding failed; falling back to keyword search")
         return []

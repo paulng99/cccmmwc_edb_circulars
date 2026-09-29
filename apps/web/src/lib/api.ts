@@ -233,4 +233,51 @@ export async function suggestSources(
   return res.json() as Promise<{ suggestions: CrawlSource[]; dropped: number }>;
 }
 
+export type UsageBucket = {
+  calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+};
+
+export type UsageReport = {
+  from: string;
+  to: string;
+  timezone: string;
+  currency: string;
+  jina_usd_per_million: number;
+  totals: UsageBucket & { estimated_cost_usd: number; provider_cost_usd: number };
+  by_feature: Array<UsageBucket & { feature: string }>;
+  by_user: Array<
+    UsageBucket & {
+      user_id: string | null;
+      username: string | null;
+      by_feature: Array<UsageBucket & { feature: string }>;
+    }
+  >;
+  by_provider: Array<UsageBucket & { provider: string }>;
+  by_model: Array<UsageBucket & { provider: string; model: string }>;
+  by_day: Array<UsageBucket & { date: string }>;
+  recent: Array<{
+    created_at: string | null;
+    user_id: string | null;
+    username: string | null;
+    provider: string;
+    feature: string;
+    model: string;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    cost_usd: number;
+    cost_source: string;
+  }>;
+};
+
+export async function getUsage(token: string, days: number) {
+  const res = await fetch(`${API_URL}/api/usage?days=${days}`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error("usage_get_failed");
+  return res.json() as Promise<UsageReport>;
+}
+
 export { API_URL };

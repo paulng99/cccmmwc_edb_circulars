@@ -340,6 +340,13 @@ const PATHS = {
     </>
   ),
   "loader-circle": <path d="M21 12a9 9 0 1 1-6.219-8.56" />,
+  "bar-chart": (
+    <>
+      <line x1="12" x2="12" y1="20" y2="10" />
+      <line x1="18" x2="18" y1="20" y2="4" />
+      <line x1="6" x2="6" y1="20" y2="16" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof PATHS;

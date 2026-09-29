@@ -36,6 +36,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { href: "/documents", label: t("nav.documents"), match: "/documents", icon: "file-text" },
     { href: "/chat", label: t("nav.chat"), match: "/chat", icon: "message-square" },
     { href: "/status", label: t("nav.status"), match: "/status", icon: "activity" },
+    { href: "/usage", label: t("nav.usage"), match: "/usage", icon: "bar-chart" },
     { href: "/settings", label: t("nav.settings"), match: "/settings", icon: "settings" },
   ];
 

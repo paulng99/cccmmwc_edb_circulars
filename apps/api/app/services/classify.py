@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import Document
 from app.services.llm import get_llm_client
+from app.services.usage import usage_scope
 
 logger = logging.getLogger(__name__)
 
@@ -157,16 +158,17 @@ async def topics_via_llm(title: str, abstract: str, source_id: str) -> list[str]
     )
     try:
         llm = get_llm_client()
-        raw = await llm.chat(
-            [
-                {
-                    "role": "system",
-                    "content": "You output only valid JSON arrays of topic id strings.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            stream=False,
-        )
+        with usage_scope("classify"):
+            raw = await llm.chat(
+                [
+                    {
+                        "role": "system",
+                        "content": "You output only valid JSON arrays of topic id strings.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                stream=False,
+            )
         if not isinstance(raw, str):
             # Some clients may return an async iterator even when stream=False
             parts: list[str] = []

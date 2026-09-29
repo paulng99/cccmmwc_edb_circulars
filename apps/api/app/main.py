@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
-from app.api import auth, chat, documents, settings as settings_api, sources as sources_api, system
+from app.api import auth, chat, documents, settings as settings_api, sources as sources_api, system, usage as usage_api
 from app.bootstrap import bootstrap
 from app.core.config import get_settings
 from app.core.db import SessionLocal
@@ -53,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(settings_api.router)
     app.include_router(sources_api.router)
     app.include_router(system.router)
+    app.include_router(usage_api.router)
     return app
 
 

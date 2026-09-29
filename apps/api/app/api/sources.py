@@ -19,6 +19,7 @@ from app.services.pipeline import sync_sources_table
 from app.services.runtime_settings import resolved_settings
 from app.services.sources_config import SourceConfigError, load_sources, save_sources
 from app.services.sources_suggest import suggest_sources
+from app.services.usage import parse_jina_reader_usage, record_usage, usage_scope, usage_user
 
 router = APIRouter(prefix="/api/sources", tags=["sources"])
 logger = logging.getLogger(__name__)
@@ -71,19 +72,22 @@ async def _jina_search(query: str) -> str:
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(url, headers=headers)
         resp.raise_for_status()
+        with usage_scope("web_search"):
+            await record_usage(parse_jina_reader_usage(resp.text, getattr(resp, "headers", {})))
         return resp.text
 
 
 async def _llm_complete(prompt: str) -> str:
     llm = get_llm_client()
-    answer = await llm.chat(
-        [
-            {"role": "system", "content": "You output only a JSON array."},
-            {"role": "user", "content": prompt},
-        ],
-        stream=False,
-        reasoning=False,
-    )
+    with usage_scope("source_suggest"):
+        answer = await llm.chat(
+            [
+                {"role": "system", "content": "You output only a JSON array."},
+                {"role": "user", "content": prompt},
+            ],
+            stream=False,
+            reasoning=False,
+        )
     if not isinstance(answer, str):
         raise RuntimeError("LLM returned no text")
     return answer
@@ -100,14 +104,15 @@ async def suggest_sources_api(
     except SourceConfigError:
         existing = []
     try:
-        return await suggest_sources(
-            mode=body.mode,
-            query=body.query,
-            existing=existing,
-            jina_api_key=str(rs.get("jina_api_key") or ""),
-            search=_jina_search,
-            complete=_llm_complete,
-        )
+        with usage_user(user.id):
+            return await suggest_sources(
+                mode=body.mode,
+                query=body.query,
+                existing=existing,
+                jina_api_key=str(rs.get("jina_api_key") or ""),
+                search=_jina_search,
+                complete=_llm_complete,
+            )
     except SourceConfigError as exc:
         raise _http_from_config_error(exc) from exc
     except ValueError as exc:

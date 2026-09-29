@@ -66,6 +66,7 @@ async def test_jina_search_requests_titles_without_page_bodies(monkeypatch):
 
     class FakeResp:
         text = "{}"
+        headers: dict = {}
 
         def raise_for_status(self):
             return None
@@ -85,8 +86,12 @@ async def test_jina_search_requests_titles_without_page_bodies(monkeypatch):
             captured["headers"] = headers
             return FakeResp()
 
+    async def _no_usage(_fields):
+        return None
+
     monkeypatch.setattr("app.api.sources.httpx.AsyncClient", FakeClient)
     monkeypatch.setattr("app.api.sources.resolved_settings", lambda: {"jina_api_key": "secret"})
+    monkeypatch.setattr("app.api.sources.record_usage", _no_usage)
     text = await _jina_search("姊妹學校")
     assert text == "{}"
     assert captured["headers"]["X-Respond-With"] == "no-content"

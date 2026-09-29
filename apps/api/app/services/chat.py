@@ -9,6 +9,7 @@ from app.models.entities import ChatMessage, ChatSession
 from app.services.knowledge import get_dify_knowledge, get_local_knowledge
 from app.services.llm import get_llm_client
 from app.services.runtime_settings import build_system_prompt, get_merged
+from app.services.usage import usage_scope
 
 KnowledgeSource = Literal["local", "local_and_dify", "dify"]
 
@@ -154,7 +155,8 @@ async def answer_question(
     )
 
     llm = get_llm_client()
-    answer = await llm.chat(messages, stream=False)
+    with usage_scope("chat"):
+        answer = await llm.chat(messages, stream=False)
     assert isinstance(answer, str)
 
     session.add(ChatMessage(session_id=chat.id, role="user", content=q_display or "（僅系統提示）"))

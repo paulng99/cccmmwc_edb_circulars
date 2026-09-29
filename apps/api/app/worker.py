@@ -37,40 +37,46 @@ async def _refresh_runtime_settings(session) -> None:
 
 
 @celery_app.task(name="app.worker.crawl_all")
-def crawl_all() -> dict:
+def crawl_all(user_id: str | None = None) -> dict:
     from app.core.db import SessionLocal
     from app.services.pipeline import run_source_crawl
+    from app.services.usage import usage_user_ref
 
     async def _inner() -> dict:
         async with SessionLocal() as session:
             await _refresh_runtime_settings(session)
-            return await run_source_crawl(session)
+            with usage_user_ref(user_id):
+                return await run_source_crawl(session)
 
     return _run_async(_inner())
 
 
 @celery_app.task(name="app.worker.crawl_source")
-def crawl_source(source_id: str) -> dict:
+def crawl_source(source_id: str, user_id: str | None = None) -> dict:
     from app.core.db import SessionLocal
     from app.services.pipeline import run_source_crawl
+    from app.services.usage import usage_user_ref
 
     async def _inner() -> dict:
         async with SessionLocal() as session:
             await _refresh_runtime_settings(session)
-            return await run_source_crawl(session, source_id=source_id)
+            with usage_user_ref(user_id):
+                return await run_source_crawl(session, source_id=source_id)
 
     return _run_async(_inner())
 
 
 @celery_app.task(name="app.worker.reindex_all")
-def reindex_all(scope: str = "all") -> dict:
+def reindex_all(scope: str = "all", user_id: str | None = None) -> dict:
     from app.core.db import SessionLocal
     from app.services.reindex import run_reindex_all
+    from app.services.usage import usage_user_ref
 
     async def _inner() -> dict:
         async with SessionLocal() as session:
             await _refresh_runtime_settings(session)
-            return await run_reindex_all(session, scope=scope)
+            with usage_user_ref(user_id):
+                return await run_reindex_all(session, scope=scope)
 
     return _run_async(_inner())
 
@@ -91,15 +97,17 @@ def index_document_task(document_id: str) -> dict:
 
 
 @celery_app.task(name="app.worker.classify_documents")
-def classify_documents(force_topics: bool = False, use_llm: bool = True) -> dict:
+def classify_documents(force_topics: bool = False, use_llm: bool = True, user_id: str | None = None) -> dict:
     from app.core.db import SessionLocal
     from app.services.classify import backfill_classifications
+    from app.services.usage import usage_user_ref
 
     async def _inner() -> dict:
         async with SessionLocal() as session:
             await _refresh_runtime_settings(session)
-            return await backfill_classifications(
-                session, use_llm=use_llm, force_topics=force_topics
-            )
+            with usage_user_ref(user_id):
+                return await backfill_classifications(
+                    session, use_llm=use_llm, force_topics=force_topics
+                )
 
     return _run_async(_inner())
