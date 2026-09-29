@@ -148,13 +148,11 @@ export default function SettingsPage() {
   }
 
   function fieldLabel(key: string): string {
-    const label = tx(`fields.${key}`);
-    return label === `fields.${key}` ? key : label;
+    return t.has(`fields.${key}` as never) ? tx(`fields.${key}`) : key;
   }
 
   function fieldHelp(key: string): string | null {
-    const help = tx(`help.${key}`);
-    return help === `help.${key}` ? null : help;
+    return t.has(`help.${key}` as never) ? tx(`help.${key}`) : null;
   }
 
   function formatWarning(code: string): string {

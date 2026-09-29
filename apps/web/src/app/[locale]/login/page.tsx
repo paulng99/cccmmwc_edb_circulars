@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { Link, useRouter } from "@/i18n/routing";
 import { login } from "@/lib/api";
@@ -19,9 +19,9 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  if (token) {
-    router.replace("/documents");
-  }
+  useEffect(() => {
+    if (token) router.replace("/documents");
+  }, [token, router]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
