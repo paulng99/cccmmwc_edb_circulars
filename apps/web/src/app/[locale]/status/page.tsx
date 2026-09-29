@@ -73,6 +73,10 @@ const EVENT_I18N: Record<string, string> = {
   index_start: "eventIndexStart",
   index_ok: "eventIndexOk",
   index_fail: "eventIndexFail",
+  classify_start: "eventClassifyStart",
+  classify_ok: "eventClassifyOk",
+  classify_skip: "eventClassifySkip",
+  classify_fail: "eventClassifyFail",
   done: "eventDone",
   cancelled: "eventCancelled",
 };
@@ -80,18 +84,25 @@ const EVENT_I18N: Record<string, string> = {
 const EVENT_TONE: Record<string, string> = {
   download_ok: "green",
   index_ok: "green",
+  classify_ok: "green",
   done: "green",
   download_fail: "red",
   index_fail: "red",
+  classify_fail: "red",
   download_skip: "slate",
+  classify_skip: "slate",
   cancelled: "slate",
   download_start: "blue",
   index_start: "amber",
+  classify_start: "violet",
   discovering: "blue",
   page: "blue",
 };
 
 const REINDEX_SOURCE_ID = "system_reindex";
+const CLASSIFY_SOURCE_ID = "system_classify";
+
+type JobKind = "crawl" | "reindex" | "classify";
 
 function truncateUrl(url: string, max = 72) {
   if (url.length <= max) return url;
@@ -107,7 +118,7 @@ export default function StatusPage() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
-  const [jobKind, setJobKind] = useState<"crawl" | "reindex" | null>(null);
+  const [jobKind, setJobKind] = useState<JobKind | null>(null);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState("");
   const [showFailed, setShowFailed] = useState(false);
@@ -124,15 +135,20 @@ export default function StatusPage() {
     const runningRuns = s.recent_runs.filter((r) => r.status === "running");
     const running = Boolean(s.active) || runningRuns.length > 0;
     setBusy(running);
-    let kind: "crawl" | "reindex" | null = null;
+    let kind: JobKind | null = null;
     if (!running) {
       setStopping(false);
       setJobKind(null);
     } else {
-      const isReindex = runningRuns.some(
-        (r) => r.job_type === "reindex" || r.source_id === REINDEX_SOURCE_ID,
-      );
-      kind = isReindex ? "reindex" : "crawl";
+      if (runningRuns.some((r) => r.job_type === "classify" || r.source_id === CLASSIFY_SOURCE_ID)) {
+        kind = "classify";
+      } else if (
+        runningRuns.some((r) => r.job_type === "reindex" || r.source_id === REINDEX_SOURCE_ID)
+      ) {
+        kind = "reindex";
+      } else {
+        kind = "crawl";
+      }
       setJobKind(kind);
       if (runningRuns.some((r) => r.cancel_requested)) setStopping(true);
     }
@@ -147,7 +163,7 @@ export default function StatusPage() {
   }, []);
 
   const startPoll = useCallback(
-    (tok: string, kind: "crawl" | "reindex") => {
+    (tok: string, kind: JobKind) => {
       stopPoll();
       pollRef.current = setInterval(() => {
         refresh(tok)
@@ -156,7 +172,9 @@ export default function StatusPage() {
               stopPoll();
               setMsg((prev) => {
                 if (prev === t("stopping")) return t("cancelled");
-                return kind === "reindex" ? t("reindexDone") : t("crawlDone");
+                if (kind === "reindex") return t("reindexDone");
+                if (kind === "classify") return t("classifyDone");
+                return t("crawlDone");
               });
               setStopping(false);
               setJobKind(null);
@@ -202,7 +220,13 @@ export default function StatusPage() {
         setError(t("reindexBusy"));
         const status = await refresh(token).catch(() => null);
         if (status?.running && status.kind) {
-          setMsg(status.kind === "reindex" ? t("reindexing") : t("crawling"));
+          setMsg(
+            status.kind === "reindex"
+              ? t("reindexing")
+              : status.kind === "classify"
+                ? t("classifying")
+                : t("crawling"),
+          );
           startPoll(token, status.kind);
         } else {
           setBusy(false);
@@ -240,15 +264,43 @@ export default function StatusPage() {
   }
 
   async function onClassify() {
-    if (!token || busy) return;
+    if (!token || busy || actionLock.current) return;
+    actionLock.current = true;
     setError("");
+    setStopping(false);
+    setJobKind("classify");
     setMsg(t("classifying"));
+    setBusy(true);
     try {
       await triggerClassify(token, false);
-      setMsg(t("classifyStarted"));
-    } catch {
-      setError(t("classifyError"));
-      setMsg("");
+      await refresh(token);
+      startPoll(token, "classify");
+    } catch (e) {
+      if (e instanceof Error && e.message === "busy") {
+        setError(t("reindexBusy"));
+        const status = await refresh(token).catch(() => null);
+        if (status?.running && status.kind) {
+          setMsg(
+            status.kind === "reindex"
+              ? t("reindexing")
+              : status.kind === "classify"
+                ? t("classifying")
+                : t("crawling"),
+          );
+          startPoll(token, status.kind);
+        } else {
+          setBusy(false);
+          setJobKind(null);
+          setMsg("");
+        }
+      } else {
+        setBusy(false);
+        setJobKind(null);
+        setError(t("classifyError"));
+        setMsg("");
+      }
+    } finally {
+      actionLock.current = false;
     }
   }
 
@@ -301,6 +353,7 @@ export default function StatusPage() {
 
   const sourceName = (id: string) => {
     if (id === REINDEX_SOURCE_ID) return t("reindexJob");
+    if (id === CLASSIFY_SOURCE_ID) return t("classifyJob");
     const s = data?.sources.find((x) => x.id === id);
     if (!s) return id;
     return locale.startsWith("zh") ? s.name_zh_hk || s.name_en : s.name_en;
@@ -326,9 +379,25 @@ export default function StatusPage() {
   const currentLabel = (ev: CrawlEvent) => ev.title || (ev.url ? truncateUrl(ev.url) : "—");
 
   const isReindexRun = (r: Run) => r.job_type === "reindex" || r.source_id === REINDEX_SOURCE_ID;
+  const isClassifyRun = (r: Run) => r.job_type === "classify" || r.source_id === CLASSIFY_SOURCE_ID;
 
   const runCounts = (r: Run) =>
-    isReindexRun(r) ? (
+    isClassifyRun(r) ? (
+      <div className="run-counts">
+        <span>
+          {t("countTotal")} <b>{r.discovered}</b>
+        </span>
+        <span>
+          {t("countClassified")} <b>{r.downloaded}</b>
+        </span>
+        <span>
+          {t("countSkipped")} <b>{r.skipped ?? 0}</b>
+        </span>
+        <span>
+          {t("countFailed")} <b>{r.failed}</b>
+        </span>
+      </div>
+    ) : isReindexRun(r) ? (
       <div className="run-counts">
         <span>
           {t("countTotal")} <b>{r.discovered}</b>
@@ -385,9 +454,15 @@ export default function StatusPage() {
             {busy && jobKind === "reindex" ? <span className="spinner" /> : <Icon name="refresh-cw" />}
             <span>{busy && jobKind === "reindex" ? t("reindexingBtn") : t("reindex")}</span>
           </button>
-          <button className="btn secondary" type="button" disabled={busy} onClick={() => onClassify()} title={t("classify")}>
-            <Icon name="tags" />
-            <span>{t("classify")}</span>
+          <button
+            className={`btn secondary${busy && jobKind === "classify" ? " is-loading" : ""}`}
+            type="button"
+            disabled={busy}
+            onClick={() => onClassify()}
+            title={t("classify")}
+          >
+            {busy && jobKind === "classify" ? <span className="spinner" /> : <Icon name="tags" />}
+            <span>{busy && jobKind === "classify" ? t("classifyingBtn") : t("classify")}</span>
           </button>
           {busy ? (
             <button className="btn danger" type="button" disabled={stopping} onClick={() => onStop()} title={t("stop")}>
@@ -699,6 +774,7 @@ export default function StatusPage() {
                         {sourceName(r.source_id)}
                         <span className={`badge ${statusTone(r.status)}`}>{runStatusLabel(r.status)}</span>
                         {isReindexRun(r) ? <span className="badge sky">{t("reindexTag")}</span> : null}
+                        {isClassifyRun(r) ? <span className="badge violet">{t("classifyTag")}</span> : null}
                       </div>
                       {runCounts(r)}
                       {r.progress_message ? (

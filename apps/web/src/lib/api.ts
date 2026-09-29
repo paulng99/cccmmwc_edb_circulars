@@ -195,7 +195,10 @@ export async function triggerClassify(token: string, force = false) {
     method: "POST",
     headers: authHeaders(token),
   });
-  if (!res.ok) throw new Error("classify_failed");
+  if (!res.ok) {
+    if (res.status === 409) throw new Error("busy");
+    throw new Error("classify_failed");
+  }
   return res.json() as Promise<{ ok: boolean; started?: boolean; task_id?: string }>;
 }
 

@@ -21,6 +21,7 @@ type Doc = {
   status: string;
   language: string;
   file_size: number;
+  chunk_count?: number;
   index_error?: string | null;
   warning?: string | null;
 };
@@ -320,6 +321,10 @@ export default function DocumentDetailPage() {
                   <div>
                     <dt>{t("status")}</dt>
                     <dd>{statusLabelKey[doc.status] ? t(statusLabelKey[doc.status]) : doc.status}</dd>
+                  </div>
+                  <div>
+                    <dt>{t("chunks")}</dt>
+                    <dd>{doc.chunk_count ?? 0}</dd>
                   </div>
                   <div>
                     <dt>{t("fileSize")}</dt>

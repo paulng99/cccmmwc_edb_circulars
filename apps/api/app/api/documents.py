@@ -6,14 +6,14 @@ from typing import Annotated, Optional
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.api.schemas import DocumentGroupOut, DocumentOut, DocumentVariantOut
 from app.collectors.circular_meta import is_language_label
 from app.core.db import get_db
-from app.models.entities import Document, User
+from app.models.entities import Document, DocumentChunk, User
 from app.services.classify import PROGRAMMES, TOPICS, programme_for
 from app.services.storage import get_object_bytes
 
@@ -43,7 +43,7 @@ def _doc_topics(doc: Document) -> list[str]:
     return [t for t in raw if t in TOPICS]
 
 
-def _to_out(doc: Document) -> DocumentOut:
+def _to_out(doc: Document, *, chunk_count: int = 0) -> DocumentOut:
     extra = doc.extra or {}
     return DocumentOut(
         id=str(doc.id),
@@ -56,6 +56,7 @@ def _to_out(doc: Document) -> DocumentOut:
         file_url=doc.file_url,
         status=doc.status,
         file_size=doc.file_size,
+        chunk_count=chunk_count,
         programme=_doc_programme(doc),
         topics=_doc_topics(doc),
         index_error=(extra.get("index_error") or None),
@@ -229,7 +230,13 @@ async def get_document(
     doc = await db.get(Document, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    return _to_out(doc)
+    chunk_count = (
+        await db.scalar(
+            select(func.count()).select_from(DocumentChunk).where(DocumentChunk.document_id == doc.id)
+        )
+        or 0
+    )
+    return _to_out(doc, chunk_count=int(chunk_count))
 
 
 @router.get("/{document_id}/file")

@@ -48,6 +48,7 @@ class DocumentOut(BaseModel):
     file_url: str | None
     status: str
     file_size: int
+    chunk_count: int = 0
     programme: str = "other"
     topics: list[str] = []
     index_error: str | None = None

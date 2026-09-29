@@ -5,16 +5,21 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Document
+from app.models.entities import CrawlRun, Document, Source
+from app.services.crawl_events import emit_event
 from app.services.llm import get_llm_client
+from app.services.pipeline import _save_run_progress
 from app.services.usage import usage_scope
 
 logger = logging.getLogger(__name__)
+
+CLASSIFY_SOURCE_ID = "system_classify"
 
 PROGRAMMES = frozenset({"circular", "sister_school", "lwlssg", "other"})
 TOPICS = frozenset(
@@ -245,6 +250,24 @@ async def apply_classification(
     return {"programme": prog, "topics": topics, "topics_skipped": False}
 
 
+async def ensure_classify_source(session: AsyncSession) -> None:
+    src = await session.get(Source, CLASSIFY_SOURCE_ID)
+    if src:
+        return
+    session.add(
+        Source(
+            id=CLASSIFY_SOURCE_ID,
+            name_en="Classify documents",
+            name_zh_hk="文件分類（計劃＋主題）",
+            enabled=False,
+            type="system",
+            base_url="",
+            config={},
+        )
+    )
+    await session.commit()
+
+
 async def backfill_classifications(
     session: AsyncSession,
     *,
@@ -252,26 +275,163 @@ async def backfill_classifications(
     force_topics: bool = False,
     batch_size: int = 50,
 ) -> dict[str, Any]:
-    """Scan all documents: set programme; classify topics when missing."""
+    """Scan all documents: set programme; classify topics when missing.
+
+    Creates a CrawlRun so the status UI can poll live progress (like re-index).
+    """
+    await ensure_classify_source(session)
+
+    running = await session.scalar(select(CrawlRun).where(CrawlRun.status == "running"))
+    if running:
+        return {
+            "ok": False,
+            "reason": "already_running",
+            "run_id": str(running.id),
+            "total": 0,
+            "updated": 0,
+            "topics_classified": 0,
+            "use_llm": use_llm,
+            "force_topics": force_topics,
+        }
+
     rows = list((await session.scalars(select(Document).order_by(Document.created_at))).all())
+    total = len(rows)
+
+    run = CrawlRun(
+        source_id=CLASSIFY_SOURCE_ID,
+        status="running",
+        discovered=total,
+        downloaded=0,
+        skipped=0,
+        failed=0,
+        progress_message=f"Classifying {total} documents…",
+    )
+    session.add(run)
+    await session.commit()
+    await session.refresh(run)
+
+    await emit_event(
+        session,
+        run_id=run.id,
+        event_type="discovering",
+        title=f"{total} documents to classify",
+        source_id=CLASSIFY_SOURCE_ID,
+    )
+
     updated = 0
     topics_set = 0
-    for i, doc in enumerate(rows):
-        before_topics = list(doc.topics or [])
-        result = await apply_classification(doc, use_llm=use_llm, force_topics=force_topics)
-        updated += 1
-        if not result.get("topics_skipped"):
-            topics_set += 1
-        if (i + 1) % batch_size == 0:
+    skipped = 0
+    failed = 0
+    cancelled = False
+
+    for i, doc in enumerate(rows, start=1):
+        run = await session.get(CrawlRun, run.id)
+        if run and run.cancel_requested:
+            run.status = "cancelled"
+            run.progress_message = "Cancelled by user"
+            run.finished_at = datetime.now(timezone.utc)
+            await emit_event(
+                session,
+                run_id=run.id,
+                event_type="cancelled",
+                source_id=CLASSIFY_SOURCE_ID,
+            )
             await session.commit()
-            logger.info("classify backfill progress %s/%s", i + 1, len(rows))
-        # Avoid rewriting identical programme-only updates flooding logs
-        _ = before_topics
-    await session.commit()
+            cancelled = True
+            break
+
+        label = (doc.circular_no or doc.title or str(doc.id))[:120]
+        await emit_event(
+            session,
+            run_id=run.id,
+            event_type="classify_start",
+            url=doc.file_url,
+            title=label,
+            source_id=doc.source_id,
+        )
+
+        try:
+            result = await apply_classification(doc, use_llm=use_llm, force_topics=force_topics)
+            updated += 1
+            if result.get("topics_skipped"):
+                skipped += 1
+                await emit_event(
+                    session,
+                    run_id=run.id,
+                    event_type="classify_skip",
+                    url=doc.file_url,
+                    title=label,
+                    source_id=doc.source_id,
+                )
+            else:
+                topics_set += 1
+                await emit_event(
+                    session,
+                    run_id=run.id,
+                    event_type="classify_ok",
+                    url=doc.file_url,
+                    title=label,
+                    source_id=doc.source_id,
+                )
+        except Exception as exc:
+            failed += 1
+            logger.exception("classify failed for doc=%s", doc.id)
+            await emit_event(
+                session,
+                run_id=run.id,
+                event_type="classify_fail",
+                url=doc.file_url,
+                title=f"{label}: {exc}"[:200],
+                source_id=doc.source_id,
+            )
+
+        if i % 2 == 0 or i == total or i % batch_size == 0:
+            await _save_run_progress(
+                session,
+                run,
+                discovered=total,
+                downloaded=topics_set,
+                skipped=skipped,
+                failed=failed,
+                message=(
+                    f"Classified {topics_set}/{total} · "
+                    f"Skipped {skipped} · Failed {failed}"
+                ),
+            )
+            logger.info("classify backfill progress %s/%s", i, total)
+
+    if not cancelled:
+        run = await session.get(CrawlRun, run.id)
+        if run:
+            run.status = "completed"
+            run.discovered = total
+            run.downloaded = topics_set
+            run.skipped = skipped
+            run.failed = failed
+            run.progress_message = (
+                f"Done: classified {topics_set}, skipped {skipped}, failed {failed}"
+            )
+            run.finished_at = datetime.now(timezone.utc)
+            await emit_event(
+                session,
+                run_id=run.id,
+                event_type="done",
+                title=(
+                    f"Classified {topics_set} · Skipped {skipped} · Failed {failed}"
+                ),
+                source_id=CLASSIFY_SOURCE_ID,
+            )
+            await session.commit()
+
     return {
-        "total": len(rows),
+        "ok": True,
+        "cancelled": cancelled,
+        "run_id": str(run.id) if run else None,
+        "total": total,
         "updated": updated,
         "topics_classified": topics_set,
+        "skipped": skipped,
+        "failed": failed,
         "use_llm": use_llm,
         "force_topics": force_topics,
     }

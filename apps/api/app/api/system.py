@@ -12,8 +12,11 @@ from app.api.deps import get_current_user
 from app.core.db import get_db
 from app.models.entities import CrawlRun, Document, Source, User
 from app.services.crawl_events import list_recent, pick_current, request_cancel
+from app.services.classify import CLASSIFY_SOURCE_ID
 from app.services.reindex import REINDEX_SOURCE_ID
 from app.services.runtime_settings import resolved_settings
+
+_SYSTEM_SOURCE_IDS = frozenset({REINDEX_SOURCE_ID, CLASSIFY_SOURCE_ID})
 
 router = APIRouter(prefix="/api", tags=["system"])
 
@@ -41,10 +44,14 @@ async def ingest_status(
     ) or 0
     failed = await db.scalar(select(func.count()).select_from(Document).where(Document.status == "failed")) or 0
     stored = await db.scalar(select(func.count()).select_from(Document).where(Document.status == "stored")) or 0
-    sources = (await db.scalars(select(Source).where(Source.id != REINDEX_SOURCE_ID))).all()
+    sources = (
+        await db.scalars(select(Source).where(Source.id.notin_(_SYSTEM_SOURCE_IDS)))
+    ).all()
+    from app.services.classify import ensure_classify_source
     from app.services.reindex import ensure_reindex_source
 
     await ensure_reindex_source(db)
+    await ensure_classify_source(db)
     last_runs = (
         await db.scalars(select(CrawlRun).order_by(CrawlRun.started_at.desc()).limit(15))
     ).all()
@@ -74,7 +81,12 @@ async def ingest_status(
 
 async def _run_status_payload(db: AsyncSession, run: CrawlRun) -> dict:
     events = await list_recent(db, run.id) if run.status == "running" else []
-    job_type = "reindex" if run.source_id == REINDEX_SOURCE_ID else "crawl"
+    if run.source_id == REINDEX_SOURCE_ID:
+        job_type = "reindex"
+    elif run.source_id == CLASSIFY_SOURCE_ID:
+        job_type = "classify"
+    else:
+        job_type = "crawl"
     return {
         "id": str(run.id),
         "source_id": run.source_id,
@@ -130,6 +142,7 @@ async def stop_crawl(
             "app.worker.crawl_all",
             "app.worker.crawl_source",
             "app.worker.reindex_all",
+            "app.worker.classify_documents",
         }
         for bucket in (active, reserved):
             for _worker, tasks in bucket.items():
@@ -239,8 +252,15 @@ async def trigger_classify(
     force: bool = False,
     sync: bool = False,
 ) -> dict:
-    """Backfill programme + topics. Default: Celery async; sync=1 runs inline (rules+LLM)."""
+    """Backfill programme + topics with live CrawlRun progress (like re-index)."""
     from app.worker import classify_documents
+
+    running = await db.scalar(select(CrawlRun).where(CrawlRun.status == "running"))
+    if running:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A crawl, re-index, or classify job is already running",
+        )
 
     if sync:
         from app.services.classify import backfill_classifications
@@ -252,7 +272,9 @@ async def trigger_classify(
             )
         return {"ok": True, "started": False, "sync": True, **result}
 
-    async_result = classify_documents.delay(force_topics=force, use_llm=True, user_id=str(user.id))
+    async_result = classify_documents.delay(
+        force_topics=force, use_llm=True, user_id=str(user.id)
+    )
     return {
         "ok": True,
         "started": True,
