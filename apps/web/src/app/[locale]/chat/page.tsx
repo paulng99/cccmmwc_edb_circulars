@@ -55,6 +55,27 @@ const KNOWLEDGE_OPTIONS: { value: KnowledgeSource; key: string }[] = [
 ];
 
 const SUGGESTED_PROMPT_KEYS = ["prompt1", "prompt2", "prompt3", "prompt4"] as const;
+const SESSION_KEY = "edb_chat_session";
+
+function storedSessionId() {
+  if (typeof window === "undefined") return null;
+  const fromUrl = new URLSearchParams(window.location.search).get("session");
+  if (fromUrl) return fromUrl;
+  return sessionStorage.getItem(SESSION_KEY);
+}
+
+function rememberSession(id: string | null) {
+  if (typeof window === "undefined") return;
+  if (id) sessionStorage.setItem(SESSION_KEY, id);
+  else sessionStorage.removeItem(SESSION_KEY);
+  const url = new URL(window.location.href);
+  if (id) url.searchParams.set("session", id);
+  else url.searchParams.delete("session");
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (next !== current) window.history.replaceState(window.history.state, "", next);
+}
+
 const MAX_FILES = 3;
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 
@@ -225,7 +246,7 @@ export default function ChatPage() {
           { signal: controller.signal },
         );
         if (gen !== viewGen.current) return;
-        setSessionId(res.session_id);
+        setActiveSession(res.session_id);
         setMsgs((m) => [
           ...m,
           { id: newId(), role: "assistant", content: res.answer, citations: res.citations || [] },
@@ -254,6 +275,11 @@ export default function ChatPage() {
     [token, loading, pending, sessionId, knowledge, locale, programme, topic, t, refreshSessions],
   );
 
+  function setActiveSession(id: string | null) {
+    rememberSession(id);
+    setSessionId(id);
+  }
+
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     void ask(question);
@@ -269,7 +295,7 @@ export default function ChatPage() {
     setLoading(false);
     setLoadingPromptOnly(false);
     setMsgs([]);
-    setSessionId(null);
+    setActiveSession(null);
     setQuestion("");
     setPending([]);
     setAttachError(null);
@@ -288,7 +314,7 @@ export default function ChatPage() {
     if (loading) abortRef.current?.abort();
     setLoading(false);
     setLoadingPromptOnly(false);
-    setSessionId(id);
+    setActiveSession(id);
     setMsgs([]);
     setQuestion("");
     setPending([]);
@@ -315,6 +341,14 @@ export default function ChatPage() {
       setMsgs([{ id: newId(), role: "assistant", content: t("historyLoadError"), error: true }]);
     }
   }
+
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (!token || restoredRef.current) return;
+    restoredRef.current = true;
+    const id = storedSessionId();
+    if (id) void openSession(id);
+  }, [token]);
 
   async function onDelete(id: string) {
     if (!token) return;

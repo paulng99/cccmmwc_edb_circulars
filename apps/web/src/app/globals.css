@@ -285,6 +285,12 @@ code {
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
 }
 
+.app:has(.chat-page) {
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
 .sidebar {
   position: sticky;
   top: 0;
@@ -529,15 +535,23 @@ code {
 .main:has(.chat-page) {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
+  max-height: 100vh;
+  overflow: hidden;
 }
 
 .main:has(.chat-page) .chat-page {
   width: min(1440px, 100%);
   flex: 1;
   min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.chat-page > .page-head {
+  flex: none;
 }
 
 /* Boot splash while auth state is resolving */
@@ -1726,7 +1740,7 @@ code {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: min(72vh, 820px);
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -2211,7 +2225,16 @@ code {
   gap: 0.9rem;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
   align-items: stretch;
+}
+
+.chat-workspace > .chat-history,
+.chat-workspace > .chat,
+.chat-workspace > .chat-doc-panel {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .chat-workspace.has-preview {
@@ -2266,7 +2289,11 @@ code {
 }
 
 .chat-history-list {
-  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 0.4rem;
   display: flex;
   flex-direction: column;
@@ -3365,11 +3392,14 @@ input[type="checkbox"] {
   }
 
   .main:has(.chat-page) {
-    min-height: calc(100vh - var(--header-h));
+    height: calc(100vh - var(--header-h));
+    max-height: calc(100vh - var(--header-h));
+    min-height: 0;
+    overflow: hidden;
   }
 
   .chat {
-    min-height: calc(100vh - var(--header-h) - var(--tabbar-h) - 9rem);
+    min-height: 0;
   }
 
   .chat-history-toggle,
