@@ -76,6 +76,28 @@ async def init_db() -> None:
                 "ON documents (programme)"
             )
         )
+        await conn.execute(
+            text(
+                "ALTER TABLE chat_sessions "
+                "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE chat_messages "
+                "ADD COLUMN IF NOT EXISTS attachments JSONB"
+            )
+        )
+        await conn.execute(
+            text(
+                "UPDATE chat_sessions AS s "
+                "SET updated_at = COALESCE("
+                "  (SELECT MAX(m.created_at) FROM chat_messages AS m WHERE m.session_id = s.id),"
+                "  s.created_at,"
+                "  NOW()"
+                ")"
+            )
+        )
 
 
 async def seed_admin(session: AsyncSession) -> None:

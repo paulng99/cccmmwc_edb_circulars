@@ -70,6 +70,7 @@ export async function chatAsk(
     locale?: string;
     programme?: string | null;
     topic?: string | null;
+    attachments?: { filename: string; text: string }[];
   },
   opts?: { timeoutMs?: number; signal?: AbortSignal },
 ) {
@@ -99,6 +100,67 @@ export async function chatAsk(
     clearTimeout(timer);
     opts?.signal?.removeEventListener("abort", onExternalAbort);
   }
+}
+
+export type ChatSessionSummary = {
+  id: string;
+  title: string;
+  knowledge_source: KnowledgeSource;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type ChatAttachmentMeta = { filename: string; char_count: number };
+
+export type ChatHistoryMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  citations?: unknown[];
+  attachments?: ChatAttachmentMeta[];
+  created_at: string | null;
+};
+
+async function errorCode(res: Response, fallback: string) {
+  try {
+    const data = await res.json();
+    if (typeof data?.detail === "string") return data.detail;
+  } catch {
+    /* ignore */
+  }
+  return fallback;
+}
+
+export async function listChatSessions(token: string) {
+  const res = await fetch(`${API_URL}/api/chat/sessions`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error(await errorCode(res, "history_failed"));
+  return res.json() as Promise<{ items: ChatSessionSummary[] }>;
+}
+
+export async function getChatSession(token: string, sessionId: string) {
+  const res = await fetch(`${API_URL}/api/chat/sessions/${sessionId}`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error(await errorCode(res, "history_failed"));
+  return res.json() as Promise<ChatSessionSummary & { messages: ChatHistoryMessage[] }>;
+}
+
+export async function deleteChatSession(token: string, sessionId: string) {
+  const res = await fetch(`${API_URL}/api/chat/sessions/${sessionId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error(await errorCode(res, "history_failed"));
+}
+
+export async function extractChatFile(token: string, file: File) {
+  const body = new FormData();
+  body.append("file", file);
+  const res = await fetch(`${API_URL}/api/chat/extract`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body,
+  });
+  if (!res.ok) throw new Error(await errorCode(res, "attach_failed"));
+  return res.json() as Promise<{ filename: string; text: string; char_count: number }>;
 }
 
 export async function triggerClassify(token: string, force = false) {

@@ -151,6 +151,7 @@ class ChatSession(Base):
     title: Mapped[str] = mapped_column(String(255), default="New chat")
     knowledge_source: Mapped[str] = mapped_column(String(32), default="local")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ApiUsage(Base):
@@ -189,4 +190,5 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(16))
     content: Mapped[str] = mapped_column(Text)
     citations: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    attachments: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

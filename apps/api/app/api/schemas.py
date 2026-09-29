@@ -22,6 +22,11 @@ class UserOut(BaseModel):
     auth_provider: str
 
 
+class ChatAttachmentIn(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    text: str = Field(default="", max_length=20000)
+
+
 class ChatRequest(BaseModel):
     question: str = Field(default="", max_length=4000)
     session_id: str | None = None
@@ -29,6 +34,7 @@ class ChatRequest(BaseModel):
     locale: str = "zh-HK"
     programme: str | None = None
     topic: str | None = None
+    attachments: list[ChatAttachmentIn] = Field(default_factory=list, max_length=3)
 
 
 class DocumentOut(BaseModel):
