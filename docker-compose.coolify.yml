@@ -3,6 +3,9 @@
 # Coolify: set Compose files to both docker-compose.yml and this file.
 # Route via Coolify proxy: web → 4000. The web container proxies /api to http://api:8008.
 # Do not publish 8008. Set NEXT_PUBLIC_API_URL only if the browser must call a separate public API URL.
+#
+# Replace host bind ./config with a named volume. On Coolify, relative binds often
+# mount empty and hide the image's COPY'd /config/sources.yaml.
 
 services:
   db:
@@ -15,8 +18,23 @@ services:
     ports: !reset []
     expose:
       - "8008"
+    volumes: !override
+      - configdata:/config
+      - filedata:/data/files
+
+  worker:
+    volumes: !override
+      - configdata:/config:ro
+      - filedata:/data/files
+
+  beat:
+    volumes: !override
+      - configdata:/config:ro
 
   web:
     ports: !reset []
     expose:
       - "4000"
+
+volumes:
+  configdata:

@@ -7,12 +7,21 @@ import yaml
 
 from app.core.config import get_settings
 
+# Baked into the image; not covered by the /config volume mount.
+BUNDLED_SOURCES_CONFIG = Path("/opt/default-config/sources.yaml")
 
-def resolve_sources_config_path(configured: str, *, start: Path | None = None) -> Path:
+
+def resolve_sources_config_path(
+    configured: str,
+    *,
+    start: Path | None = None,
+    bundled: Path | None = None,
+) -> Path:
     """Resolve sources.yaml for Docker (/config/...) and local checkout layouts.
 
     Docker copies code under /app/app/... so Path.parents[4] does not exist.
-    Walk ancestors instead of using a fixed parent index.
+    Walk ancestors instead of using a fixed parent index. Coolify (and empty
+    bind mounts) can hide /config; fall back to the image-bundled copy.
     """
     path = Path(configured)
     if path.exists():
@@ -24,9 +33,13 @@ def resolve_sources_config_path(configured: str, *, start: Path | None = None) -
         if candidate.exists():
             return candidate
 
+    bundled_path = BUNDLED_SOURCES_CONFIG if bundled is None else bundled
+    if bundled_path.exists():
+        return bundled_path
+
     raise FileNotFoundError(
         f"sources config not found at {path} "
-        f"(also searched ancestors of {here} for config/sources.yaml)"
+        f"(also searched ancestors of {here} and {bundled_path})"
     )
 
 
