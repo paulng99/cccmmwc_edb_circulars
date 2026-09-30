@@ -191,6 +191,8 @@ class SiteAttachmentsCollector:
         seen_files: set[str] = set()
         queue: list[str] = list(seeds)
         items: list[DiscoveredItem] = []
+        pages_ok = 0
+        last_fetch_error: Exception | None = None
 
         async with httpx.AsyncClient(headers=headers, timeout=60, follow_redirects=True) as client:
             while queue and len(seen_pages) < max_pages:
@@ -203,6 +205,7 @@ class SiteAttachmentsCollector:
                 seen_pages.add(url)
                 try:
                     resp = await client.get(url)
+                    pages_ok += 1
                     if resp.status_code >= 400:
                         continue
                     ctype = resp.headers.get("content-type", "")
@@ -245,9 +248,12 @@ class SiteAttachmentsCollector:
                                     queue.append(href.split("#")[0])
                             else:
                                 queue.append(href.split("#")[0])
-                except Exception:
+                except Exception as exc:
+                    last_fetch_error = exc
                     continue
                 await asyncio.sleep(rate)
+        if pages_ok == 0 and last_fetch_error is not None:
+            raise last_fetch_error
         return items
 
 

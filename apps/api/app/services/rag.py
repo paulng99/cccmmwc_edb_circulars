@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -17,6 +18,7 @@ from app.services.storage import get_object_bytes
 from app.services.usage import usage_scope
 
 logger = logging.getLogger(__name__)
+_PDF_EXTRACT_TIMEOUT_SECONDS = 90
 
 _VALID_PROGRAMMES = frozenset({"circular", "sister_school", "lwlssg", "other"})
 _VALID_TOPICS = frozenset(
@@ -42,7 +44,12 @@ async def index_document(session: AsyncSession, document_id: uuid.UUID) -> dict[
     try:
         raw = get_object_bytes(doc.storage_key)
         if doc.mime_type == "application/pdf" or (doc.storage_key or "").lower().endswith(".pdf"):
-            text = extract_text_from_pdf(raw)
+            # pypdf can block forever on a bad file. Run it off the event loop
+            # so one document cannot freeze the crawl progress bar.
+            text = await asyncio.wait_for(
+                asyncio.to_thread(extract_text_from_pdf, raw),
+                timeout=_PDF_EXTRACT_TIMEOUT_SECONDS,
+            )
         else:
             text = raw.decode("utf-8", errors="ignore")
         chunks = chunk_text(text)

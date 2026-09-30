@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_ready
 
 from app.core.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 celery_app = Celery(
     "edb_circulars",
@@ -45,6 +48,25 @@ def _run_async(coro: Any) -> Any:
             await engine.dispose()
 
     return asyncio.run(_wrapped())
+
+
+@worker_ready.connect
+def _close_orphaned_crawl_runs(**_kwargs: object) -> None:
+    """A killed worker leaves CrawlRun.status='running'. Close those rows."""
+    from app.core.db import SessionLocal
+    from app.services.crawl_events import ORPHAN_RUN_REASON, close_orphaned_runs
+
+    async def _inner() -> int:
+        async with SessionLocal() as session:
+            return await close_orphaned_runs(session, reason=ORPHAN_RUN_REASON)
+
+    try:
+        closed = _run_async(_inner())
+    except Exception:
+        logger.exception("failed to close orphaned crawl runs")
+        return
+    if closed:
+        logger.warning("closed %s orphaned crawl run(s) after worker start", closed)
 
 
 async def _refresh_runtime_settings(session) -> None:

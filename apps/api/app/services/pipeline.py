@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import mimetypes
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
@@ -12,10 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.collectors.base import DiscoveredItem, get_collector
 from app.collectors.registry import get_enabled_sources, load_sources_config
 from app.models.entities import CrawlRun, Document, Source
-from app.services.crawl_events import emit_event
+from app.services.crawl_events import emit_event, format_exception
 from app.services.rag import index_document
 from app.services.runtime_settings import resolved_settings
 from app.services.storage import content_hash, put_object
+
+logger = logging.getLogger(__name__)
 
 
 async def sync_sources_table(session: AsyncSession) -> None:
@@ -307,7 +310,18 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
                             source_id=cfg["id"],
                         )
                         if doc.status in ("stored", "failed"):
+                            await _save_run_progress(
+                                session,
+                                run,
+                                discovered=discovered,
+                                downloaded=downloaded,
+                                skipped=skipped,
+                                failed=failed,
+                                message=f"[{i}/{discovered}] indexing {label}",
+                            )
+                            run = await session.get(CrawlRun, run.id) or run
                             result = await index_document(session, doc.id)
+                            run = await session.get(CrawlRun, run.id) or run
                             if not result.get("ok"):
                                 failed += 1
                     else:
@@ -321,6 +335,7 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
                             source_id=cfg["id"],
                         )
                 except Exception:
+                    logger.exception("crawl item failed: %s", label)
                     await session.rollback()
                     failed += 1
                     await emit_event(
@@ -359,12 +374,14 @@ async def run_source_crawl(session: AsyncSession, source_id: str | None = None) 
                 if src:
                     src.last_crawl_at = datetime.now(timezone.utc)
         except Exception as exc:  # noqa: BLE001
+            logger.exception("crawl source failed: %s", cfg["id"])
+            detail = format_exception(exc)
             await session.rollback()
             run = await session.get(CrawlRun, run.id)
             if run:
                 run.status = "failed"
-                run.error_message = str(exc)[:4000]
-                run.progress_message = f"Failed: {exc}"[:2000]
+                run.error_message = detail[:4000]
+                run.progress_message = f"Failed: {detail}"[:2000]
             failed += 1
         if run:
             run.discovered = discovered

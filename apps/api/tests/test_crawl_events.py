@@ -4,7 +4,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.crawl_events import emit_event, list_recent, pick_current, request_cancel
+from app.services.crawl_events import (
+    close_orphaned_runs,
+    emit_event,
+    format_exception,
+    list_recent,
+    pick_current,
+    request_cancel,
+)
 
 
 def test_pick_current_prefers_download_start():
@@ -111,6 +118,31 @@ async def test_request_cancel_specific_run():
     assert count == 1
 
 
+def test_format_exception_keeps_type_when_message_is_empty():
+    cause = ConnectionError("temporary failure in name resolution")
+    exc = OSError()
+    exc.__cause__ = cause
+    text = format_exception(exc)
+    assert text.startswith("OSError")
+    assert "temporary failure in name resolution" in text
+
+
+@pytest.mark.asyncio
+async def test_close_orphaned_runs_fails_running_rows():
+    session = AsyncMock()
+    result = MagicMock()
+    result.rowcount = 1
+    session.execute = AsyncMock(return_value=result)
+
+    count = await close_orphaned_runs(session, reason="Interrupted by service restart")
+    assert count == 1
+    session.commit.assert_awaited_once()
+    stmt = session.execute.await_args.args[0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+    assert "UPDATE crawl_runs" in compiled
+    assert "crawl_runs.status = :status_1" in compiled
+
+
 @pytest.mark.asyncio
 async def test_request_cancel_none_running():
     session = AsyncMock()
@@ -175,7 +207,10 @@ async def test_run_source_crawl_honours_cancel(
             return None
         return None
 
+    scalars_result = MagicMock()
+    scalars_result.all.return_value = []
     session = AsyncMock()
+    session.scalars = AsyncMock(return_value=scalars_result)
     session.get = AsyncMock(side_effect=fake_get)
     session.commit = AsyncMock()
     session.refresh = AsyncMock()

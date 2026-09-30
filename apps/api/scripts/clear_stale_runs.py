@@ -1,26 +1,14 @@
 """Mark stale running crawl runs as failed after a deploy."""
 import asyncio
-from datetime import datetime, timezone
-
-from sqlalchemy import select, update
 
 from app.core.db import SessionLocal
-from app.models.entities import CrawlRun
+from app.services.crawl_events import ORPHAN_RUN_REASON, close_orphaned_runs
 
 
 async def main() -> None:
     async with SessionLocal() as session:
-        result = await session.execute(
-            update(CrawlRun)
-            .where(CrawlRun.status == "running")
-            .values(
-                status="failed",
-                error_message="Interrupted by service restart — please Crawl again",
-                finished_at=datetime.now(timezone.utc),
-            )
-        )
-        await session.commit()
-        print("updated", result.rowcount)
+        updated = await close_orphaned_runs(session, reason=ORPHAN_RUN_REASON)
+        print("updated", updated)
 
 
 if __name__ == "__main__":
