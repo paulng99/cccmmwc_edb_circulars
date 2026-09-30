@@ -82,6 +82,11 @@ sources:
   - https://www.edb.gov.hk/en/curriculum-development/curriculum-area/life-wide-learning/LWLSSG/index.html
   - https://www.edb.gov.hk/tc/lwlssg
   - https://www.edb.gov.hk/en/lwlssg
+  path_prefixes:
+  - /tc/curriculum-development/curriculum-area/life-wide-learning/LWLSSG
+  - /en/curriculum-development/curriculum-area/life-wide-learning/LWLSSG
+  - /tc/lwlssg
+  - /en/lwlssg
   max_pages: 200
 - id: edcity
   name:

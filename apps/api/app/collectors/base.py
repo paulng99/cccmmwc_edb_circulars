@@ -173,16 +173,45 @@ class CircularAspNetCollector:
         return items
 
 
+def _normalize_crawl_url(url: str) -> str:
+    """Strip fragment and incidental whitespace from hrefs / queue URLs."""
+    return url.strip().split("#", 1)[0].rstrip()
+
+
+def _path_allowed(path: str, path_prefixes: list[str]) -> bool:
+    if not path_prefixes:
+        return True
+    return any(path.startswith(pref) for pref in path_prefixes)
+
+
+def _html_path_prefixes(path_prefixes: list[str]) -> list[str]:
+    """Prefixes that constrain HTML BFS.
+
+    `/attachment/`-only lists (edb_www) filter files, not HTML navigation.
+    """
+    return [p for p in path_prefixes if not p.startswith("/attachment")]
+
+
+def _file_path_allowed(path: str, path_prefixes: list[str]) -> bool:
+    """Attachments under configured prefixes, or /attachment/ (EDB CDN layout)."""
+    if not path_prefixes:
+        return True
+    if _path_allowed(path, path_prefixes):
+        return True
+    return "/attachment/" in path
+
+
 class SiteAttachmentsCollector:
     """BFS crawl within allow_hosts for attachment-like files."""
 
     async def discover(self, config: dict[str, Any]) -> list[DiscoveredItem]:
         rs = resolved_settings()
         base = config["base_url"]
-        seeds = list(config.get("seed_urls") or [base])
+        seeds = [_normalize_crawl_url(u) for u in (config.get("seed_urls") or [base])]
         allow_hosts = set(config.get("allow_hosts") or [urlparse(base).netloc])
         exts = [e.lower() for e in (config.get("file_extensions") or [".pdf"])]
         path_prefixes = config.get("path_prefixes") or []
+        html_prefixes = _html_path_prefixes(path_prefixes)
         max_pages = int(config.get("max_pages") or 500)
         rate = float(config.get("rate_limit_seconds") or rs["crawl_rate_limit_seconds"])
 
@@ -196,7 +225,7 @@ class SiteAttachmentsCollector:
 
         async with httpx.AsyncClient(headers=headers, timeout=60, follow_redirects=True) as client:
             while queue and len(seen_pages) < max_pages:
-                url = queue.pop(0)
+                url = _normalize_crawl_url(queue.pop(0))
                 if url in seen_pages:
                     continue
                 parsed = urlparse(url)
@@ -213,20 +242,14 @@ class SiteAttachmentsCollector:
                         continue
                     soup = BeautifulSoup(resp.text, "lxml")
                     for a in soup.select("a[href]"):
-                        href = urljoin(url, a.get("href", ""))
+                        href = _normalize_crawl_url(urljoin(url, (a.get("href") or "").strip()))
                         p = urlparse(href)
                         if p.scheme not in ("http", "https"):
                             continue
                         path_l = p.path.lower()
                         if any(path_l.endswith(ext) for ext in exts):
-                            if path_prefixes and not any(p.path.startswith(pref) for pref in path_prefixes):
-                                # still allow if seed page linked it (common for LWLSSG)
-                                if not path_prefixes or "/attachment/" in p.path or any(
-                                    path_l.endswith(ext) for ext in exts
-                                ):
-                                    pass
-                                else:
-                                    continue
+                            if not _file_path_allowed(p.path, path_prefixes):
+                                continue
                             if href in seen_files:
                                 continue
                             seen_files.add(href)
@@ -241,13 +264,8 @@ class SiteAttachmentsCollector:
                                 )
                             )
                         elif p.netloc in allow_hosts and href not in seen_pages:
-                            if path_prefixes:
-                                if any(p.path.startswith(pref) for pref in path_prefixes) or p.path.endswith(
-                                    (".html", ".htm", "/")
-                                ):
-                                    queue.append(href.split("#")[0])
-                            else:
-                                queue.append(href.split("#")[0])
+                            if _path_allowed(p.path, html_prefixes):
+                                queue.append(href)
                 except Exception as exc:
                     last_fetch_error = exc
                     continue
