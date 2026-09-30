@@ -59,7 +59,7 @@ def test_resolve_missing_raises_file_not_found_not_index_error(
         resolve_sources_config_path(str(missing), start=start, bundled=absent_bundled)
 
 
-def test_resolve_falls_back_to_bundled_copy(tmp_path: Path):
+def test_resolve_falls_back_to_bundled_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     collectors = tmp_path / "app" / "app" / "collectors"
     collectors.mkdir(parents=True)
     start = collectors / "registry.py"
@@ -68,6 +68,18 @@ def test_resolve_falls_back_to_bundled_copy(tmp_path: Path):
     bundled = tmp_path / "opt" / "default-config" / "sources.yaml"
     bundled.parent.mkdir(parents=True)
     bundled.write_text("sources: []\n", encoding="utf-8")
+
+    real_exists = Path.exists
+    root = tmp_path.resolve()
+
+    def exists_scoped(self: Path) -> bool:
+        try:
+            self.resolve().relative_to(root)
+        except ValueError:
+            return False
+        return real_exists(self)
+
+    monkeypatch.setattr(Path, "exists", exists_scoped)
 
     missing = tmp_path / "not-mounted" / "sources.yaml"
     assert resolve_sources_config_path(str(missing), start=start, bundled=bundled) == bundled
