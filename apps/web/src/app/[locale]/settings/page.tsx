@@ -6,7 +6,7 @@ import { useRouter } from "@/i18n/routing";
 import SourcesSection from "@/components/SourcesSection";
 import { Icon, type IconName } from "@/components/Icon";
 import { Switch } from "@/components/Switch";
-import { getSettings, SecretField, SettingsResponse, updateSettings } from "@/lib/api";
+import { getSettings, improveSystemPrompt, SecretField, SettingsResponse, updateSettings } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDateTime } from "@/lib/date";
 
@@ -104,6 +104,7 @@ export default function SettingsPage() {
   const [group, setGroup] = useState<Group>("sources");
   const [query, setQuery] = useState("");
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
+  const [improvingPrompt, setImprovingPrompt] = useState(false);
 
   useEffect(() => {
     if (ready && !token) router.replace("/login");
@@ -285,6 +286,23 @@ export default function SettingsPage() {
     }
   }
 
+  async function onImproveSystemPrompt() {
+    if (!token || improvingPrompt) return;
+    const current = displayString("system_prompt").trim();
+    if (!current) return;
+    setImprovingPrompt(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await improveSystemPrompt(token, current);
+      updateDraft("system_prompt", res.prompt);
+    } catch {
+      setError(t("improveSystemPromptFailed"));
+    } finally {
+      setImprovingPrompt(false);
+    }
+  }
+
   function onDiscard() {
     setDraft({});
     setSuccess("");
@@ -341,15 +359,35 @@ export default function SettingsPage() {
     }
 
     if (TEXTAREA_KEYS.has(key)) {
+      const isSystemPrompt = key === "system_prompt";
+      const canImprove = isSystemPrompt && displayString(key).trim().length > 0;
       return (
         <div className="field span-2" key={key}>
-          <label htmlFor={key}>{label}</label>
+          <label
+            htmlFor={key}
+            style={isSystemPrompt ? { display: "flex", alignItems: "center", gap: "0.5rem" } : undefined}
+          >
+            <span style={{ flex: 1 }}>{label}</span>
+            {isSystemPrompt ? (
+              <button
+                type="button"
+                className="btn ghost sm icon-only"
+                onClick={onImproveSystemPrompt}
+                disabled={!canImprove || improvingPrompt}
+                aria-label={improvingPrompt ? t("improvingSystemPrompt") : t("improveSystemPrompt")}
+                title={improvingPrompt ? t("improvingSystemPrompt") : t("improveSystemPrompt")}
+              >
+                {improvingPrompt ? <span className="spinner" /> : <Icon name="wand" />}
+              </button>
+            ) : null}
+          </label>
           <textarea
             id={key}
-            rows={key === "system_prompt" ? 8 : 3}
+            rows={isSystemPrompt ? 8 : 3}
             value={displayString(key)}
             onChange={(e) => updateDraft(key, e.target.value)}
             placeholder={isSecretKey(key) ? secretPlaceholder(key) : undefined}
+            disabled={isSystemPrompt && improvingPrompt}
           />
           {help ? <span className="field-hint">{help}</span> : null}
         </div>

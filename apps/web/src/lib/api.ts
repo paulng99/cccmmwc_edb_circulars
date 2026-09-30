@@ -275,6 +275,16 @@ export async function updateSettings(token: string, body: Record<string, unknown
   return res.json() as Promise<SettingsResponse>;
 }
 
+export async function improveSystemPrompt(token: string, prompt: string) {
+  const res = await fetch(`${apiBase()}/api/settings/improve-system-prompt`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ prompt }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<{ prompt: string }>;
+}
+
 export type CrawlSource = {
   id: string;
   name: { en: string; "zh-HK": string };
