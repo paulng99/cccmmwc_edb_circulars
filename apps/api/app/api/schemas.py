@@ -144,3 +144,9 @@ class SourcesConfigBody(BaseModel):
 class SourceSuggestBody(BaseModel):
     mode: str
     query: str = Field(min_length=1, max_length=500)
+
+
+class ImproveSystemPromptBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prompt: str = Field(min_length=1, max_length=50000)

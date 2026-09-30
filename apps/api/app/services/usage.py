@@ -34,6 +34,7 @@ FEATURES = (
     "chat",
     "classify",
     "source_suggest",
+    "settings_improve",
     "embed_index",
     "embed_query",
     "web_search",

@@ -1,12 +1,21 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.models import AppSetting
+
+HK = ZoneInfo("Asia/Hong_Kong")
+
+
+def hk_now_stamp() -> str:
+    """Current Asia/Hong_Kong wall time as yyyy-mm-dd HH:mm."""
+    return datetime.now(HK).strftime("%Y-%m-%d %H:%M")
 
 DEFAULT_SYSTEM_PROMPT = """You are an assistant for Hong Kong Education Bureau (EDB) circulars and documents.
 Answer in the same language as the user (prefer Traditional Chinese zh-HK when the user writes Chinese).
@@ -251,6 +260,7 @@ def build_system_prompt(
     scope = _filter_scope_instruction(programme=programme, topic=topic)
     if scope:
         system = system + "\n" + scope
+    system = system + f"\nCurrent date/time (Asia/Hong_Kong): {hk_now_stamp()}"
     return system
 
 

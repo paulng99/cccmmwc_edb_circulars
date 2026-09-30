@@ -86,13 +86,32 @@ def test_build_settings_response_masks():
     assert payload["readonly"]["jwt_secret"]["configured"] is True
 
 
-def test_build_system_prompt_with_cite():
+def test_build_system_prompt_with_cite(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.runtime_settings.hk_now_stamp",
+        lambda: "2026-09-30 22:15",
+    )
     text = build_system_prompt({"system_prompt": "BASE", "cite_inline_refs": True})
     assert "BASE" in text
     assert "[L1]" in text
+    assert "Current date/time (Asia/Hong_Kong): 2026-09-30 22:15" in text
 
 
-def test_build_system_prompt_includes_programme_and_topic():
+def test_build_system_prompt_includes_hk_datetime(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.runtime_settings.hk_now_stamp",
+        lambda: "2026-09-30 22:15",
+    )
+    text = build_system_prompt({"system_prompt": "BASE", "cite_inline_refs": False})
+    assert text.startswith("BASE")
+    assert "Current date/time (Asia/Hong_Kong): 2026-09-30 22:15" in text
+
+
+def test_build_system_prompt_includes_programme_and_topic(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.runtime_settings.hk_now_stamp",
+        lambda: "2026-09-30 22:15",
+    )
     text = build_system_prompt(
         {"system_prompt": "BASE", "cite_inline_refs": False},
         programme="sister_school",
@@ -105,7 +124,11 @@ def test_build_system_prompt_includes_programme_and_topic():
     assert "津貼與撥款" in text or "grant_funding" in text
 
 
-def test_build_system_prompt_without_filters_omits_scope():
+def test_build_system_prompt_without_filters_omits_scope(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.runtime_settings.hk_now_stamp",
+        lambda: "2026-09-30 22:15",
+    )
     text = build_system_prompt(
         {"system_prompt": "BASE", "cite_inline_refs": False},
         programme=None,
@@ -113,6 +136,7 @@ def test_build_system_prompt_without_filters_omits_scope():
     )
     assert "計劃／來源" not in text
     assert "主題" not in text
+    assert "Current date/time (Asia/Hong_Kong): 2026-09-30 22:15" in text
 
 
 def test_cache_initially_empty():
