@@ -17,6 +17,8 @@ export type Citation = {
   source_url?: string;
   document_id?: string;
   backend?: string;
+  /** Optional chunk index from retrieval; older payloads may omit this. */
+  chunk_index?: number | null;
 };
 
 export type StoredAttachment = { filename: string; char_count: number };
@@ -28,6 +30,8 @@ export type StoredMsg = {
   citations?: Citation[];
   attachments?: StoredAttachment[];
   error?: boolean;
+  /** True when the model stopped because max_tokens was reached. */
+  truncated?: boolean;
 };
 
 export type ChatSnapshot = {
@@ -76,6 +80,7 @@ function parseMsg(value: unknown): StoredMsg | null {
     }));
   }
   if (value.error === true) msg.error = true;
+  if (value.truncated === true) msg.truncated = true;
   return msg;
 }
 

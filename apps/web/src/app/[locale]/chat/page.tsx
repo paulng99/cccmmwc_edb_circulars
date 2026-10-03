@@ -1,9 +1,11 @@
 "use client";
 
-import { FormEvent, Fragment, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
+import AssistantMarkdown from "@/components/AssistantMarkdown";
 import ChatDocPanel from "@/components/ChatDocPanel";
+import GroupedSources from "@/components/GroupedSources";
 import { useAuth } from "@/lib/auth";
 import { Icon } from "@/components/Icon";
 import { CHAT_MAX_FILES, type Citation, useChat } from "@/lib/chat-store";
@@ -38,33 +40,7 @@ function formatStamp(iso: string | null | undefined) {
   return `${y}-${m}-${day} ${hh}:${mm}`;
 }
 
-function renderWithCitations(
-  content: string,
-  citations: Citation[] | undefined,
-  activeRef: string | undefined,
-  onOpen: (c: Citation) => void,
-) {
-  if (!citations || citations.length === 0) return content;
-  const byRef = new Map(citations.map((c) => [String(c.ref), c]));
-  const parts = content.split(/(\[(?:L|D)?\d+\])/g);
-  return parts.map((part, i) => {
-    const m = /^\[((?:L|D)?\d+)\]$/.exec(part);
-    if (!m) return <Fragment key={i}>{part}</Fragment>;
-    const c = byRef.get(m[1]);
-    if (!c) return <Fragment key={i}>{part}</Fragment>;
-    return (
-      <button
-        key={i}
-        type="button"
-        className={`cite-ref${activeRef === c.ref ? " active" : ""}`}
-        title={c.title || m[1]}
-        onClick={() => onOpen(c)}
-      >
-        {m[1]}
-      </button>
-    );
-  });
-}
+const CONTINUE_TAIL_CHARS = 300;
 
 export default function ChatPage() {
   const t = useTranslations("chat");
@@ -148,6 +124,13 @@ export default function ChatPage() {
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     void ask(question);
+  }
+
+  function onContinue(content: string) {
+    if (loading) return;
+    const tail = content.slice(-CONTINUE_TAIL_CHARS).trim();
+    const prompt = tail ? t("continuePromptWithTail", { tail }) : t("continuePrompt");
+    void ask(prompt);
   }
 
   function handleNewChat() {
@@ -378,8 +361,34 @@ export default function ChatPage() {
                 </div>
                 <div className="msg-body">
                   {m.content ? (
-                    <div className={`msg-bubble${m.error ? " error" : ""}`}>
-                      {m.role === "assistant" ? renderWithCitations(m.content, m.citations, preview?.ref, openCitation) : m.content}
+                    <div className={`msg-bubble${m.error ? " error" : ""}${m.role === "assistant" && !m.error ? " md" : ""}`}>
+                      {m.role === "assistant" && !m.error ? (
+                        <AssistantMarkdown
+                          content={m.content}
+                          citations={m.citations}
+                          activeRef={preview?.ref}
+                          onOpen={openCitation}
+                        />
+                      ) : (
+                        m.content
+                      )}
+                    </div>
+                  ) : null}
+
+                  {m.role === "assistant" && m.truncated && !m.error ? (
+                    <div className="msg-truncated">
+                      <p className="msg-note">
+                        <Icon name="info" />
+                        <span>{t("truncatedNotice")}</span>
+                      </p>
+                      <button
+                        type="button"
+                        className="btn secondary sm"
+                        disabled={loading}
+                        onClick={() => onContinue(m.content)}
+                      >
+                        {t("continue")}
+                      </button>
                     </div>
                   ) : null}
 
@@ -395,40 +404,12 @@ export default function ChatPage() {
                   ) : null}
 
                   {m.role === "assistant" && m.citations && m.citations.length > 0 ? (
-                    <div className="sources">
-                      <span className="sources-head">
-                        <Icon name="quote" />
-                        {t("sourcesCount", { count: m.citations.length })}
-                      </span>
-                      <div className="source-grid">
-                        {m.citations.map((c, j) => (
-                          <button
-                            key={`${c.ref}-${j}`}
-                            type="button"
-                            className={`source-card${preview?.ref === c.ref ? " active" : ""}`}
-                            onClick={() => openCitation(c)}
-                          >
-                            <span className="source-num">{c.ref}</span>
-                            <span className="source-body">
-                              <span className="source-title">{c.title || "—"}</span>
-                              <span className="source-meta">
-                                {c.circular_no ? (
-                                  <span>
-                                    <Icon name="hash" /> {c.circular_no}
-                                  </span>
-                                ) : null}
-                                {c.issued_at ? (
-                                  <span>
-                                    <Icon name="calendar" /> {c.issued_at}
-                                  </span>
-                                ) : null}
-                                {c.backend && c.backend !== "local" ? <span className="badge sky">{c.backend}</span> : null}
-                              </span>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    <GroupedSources
+                      citations={m.citations}
+                      answerContent={m.content}
+                      activeRef={preview?.ref}
+                      onOpen={openCitation}
+                    />
                   ) : m.role === "assistant" && !m.error ? (
                     <p className="msg-note">
                       <Icon name="info" />

@@ -191,4 +191,6 @@ class ChatMessage(Base):
     content: Mapped[str] = mapped_column(Text)
     citations: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     attachments: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    # True when the model stopped because max_tokens was reached (finish_reason=length).
+    truncated: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

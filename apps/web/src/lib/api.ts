@@ -99,7 +99,8 @@ export async function chatAsk(
   },
   opts?: { timeoutMs?: number; signal?: AbortSignal },
 ) {
-  const timeoutMs = opts?.timeoutMs ?? 90_000;
+  // Backend OpenRouter timeout is 120s; keep client slightly above that.
+  const timeoutMs = opts?.timeoutMs ?? 150_000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort("timeout"), timeoutMs);
   const onExternalAbort = () => controller.abort("user");
@@ -143,6 +144,7 @@ export type ChatHistoryMessage = {
   content: string;
   citations?: unknown[];
   attachments?: ChatAttachmentMeta[];
+  truncated?: boolean;
   created_at: string | null;
 };
 

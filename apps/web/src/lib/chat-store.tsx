@@ -106,6 +106,7 @@ function mapHistory(messages: ChatHistoryMessage[], promptOnlyLabel: string): Ms
     content: message.content === PROMPT_ONLY_STORED ? promptOnlyLabel : message.content,
     citations: (message.citations || []) as Citation[],
     attachments: message.attachments || [],
+    truncated: message.truncated === true ? true : undefined,
   }));
 }
 
@@ -394,7 +395,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setSessionId(res.session_id);
       setMsgs((current) => [
         ...current,
-        { id: newId(), role: "assistant", content: res.answer, citations: res.citations || [] },
+        {
+          id: newId(),
+          role: "assistant",
+          content: res.answer,
+          citations: res.citations || [],
+          truncated: res.truncated === true ? true : undefined,
+        },
       ]);
       void refreshSessions();
     } catch (err) {

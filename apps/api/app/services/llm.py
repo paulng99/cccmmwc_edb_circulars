@@ -1,13 +1,35 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any, Protocol
+from typing import Any, NamedTuple, Protocol
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.services.runtime_settings import resolved_settings
 from app.services.usage import parse_ollama_usage, parse_openrouter_usage, record_usage
+
+# Absolute ceiling for OpenRouter max_tokens (settings page default is 4096).
+MAX_COMPLETION_TOKENS = 8192
+# Non-stream OpenRouter calls may emit longer answers after the 2048 cap is lifted.
+OPENROUTER_TIMEOUT_SECONDS = 120.0
+
+
+class ChatCompletion(NamedTuple):
+    content: str
+    finish_reason: str | None = None
+
+
+def clamp_max_tokens(value: Any) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        n = 1
+    return min(max(1, n), MAX_COMPLETION_TOKENS)
+
+
+def is_length_truncated(finish_reason: str | None) -> bool:
+    return (finish_reason or "").lower() == "length"
 
 
 class LlmClient(Protocol):
@@ -20,28 +42,21 @@ class LlmClient(Protocol):
 
 
 class OpenRouterClient:
-    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=4))
-    async def chat(
+    def _demo_answer(self) -> str:
+        return (
+            "[Demo mode: OPENROUTER_API_KEY not set]\n\n"
+            "Based on the retrieved Education Bureau materials in context, "
+            "please configure OpenRouter to enable live answers."
+        )
+
+    def _headers_and_payload(
         self,
         messages: list[dict[str, str]],
-        stream: bool = False,
-        reasoning: bool = True,
-    ) -> str | AsyncIterator[str]:
-        rs = resolved_settings()
-        if not rs.get("openrouter_api_key"):
-            answer = (
-                "[Demo mode: OPENROUTER_API_KEY not set]\n\n"
-                "Based on the retrieved Education Bureau materials in context, "
-                "please configure OpenRouter to enable live answers."
-            )
-            if stream:
-
-                async def _gen() -> AsyncIterator[str]:
-                    yield answer
-
-                return _gen()
-            return answer
-
+        *,
+        stream: bool,
+        reasoning: bool,
+        rs: dict[str, Any],
+    ) -> tuple[dict[str, str], dict[str, Any]]:
         headers = {
             "Authorization": f"Bearer {rs['openrouter_api_key']}",
             "Content-Type": "application/json",
@@ -53,14 +68,60 @@ class OpenRouterClient:
             "messages": messages,
             "stream": stream,
             "temperature": float(rs["temperature"]),
-            "max_tokens": min(int(rs["max_tokens"]), 2048),
+            "max_tokens": clamp_max_tokens(rs["max_tokens"]),
         }
         if not reasoning:
             # Reasoning models spend the token budget before emitting JSON.
             payload["reasoning"] = {"effort": "none"}
+        return headers, payload
+
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=4))
+    async def chat(
+        self,
+        messages: list[dict[str, str]],
+        stream: bool = False,
+        reasoning: bool = True,
+    ) -> str | AsyncIterator[str]:
+        rs = resolved_settings()
+        if not rs.get("openrouter_api_key"):
+            answer = self._demo_answer()
+            if stream:
+
+                async def _gen() -> AsyncIterator[str]:
+                    yield answer
+
+                return _gen()
+            return answer
+
+        headers, payload = self._headers_and_payload(messages, stream=stream, reasoning=reasoning, rs=rs)
         if stream:
             return self._stream(headers, payload, rs)
-        async with httpx.AsyncClient(timeout=60) as client:
+        result = await self._complete(headers, payload, rs)
+        return result.content
+
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=4))
+    async def chat_with_meta(
+        self,
+        messages: list[dict[str, str]],
+        stream: bool = False,
+        reasoning: bool = True,
+    ) -> ChatCompletion:
+        """Return content plus finish_reason. Non-stream only for answer_question()."""
+        del stream  # answer_question always uses non-stream
+        rs = resolved_settings()
+        if not rs.get("openrouter_api_key"):
+            return ChatCompletion(content=self._demo_answer(), finish_reason="stop")
+
+        headers, payload = self._headers_and_payload(messages, stream=False, reasoning=reasoning, rs=rs)
+        return await self._complete(headers, payload, rs)
+
+    async def _complete(
+        self,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+        rs: dict[str, Any],
+    ) -> ChatCompletion:
+        async with httpx.AsyncClient(timeout=OPENROUTER_TIMEOUT_SECONDS) as client:
             resp = await client.post(
                 f"{rs['openrouter_base_url']}/chat/completions",
                 headers=headers,
@@ -68,9 +129,11 @@ class OpenRouterClient:
             )
             resp.raise_for_status()
             data = resp.json()
-            content = data["choices"][0]["message"]["content"]
+            choice = (data.get("choices") or [{}])[0]
+            content = (choice.get("message") or {}).get("content") or ""
+            finish_reason = choice.get("finish_reason")
             await record_usage(parse_openrouter_usage(data, fallback_model=str(rs["openrouter_model"])))
-            return content
+            return ChatCompletion(content=content, finish_reason=finish_reason)
 
     async def _stream(self, headers: dict[str, str], payload: dict[str, Any], rs: dict[str, Any]) -> AsyncIterator[str]:
         async with httpx.AsyncClient(timeout=None) as client:
@@ -105,6 +168,23 @@ class OllamaClient:
         stream: bool = False,
         reasoning: bool = True,
     ) -> str | AsyncIterator[str]:
+        del reasoning
+        result = await self.chat_with_meta(messages)
+        if stream:
+
+            async def _gen() -> AsyncIterator[str]:
+                yield result.content
+
+            return _gen()
+        return result.content
+
+    async def chat_with_meta(
+        self,
+        messages: list[dict[str, str]],
+        stream: bool = False,
+        reasoning: bool = True,
+    ) -> ChatCompletion:
+        del stream, reasoning  # Ollama path is non-stream; num_predict unchanged.
         rs = resolved_settings()
         payload = {
             "model": rs["ollama_model"],
@@ -121,13 +201,9 @@ class OllamaClient:
             data = resp.json()
             content = data["message"]["content"]
             await record_usage(parse_ollama_usage(data, model=str(rs["ollama_model"])))
-            if stream:
-
-                async def _gen() -> AsyncIterator[str]:
-                    yield content
-
-                return _gen()
-            return content
+            # Ollama uses done_reason; map length stops the same way as OpenRouter.
+            done_reason = data.get("done_reason") or data.get("finish_reason")
+            return ChatCompletion(content=content, finish_reason=done_reason)
 
 
 def get_llm_client() -> LlmClient:

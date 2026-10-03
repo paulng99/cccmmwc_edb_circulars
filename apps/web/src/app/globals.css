@@ -1950,6 +1950,225 @@ code {
   line-height: 1.6;
 }
 
+.msg-bubble.md {
+  white-space: normal;
+}
+
+.md-body {
+  line-height: 1.65;
+}
+
+.md-body > :first-child {
+  margin-top: 0;
+}
+
+.md-body > :last-child {
+  margin-bottom: 0;
+}
+
+.md-body p {
+  margin: 0.45em 0;
+}
+
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4 {
+  margin: 0.7em 0 0.35em;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.md-body h1 {
+  font-size: 1.12em;
+}
+
+.md-body h2 {
+  font-size: 1.05em;
+}
+
+.md-body h3,
+.md-body h4 {
+  font-size: 1em;
+}
+
+.md-body ul,
+.md-body ol {
+  margin: 0.4em 0;
+  padding-left: 1.35em;
+}
+
+.md-body li {
+  margin: 0.2em 0;
+}
+
+.md-body li > ul,
+.md-body li > ol {
+  margin: 0.15em 0;
+}
+
+.md-body strong {
+  font-weight: 700;
+}
+
+.md-body a {
+  color: var(--primary-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-body blockquote {
+  margin: 0.5em 0;
+  padding: 0.15em 0 0.15em 0.75em;
+  border-left: 3px solid var(--border-strong, var(--border));
+  color: var(--text-2);
+}
+
+.md-body pre {
+  margin: 0.55em 0;
+  padding: 0.65em 0.75em;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: var(--surface-2, var(--bg-2, #f4f7fb));
+  border: 1px solid var(--border);
+  font-size: 0.84em;
+  line-height: 1.45;
+}
+
+.md-body pre code {
+  background: none;
+  padding: 0;
+  border: 0;
+  font-size: inherit;
+}
+
+.md-inline-code,
+.md-body :not(pre) > code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--surface-2, var(--bg-2, #f4f7fb));
+  border: 1px solid var(--border);
+  font-size: 0.88em;
+}
+
+.md-table-wrap {
+  margin: 0.55em 0;
+  overflow-x: auto;
+}
+
+.md-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88em;
+}
+
+.md-body th,
+.md-body td {
+  border: 1px solid var(--border);
+  padding: 0.35em 0.5em;
+  text-align: left;
+  vertical-align: top;
+}
+
+.md-body th {
+  background: var(--surface-2, var(--bg-2, #f4f7fb));
+  font-weight: 600;
+}
+
+.md-body hr {
+  margin: 0.75em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.msg-truncated {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+}
+
+.source-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.45rem 0.5rem 0.5rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.source-group.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: var(--shadow-sm);
+}
+
+.source-group-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem;
+  align-items: start;
+}
+
+.source-group-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.6rem;
+  padding: 0.15rem 0.2rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  border-radius: 8px;
+}
+
+.source-group-main:hover {
+  background: var(--primary-soft);
+}
+
+.source-chunk-count {
+  color: var(--primary-text);
+  font-weight: 600;
+}
+
+.source-chunk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.15rem 0.15rem 0.05rem 0.35rem;
+  border-top: 1px solid var(--border);
+}
+
+.source-chunk {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.35rem 0.45rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.source-chunk:hover,
+.source-chunk.active {
+  border-color: var(--primary-soft-border);
+  background: var(--primary-soft);
+}
+
+.source-chunk-label {
+  font-size: 0.78rem;
+  color: var(--text-2);
+}
+
 .msg.assistant .msg-bubble {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -2405,7 +2624,9 @@ code {
 }
 
 button.cite-ref,
-button.source-card {
+button.source-card,
+button.source-group-main,
+button.source-chunk {
   appearance: none;
   font: inherit;
   cursor: pointer;

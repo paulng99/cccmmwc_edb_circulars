@@ -37,6 +37,23 @@ class ChatRequest(BaseModel):
     attachments: list[ChatAttachmentIn] = Field(default_factory=list, max_length=3)
 
 
+class ChatAttachmentOut(BaseModel):
+    filename: str
+    char_count: int = 0
+
+
+class ChatResponse(BaseModel):
+    session_id: str
+    answer: str
+    citations: list[dict[str, Any]] = Field(default_factory=list)
+    truncated: bool = False
+    knowledge_source: str = "local"
+    programme: str | None = None
+    topic: str | None = None
+    prompt_only: bool = False
+    attachments: list[ChatAttachmentOut] = Field(default_factory=list)
+
+
 class DocumentOut(BaseModel):
     id: str
     source_id: str
