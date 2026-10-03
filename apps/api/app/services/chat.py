@@ -310,11 +310,12 @@ async def answer_question(
     dify_hits: list[dict] = []
     if retrieve_query:
         if knowledge_source in ("local", "local_and_dify"):
-            # 實際交給 AI 的段落數依設定 local_top_k（預設 12），不再寫死上限。
+            # 實際交給 AI 的段落數依設定 local_top_k（預設 12）。
+            # 夾住 1–20，避免資料庫舊值（例如 120）直接傳入檢索。
             local_hits = await get_local_knowledge().retrieve(
                 session,
                 retrieve_query,
-                top_k=int(rs["local_top_k"]),
+                top_k=min(max(int(rs["local_top_k"]), 1), 20),
                 programme=programme,
                 topic=topic,
             )
@@ -325,7 +326,9 @@ async def answer_question(
                 hit["content"] = content[:1200] + "…"
         if knowledge_source in ("dify", "local_and_dify"):
             dify_hits = await get_dify_knowledge().retrieve(
-                session, retrieve_query, top_k=int(rs["dify_top_k"])
+                session,
+                retrieve_query,
+                top_k=min(max(int(rs["dify_top_k"]), 1), 20),
             )
 
     context_blocks: list[str] = []

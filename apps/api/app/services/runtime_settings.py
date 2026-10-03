@@ -217,7 +217,10 @@ def apply_patch(current: dict[str, Any], patch: dict[str, Any]) -> tuple[dict[st
             if not isinstance(v, (int, float)) or not (0 <= float(v) <= 2):
                 raise ValueError("temperature must be between 0 and 2")
             v = float(v)
-        if k in ("max_tokens", "local_top_k", "dify_top_k", "jina_embedding_dim"):
+        if k in ("local_top_k", "dify_top_k"):
+            if isinstance(v, bool) or not isinstance(v, int) or not (1 <= v <= 20):
+                raise ValueError(f"{k} must be an integer between 1 and 20")
+        if k in ("max_tokens", "jina_embedding_dim"):
             if not isinstance(v, int) or v < 1:
                 raise ValueError(f"{k} must be int >= 1")
         if k == "llm_provider" and v not in ("openrouter", "ollama"):

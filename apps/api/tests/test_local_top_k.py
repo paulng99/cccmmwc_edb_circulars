@@ -143,6 +143,63 @@ async def test_local_top_k_5_passes_five_chunks_and_citations(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_local_top_k_120_clamped_to_20(monkeypatch):
+    """資料庫舊值 120 在 chat 讀取時夾住為 20，不直接傳給檢索。"""
+    result = await _run_answer(
+        monkeypatch, local_top_k=120, retrieved_count=30, content_len=100
+    )
+    captured = result["_captured"]
+    assert captured["retrieve_top_k"] == 20
+
+    blocks = _context_blocks_from_messages(captured["messages"])
+    assert len(blocks) == 20
+    assert len(result["citations"]) == 20
+
+
+@pytest.mark.asyncio
+async def test_dify_top_k_120_clamped_to_20(monkeypatch):
+    captured: dict[str, Any] = {}
+
+    class FakeDify:
+        async def retrieve(self, session, query, top_k=5, **kwargs):
+            captured["retrieve_top_k"] = top_k
+            return []
+
+    class FakeLlm:
+        async def chat(self, messages, stream=False):
+            return "測試回答"
+
+    monkeypatch.setattr(
+        chat_service,
+        "get_merged",
+        AsyncMock(
+            return_value={
+                "local_top_k": 12,
+                "dify_top_k": 120,
+                "system_prompt": "系統提示",
+                "cite_inline_refs": False,
+            }
+        ),
+    )
+    monkeypatch.setattr(chat_service, "get_dify_knowledge", lambda: FakeDify())
+    monkeypatch.setattr(chat_service, "get_llm_client", lambda: FakeLlm())
+    monkeypatch.setattr(
+        chat_service,
+        "build_system_prompt",
+        lambda rs, programme=None, topic=None: rs.get("system_prompt") or "系統提示",
+    )
+
+    await chat_service.answer_question(
+        _session_mock(),
+        user_id=uuid.uuid4(),
+        question="姊妹學校津貼如何使用？",
+        knowledge_source="dify",
+        locale="zh-HK",
+    )
+    assert captured["retrieve_top_k"] == 20
+
+
+@pytest.mark.asyncio
 async def test_each_chunk_clipped_to_1200_chars(monkeypatch):
     result = await _run_answer(
         monkeypatch, local_top_k=12, retrieved_count=12, content_len=2000
