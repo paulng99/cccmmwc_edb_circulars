@@ -9,6 +9,7 @@ import { Switch } from "@/components/Switch";
 import { getSettings, improveSystemPrompt, SecretField, SettingsResponse, updateSettings } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDateTime } from "@/lib/date";
+import { isValidTopK } from "@/lib/top-k";
 
 const SECRET_KEYS = new Set([
   "openrouter_api_key",
@@ -29,6 +30,8 @@ const NUMBER_KEYS = new Set([
   "crawl_rate_limit_seconds",
   "jwt_expire_hours",
 ]);
+
+const TOP_K_KEYS = new Set(["local_top_k", "dify_top_k"]);
 
 const BOOLEAN_KEYS = new Set([
   "cite_inline_refs",
@@ -143,6 +146,20 @@ export default function SettingsPage() {
     return n;
   }, [draft, data]);
 
+  function effectiveEditableValue(key: string): unknown {
+    if (Object.prototype.hasOwnProperty.call(draft, key)) return draft[key];
+    return data?.editable[key];
+  }
+
+  const topKInvalid = useMemo(() => {
+    if (!data) return false;
+    for (const key of TOP_K_KEYS) {
+      const value = Object.prototype.hasOwnProperty.call(draft, key) ? draft[key] : data.editable[key];
+      if (!isValidTopK(value)) return true;
+    }
+    return false;
+  }, [data, draft]);
+
   function baseValue(key: string, readonly = false): unknown {
     if (readonly) return data?.readonly[key];
     return data?.editable[key];
@@ -254,7 +271,7 @@ export default function SettingsPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!token || !data || saving) return;
+    if (!token || !data || saving || topKInvalid) return;
 
     const patch = buildPatch();
     if (!patch || Object.keys(patch).length === 0) {
@@ -429,6 +446,8 @@ export default function SettingsPage() {
       );
     }
 
+    const isTopK = TOP_K_KEYS.has(key);
+    const topKError = isTopK && !isValidTopK(effectiveEditableValue(key));
     return (
       <div className={`field${wide ? " span-2" : ""}`} key={key}>
         <label htmlFor={key}>{label}</label>
@@ -438,8 +457,12 @@ export default function SettingsPage() {
           value={displayString(key)}
           onChange={(e) => onInputChange(key, e.target.value)}
           step={key === "temperature" ? 0.1 : key === "crawl_rate_limit_seconds" ? 0.1 : undefined}
+          min={isTopK ? 1 : undefined}
+          max={isTopK ? 20 : undefined}
+          aria-invalid={topKError || undefined}
         />
         {help ? <span className="field-hint">{help}</span> : null}
+        {topKError ? <span className="field-error">{t("help.top_k_range")}</span> : null}
       </div>
     );
   }
@@ -568,7 +591,11 @@ export default function SettingsPage() {
           {group !== "sources" ? (
             <form onSubmit={onSubmit}>
               <div className="settings-savebar">
-                <button className={`btn${saving ? " is-loading" : ""}`} type="submit" disabled={saving || loading}>
+                <button
+                  className={`btn${saving ? " is-loading" : ""}`}
+                  type="submit"
+                  disabled={saving || loading || topKInvalid}
+                >
                   {saving ? <span className="spinner" /> : <Icon name="check" />}
                   {saving ? t("saving") : dirtyCount > 0 ? t("saveCount", { count: dirtyCount }) : t("save")}
                 </button>

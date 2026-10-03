@@ -77,6 +77,35 @@ def test_apply_patch_rejects_unknown():
         apply_patch({"temperature": 0.2}, {"not_a_key": 1})
 
 
+@pytest.mark.parametrize("key", ["local_top_k", "dify_top_k"])
+@pytest.mark.parametrize("value", [12, 20, 1])
+def test_apply_patch_accepts_top_k_in_range(key, value):
+    current = {"local_top_k": 12, "dify_top_k": 5}
+    new, warnings = apply_patch(current, {key: value})
+    assert new[key] == value
+    assert warnings == []
+
+
+@pytest.mark.parametrize("key", ["local_top_k", "dify_top_k"])
+@pytest.mark.parametrize(
+    "value",
+    [120, 0, -1, 21, 1.5, "12", True, False, None],
+)
+def test_apply_patch_rejects_top_k_out_of_range(key, value):
+    current = {"local_top_k": 12, "dify_top_k": 5}
+    with pytest.raises(ValueError, match="integer between 1 and 20"):
+        apply_patch(current, {key: value})
+
+
+def test_apply_patch_max_tokens_still_allows_above_20():
+    """max_tokens / jina_embedding_dim keep the old >= 1 rule (no upper bound of 20)."""
+    current = {"max_tokens": 4096, "jina_embedding_dim": 1024}
+    new, warnings = apply_patch(current, {"max_tokens": 120, "jina_embedding_dim": 768})
+    assert new["max_tokens"] == 120
+    assert new["jina_embedding_dim"] == 768
+    assert "reindex_required" in warnings
+
+
 def test_build_settings_response_masks():
     merged = defaults_from_env(Settings(openrouter_api_key="super-secret-key"))
     payload = build_settings_response(merged, row=None)
