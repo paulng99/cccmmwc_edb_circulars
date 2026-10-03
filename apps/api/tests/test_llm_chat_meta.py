@@ -1,6 +1,8 @@
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
+from tenacity import wait_none
 
 from app.services.llm import (
     MAX_COMPLETION_TOKENS,
@@ -8,6 +10,15 @@ from app.services.llm import (
     clamp_max_tokens,
     is_length_truncated,
 )
+
+_OPENROUTER_RS = {
+    "openrouter_api_key": "sk-test",
+    "openrouter_model": "test-model",
+    "openrouter_base_url": "https://openrouter.ai/api/v1",
+    "app_name": "test",
+    "temperature": 0.2,
+    "max_tokens": 4096,
+}
 
 
 def test_clamp_max_tokens_allows_settings_default():
@@ -62,22 +73,11 @@ async def test_openrouter_payload_uses_clamped_max_tokens(monkeypatch):
             seen["payload"] = json
             return FakeResp()
 
-    monkeypatch.setattr(
-        "app.services.llm.resolved_settings",
-        lambda: {
-            "openrouter_api_key": "sk-test",
-            "openrouter_model": "test-model",
-            "openrouter_base_url": "https://openrouter.ai/api/v1",
-            "app_name": "test",
-            "temperature": 0.2,
-            "max_tokens": 4096,
-        },
-    )
+    monkeypatch.setattr("app.services.llm.resolved_settings", lambda: dict(_OPENROUTER_RS))
     monkeypatch.setattr("app.services.llm.httpx.AsyncClient", FakeClient)
     monkeypatch.setattr("app.services.llm.record_usage", AsyncMock())
 
     client = OpenRouterClient()
-    # Bypass tenacity retry wrapper if present on chat; call chat_with_meta directly.
     result = await client.chat_with_meta(
         [{"role": "user", "content": "hi"}],
         stream=False,
@@ -115,14 +115,7 @@ async def test_openrouter_finish_reason_length(monkeypatch):
 
     monkeypatch.setattr(
         "app.services.llm.resolved_settings",
-        lambda: {
-            "openrouter_api_key": "sk-test",
-            "openrouter_model": "test-model",
-            "openrouter_base_url": "https://openrouter.ai/api/v1",
-            "app_name": "test",
-            "temperature": 0.2,
-            "max_tokens": 512,
-        },
+        lambda: {**_OPENROUTER_RS, "max_tokens": 512},
     )
     monkeypatch.setattr("app.services.llm.httpx.AsyncClient", FakeClient)
     monkeypatch.setattr("app.services.llm.record_usage", AsyncMock())
@@ -130,6 +123,49 @@ async def test_openrouter_finish_reason_length(monkeypatch):
     result = await OpenRouterClient().chat_with_meta([{"role": "user", "content": "hi"}])
     assert is_length_truncated(result.finish_reason) is True
     assert result.content == "partial…"
+
+
+@pytest.mark.asyncio
+async def test_chat_with_meta_retries_once_then_succeeds(monkeypatch):
+    """Same tenacity policy as chat(): first failure is retried, second attempt returns."""
+    attempts = {"n": 0}
+
+    class OkResp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [{"message": {"content": "recovered"}, "finish_reason": "stop"}],
+                "usage": {},
+            }
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise httpx.ConnectError("simulated network blip")
+            return OkResp()
+
+    monkeypatch.setattr("app.services.llm.resolved_settings", lambda: dict(_OPENROUTER_RS))
+    monkeypatch.setattr("app.services.llm.httpx.AsyncClient", FakeClient)
+    monkeypatch.setattr("app.services.llm.record_usage", AsyncMock())
+    # Avoid sleeping during the exponential backoff in unit tests.
+    OpenRouterClient.chat_with_meta.retry.wait = wait_none()
+
+    result = await OpenRouterClient().chat_with_meta([{"role": "user", "content": "hi"}])
+    assert attempts["n"] == 2
+    assert result.content == "recovered"
+    assert result.finish_reason == "stop"
 
 
 @pytest.mark.asyncio
@@ -180,9 +216,7 @@ async def test_answer_question_sets_truncated_and_chunk_index(monkeypatch):
     }))
     monkeypatch.setattr(chat_mod, "build_system_prompt", lambda rs, programme=None, topic=None: "SYS")
     monkeypatch.setattr(chat_mod, "_history_for_llm", AsyncMock(return_value=[]))
-    monkeypatch.setattr(chat_mod, "usage_scope", lambda *_a, **_k: patch("builtins.open", MagicMock()))
 
-    # usage_scope is a context manager — provide a simple one
     class _Scope:
         def __enter__(self):
             return None

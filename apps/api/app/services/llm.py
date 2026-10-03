@@ -99,6 +99,7 @@ class OpenRouterClient:
         result = await self._complete(headers, payload, rs)
         return result.content
 
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=4))
     async def chat_with_meta(
         self,
         messages: list[dict[str, str]],
