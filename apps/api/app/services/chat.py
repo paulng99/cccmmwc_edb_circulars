@@ -309,6 +309,7 @@ async def answer_question(
     dify_hits: list[dict] = []
     if retrieve_query:
         if knowledge_source in ("local", "local_and_dify"):
+            # 實際交給 AI 的段落數依設定 local_top_k（預設 12），不再寫死上限。
             local_hits = await get_local_knowledge().retrieve(
                 session,
                 retrieve_query,
@@ -316,8 +317,7 @@ async def answer_question(
                 programme=programme,
                 topic=topic,
             )
-        # Keep prompt lean so OpenRouter stays responsive
-        local_hits = local_hits[:8]
+        # 每段內容上限維持 1200 字，避免單段過長佔用上下文。
         for hit in local_hits:
             content = hit.get("content") or ""
             if len(content) > 1200:
