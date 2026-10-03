@@ -378,11 +378,11 @@ async def answer_question(
         # Prefer chat_with_meta so finish_reason=length can surface a continue UI.
         chat_with_meta = getattr(llm, "chat_with_meta", None)
         if callable(chat_with_meta):
-            completion = await chat_with_meta(messages, stream=False)
+            completion = await chat_with_meta(messages, stream=False, apply_top_p=True)
             answer = completion.content
             truncated = is_length_truncated(completion.finish_reason)
         else:
-            answer = await llm.chat(messages, stream=False)
+            answer = await llm.chat(messages, stream=False, apply_top_p=True)
             assert isinstance(answer, str)
             truncated = False
 

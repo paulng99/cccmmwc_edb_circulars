@@ -32,12 +32,22 @@ def is_length_truncated(finish_reason: str | None) -> bool:
     return (finish_reason or "").lower() == "length"
 
 
+def optional_top_p(rs: dict[str, Any]) -> float | None:
+    """Return llm_top_p when set; otherwise None so callers omit top_p entirely."""
+    value = rs.get("llm_top_p")
+    if value is None:
+        return None
+    return float(value)
+
+
 class LlmClient(Protocol):
     async def chat(
         self,
         messages: list[dict[str, str]],
         stream: bool = False,
         reasoning: bool = True,
+        *,
+        apply_top_p: bool = False,
     ) -> str | AsyncIterator[str]: ...
 
 
@@ -56,6 +66,7 @@ class OpenRouterClient:
         stream: bool,
         reasoning: bool,
         rs: dict[str, Any],
+        apply_top_p: bool = False,
     ) -> tuple[dict[str, str], dict[str, Any]]:
         headers = {
             "Authorization": f"Bearer {rs['openrouter_api_key']}",
@@ -70,6 +81,10 @@ class OpenRouterClient:
             "temperature": float(rs["temperature"]),
             "max_tokens": clamp_max_tokens(rs["max_tokens"]),
         }
+        if apply_top_p:
+            top_p = optional_top_p(rs)
+            if top_p is not None:
+                payload["top_p"] = top_p
         if not reasoning:
             # Reasoning models spend the token budget before emitting JSON.
             payload["reasoning"] = {"effort": "none"}
@@ -81,6 +96,8 @@ class OpenRouterClient:
         messages: list[dict[str, str]],
         stream: bool = False,
         reasoning: bool = True,
+        *,
+        apply_top_p: bool = False,
     ) -> str | AsyncIterator[str]:
         rs = resolved_settings()
         if not rs.get("openrouter_api_key"):
@@ -93,7 +110,13 @@ class OpenRouterClient:
                 return _gen()
             return answer
 
-        headers, payload = self._headers_and_payload(messages, stream=stream, reasoning=reasoning, rs=rs)
+        headers, payload = self._headers_and_payload(
+            messages,
+            stream=stream,
+            reasoning=reasoning,
+            rs=rs,
+            apply_top_p=apply_top_p,
+        )
         if stream:
             return self._stream(headers, payload, rs)
         result = await self._complete(headers, payload, rs)
@@ -105,6 +128,8 @@ class OpenRouterClient:
         messages: list[dict[str, str]],
         stream: bool = False,
         reasoning: bool = True,
+        *,
+        apply_top_p: bool = False,
     ) -> ChatCompletion:
         """Return content plus finish_reason. Non-stream only for answer_question()."""
         del stream  # answer_question always uses non-stream
@@ -112,7 +137,13 @@ class OpenRouterClient:
         if not rs.get("openrouter_api_key"):
             return ChatCompletion(content=self._demo_answer(), finish_reason="stop")
 
-        headers, payload = self._headers_and_payload(messages, stream=False, reasoning=reasoning, rs=rs)
+        headers, payload = self._headers_and_payload(
+            messages,
+            stream=False,
+            reasoning=reasoning,
+            rs=rs,
+            apply_top_p=apply_top_p,
+        )
         return await self._complete(headers, payload, rs)
 
     async def _complete(
@@ -167,9 +198,11 @@ class OllamaClient:
         messages: list[dict[str, str]],
         stream: bool = False,
         reasoning: bool = True,
+        *,
+        apply_top_p: bool = False,
     ) -> str | AsyncIterator[str]:
         del reasoning
-        result = await self.chat_with_meta(messages)
+        result = await self.chat_with_meta(messages, apply_top_p=apply_top_p)
         if stream:
 
             async def _gen() -> AsyncIterator[str]:
@@ -183,17 +216,24 @@ class OllamaClient:
         messages: list[dict[str, str]],
         stream: bool = False,
         reasoning: bool = True,
+        *,
+        apply_top_p: bool = False,
     ) -> ChatCompletion:
         del stream, reasoning  # Ollama path is non-stream; num_predict unchanged.
         rs = resolved_settings()
+        options: dict[str, Any] = {
+            "temperature": float(rs["temperature"]),
+            "num_predict": int(rs["max_tokens"]),
+        }
+        if apply_top_p:
+            top_p = optional_top_p(rs)
+            if top_p is not None:
+                options["top_p"] = top_p
         payload = {
             "model": rs["ollama_model"],
             "messages": messages,
             "stream": False,
-            "options": {
-                "temperature": float(rs["temperature"]),
-                "num_predict": int(rs["max_tokens"]),
-            },
+            "options": options,
         }
         async with httpx.AsyncClient(timeout=300) as client:
             resp = await client.post(f"{rs['ollama_base_url']}/api/chat", json=payload)

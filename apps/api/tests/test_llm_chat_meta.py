@@ -177,7 +177,7 @@ async def test_answer_question_sets_truncated_and_chunk_index(monkeypatch):
         finish_reason = "length"
 
     class FakeLlm:
-        async def chat_with_meta(self, messages, stream=False, reasoning=True):
+        async def chat_with_meta(self, messages, stream=False, reasoning=True, **kwargs):
             return FakeCompletion()
 
     class FakeLocal:
