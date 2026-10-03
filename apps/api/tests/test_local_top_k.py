@@ -62,7 +62,7 @@ async def _run_answer(
             return [dict(h) for h in hits[:top_k]]
 
     class FakeLlm:
-        async def chat(self, messages, stream=False):
+        async def chat(self, messages, stream=False, **kwargs):
             captured["messages"] = messages
             return "測試回答"
 
@@ -166,7 +166,7 @@ async def test_dify_top_k_120_clamped_to_20(monkeypatch):
             return []
 
     class FakeLlm:
-        async def chat(self, messages, stream=False):
+        async def chat(self, messages, stream=False, **kwargs):
             return "測試回答"
 
     monkeypatch.setattr(

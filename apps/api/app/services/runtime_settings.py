@@ -43,7 +43,7 @@ SECRET_KEYS = frozenset({
 EDITABLE_KEYS = frozenset({
     "app_name", "cors_origins",
     "llm_provider", "openrouter_api_key", "openrouter_model", "openrouter_base_url",
-    "ollama_base_url", "ollama_model", "temperature", "max_tokens",
+    "ollama_base_url", "ollama_model", "temperature", "max_tokens", "llm_top_p",
     "system_prompt", "cite_inline_refs", "local_top_k", "dify_top_k",
     "jina_api_key", "jina_embedding_model", "jina_embedding_dim",
     "dify_enabled", "dify_api_url", "dify_dataset_api_key", "dify_app_api_key", "dify_dataset_id",
@@ -166,6 +166,7 @@ def defaults_from_env(settings: Settings) -> dict[str, Any]:
         "ollama_model": settings.ollama_model,
         "temperature": 0.2,
         "max_tokens": 4096,
+        "llm_top_p": None,
         "system_prompt": DEFAULT_SYSTEM_PROMPT,
         "cite_inline_refs": True,
         "local_top_k": 12,
@@ -217,6 +218,17 @@ def apply_patch(current: dict[str, Any], patch: dict[str, Any]) -> tuple[dict[st
             if not isinstance(v, (int, float)) or not (0 <= float(v) <= 2):
                 raise ValueError("temperature must be between 0 and 2")
             v = float(v)
+        if k == "llm_top_p":
+            # None 或空字串表示清除為「未設定」；有值時必須為 0 至 1 的數字。
+            if v is None or v == "":
+                v = None
+            elif isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise ValueError("llm_top_p must be a number between 0 and 1")
+            else:
+                fv = float(v)
+                if not (0.0 <= fv <= 1.0):
+                    raise ValueError("llm_top_p must be a number between 0 and 1")
+                v = fv
         if k in ("local_top_k", "dify_top_k"):
             if isinstance(v, bool) or not isinstance(v, int) or not (1 <= v <= 20):
                 raise ValueError(f"{k} must be an integer between 1 and 20")

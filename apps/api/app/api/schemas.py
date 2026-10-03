@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class LoginRequest(BaseModel):
@@ -127,6 +127,7 @@ class SettingsUpdate(BaseModel):
     ollama_model: str | None = None
     temperature: float | None = None
     max_tokens: int | None = None
+    llm_top_p: float | None = None
     system_prompt: str | None = None
     cite_inline_refs: bool | None = None
     local_top_k: int | None = None
@@ -152,6 +153,16 @@ class SettingsUpdate(BaseModel):
     minio_secure: bool | None = None
     google_client_id: str | None = None
     google_client_secret: str | None = None
+
+    @field_validator("llm_top_p", mode="before")
+    @classmethod
+    def normalize_llm_top_p(cls, value: Any) -> Any:
+        """空字串視為清除；布林值不可隱式轉成 0／1。"""
+        if value == "":
+            return None
+        if isinstance(value, bool):
+            raise ValueError("llm_top_p must be a number between 0 and 1")
+        return value
 
 
 class SourcesConfigBody(BaseModel):

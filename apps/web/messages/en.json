@@ -390,6 +390,7 @@
       "ollama_model": "Ollama model",
       "temperature": "Temperature",
       "max_tokens": "Max tokens",
+      "llm_top_p": "Top P (how random the wording is)",
       "system_prompt": "System prompt",
       "cite_inline_refs": "Cite inline references",
       "local_top_k": "Top K (number of passages given to the AI)",
@@ -429,6 +430,9 @@
     "help": {
       "temperature": "0 is most conservative, 1 most creative; 0.1–0.3 recommended for Q&A",
       "max_tokens": "Maximum length of a single answer",
+      "llm_top_p": "Suggested: 0.9; leave blank to leave unchanged",
+      "llm_top_p_placeholder": "Not set (use model default)",
+      "llm_top_p_range": "Please enter a number between 0 and 1",
       "system_prompt": "Instructions read before every answer; sets tone and rules",
       "cite_inline_refs": "Add [1] [2] markers inside answers so claims can be checked against sources",
       "local_top_k": "Suggested: 12. Larger numbers make answers slower and more expensive.",

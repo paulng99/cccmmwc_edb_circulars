@@ -390,6 +390,7 @@
       "ollama_model": "Ollama 模型",
       "temperature": "溫度",
       "max_tokens": "最大 token 數",
+      "llm_top_p": "Top P（回答用字的隨機程度）",
       "system_prompt": "系統提示詞",
       "cite_inline_refs": "內嵌引用來源",
       "local_top_k": "Top K（交給 AI 參考的段落數）",
@@ -429,6 +430,9 @@
     "help": {
       "temperature": "0 最保守、1 最有創意；問答建議 0.1–0.3",
       "max_tokens": "單次回答的最大長度",
+      "llm_top_p": "建議 0.9；留空則不調整",
+      "llm_top_p_placeholder": "未設定（沿用模型預設）",
+      "llm_top_p_range": "請輸入 0 至 1 之間的數字",
       "system_prompt": "每次問答都會先讀取的指示，用於設定語氣與規則",
       "cite_inline_refs": "在答案中加入 [1] [2] 等引用標記，方便對照來源",
       "local_top_k": "建議 12。數字越大，回答越慢、費用越高。",

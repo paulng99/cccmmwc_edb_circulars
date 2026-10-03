@@ -41,6 +41,7 @@ def test_defaults_include_new_keys():
     d = defaults_from_env(s)
     assert d["temperature"] == 0.2
     assert d["max_tokens"] == 4096
+    assert d["llm_top_p"] is None
     assert d["local_top_k"] == 12
     assert d["dify_top_k"] == 5
     assert d["cite_inline_refs"] is True
@@ -104,6 +105,32 @@ def test_apply_patch_max_tokens_still_allows_above_20():
     assert new["max_tokens"] == 120
     assert new["jina_embedding_dim"] == 768
     assert "reindex_required" in warnings
+
+
+@pytest.mark.parametrize("value", [0, 0.0, 0.9, 1, 1.0])
+def test_apply_patch_accepts_llm_top_p_in_range(value):
+    current = {"llm_top_p": None}
+    new, warnings = apply_patch(current, {"llm_top_p": value})
+    assert new["llm_top_p"] == float(value)
+    assert warnings == []
+
+
+@pytest.mark.parametrize("value", [None, ""])
+def test_apply_patch_clears_llm_top_p(value):
+    current = {"llm_top_p": 0.9}
+    new, warnings = apply_patch(current, {"llm_top_p": value})
+    assert new["llm_top_p"] is None
+    assert warnings == []
+
+
+@pytest.mark.parametrize(
+    "value",
+    [-0.1, 1.5, "abc", "0.9", True, False],
+)
+def test_apply_patch_rejects_llm_top_p_invalid(value):
+    current = {"llm_top_p": None}
+    with pytest.raises(ValueError, match="llm_top_p must be a number between 0 and 1"):
+        apply_patch(current, {"llm_top_p": value})
 
 
 def test_build_settings_response_masks():

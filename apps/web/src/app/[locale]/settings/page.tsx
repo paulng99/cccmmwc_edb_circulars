@@ -10,6 +10,7 @@ import { getSettings, improveSystemPrompt, SecretField, SettingsResponse, update
 import { useAuth } from "@/lib/auth";
 import { formatHkDateTime } from "@/lib/date";
 import { isValidTopK } from "@/lib/top-k";
+import { isValidTopP } from "@/lib/top-p";
 
 const SECRET_KEYS = new Set([
   "openrouter_api_key",
@@ -24,6 +25,7 @@ const SECRET_KEYS = new Set([
 const NUMBER_KEYS = new Set([
   "temperature",
   "max_tokens",
+  "llm_top_p",
   "local_top_k",
   "dify_top_k",
   "jina_embedding_dim",
@@ -32,6 +34,7 @@ const NUMBER_KEYS = new Set([
 ]);
 
 const TOP_K_KEYS = new Set(["local_top_k", "dify_top_k"]);
+const FLOAT_NUMBER_KEYS = new Set(["temperature", "crawl_rate_limit_seconds", "llm_top_p"]);
 
 const BOOLEAN_KEYS = new Set([
   "cite_inline_refs",
@@ -141,6 +144,12 @@ export default function SettingsPage() {
         if (typeof draft[key] === "string" && (draft[key] as string).trim() !== "") n += 1;
         continue;
       }
+      if (key === "llm_top_p") {
+        const draftVal = draft[key] === "" ? null : draft[key];
+        const baseVal = data.editable[key] ?? null;
+        if (draftVal !== baseVal) n += 1;
+        continue;
+      }
       if (draft[key] !== data.editable[key]) n += 1;
     }
     return n;
@@ -158,6 +167,14 @@ export default function SettingsPage() {
       if (!isValidTopK(value)) return true;
     }
     return false;
+  }, [data, draft]);
+
+  const topPInvalid = useMemo(() => {
+    if (!data) return false;
+    const value = Object.prototype.hasOwnProperty.call(draft, "llm_top_p")
+      ? draft.llm_top_p
+      : data.editable.llm_top_p;
+    return !isValidTopP(value);
   }, [data, draft]);
 
   function baseValue(key: string, readonly = false): unknown {
@@ -227,7 +244,7 @@ export default function SettingsPage() {
         updateDraft(key, "");
         return;
       }
-      const parsed = key === "temperature" || key === "crawl_rate_limit_seconds" ? parseFloat(raw) : parseInt(raw, 10);
+      const parsed = FLOAT_NUMBER_KEYS.has(key) ? parseFloat(raw) : parseInt(raw, 10);
       updateDraft(key, Number.isNaN(parsed) ? raw : parsed);
       return;
     }
@@ -256,6 +273,16 @@ export default function SettingsPage() {
 
       if (BOOLEAN_KEYS.has(key)) {
         patch[key] = Boolean(next);
+      } else if (key === "llm_top_p") {
+        if (next === "" || next === null || next === undefined) {
+          if (current !== null && current !== undefined && current !== "") {
+            patch[key] = null;
+          }
+          continue;
+        }
+        const num = typeof next === "number" ? next : parseFloat(String(next));
+        if (Number.isNaN(num)) continue;
+        patch[key] = num;
       } else if (NUMBER_KEYS.has(key)) {
         if (next === "" || next === null || next === undefined) continue;
         const num = typeof next === "number" ? next : parseFloat(String(next));
@@ -271,7 +298,7 @@ export default function SettingsPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!token || !data || saving || topKInvalid) return;
+    if (!token || !data || saving || topKInvalid || topPInvalid) return;
 
     const patch = buildPatch();
     if (!patch || Object.keys(patch).length === 0) {
@@ -447,7 +474,9 @@ export default function SettingsPage() {
     }
 
     const isTopK = TOP_K_KEYS.has(key);
+    const isTopP = key === "llm_top_p";
     const topKError = isTopK && !isValidTopK(effectiveEditableValue(key));
+    const topPError = isTopP && !isValidTopP(effectiveEditableValue(key));
     return (
       <div className={`field${wide ? " span-2" : ""}`} key={key}>
         <label htmlFor={key}>{label}</label>
@@ -456,13 +485,15 @@ export default function SettingsPage() {
           type={NUMBER_KEYS.has(key) ? "number" : "text"}
           value={displayString(key)}
           onChange={(e) => onInputChange(key, e.target.value)}
-          step={key === "temperature" ? 0.1 : key === "crawl_rate_limit_seconds" ? 0.1 : undefined}
-          min={isTopK ? 1 : undefined}
-          max={isTopK ? 20 : undefined}
-          aria-invalid={topKError || undefined}
+          step={FLOAT_NUMBER_KEYS.has(key) ? 0.1 : undefined}
+          min={isTopK ? 1 : isTopP ? 0 : undefined}
+          max={isTopK ? 20 : isTopP ? 1 : undefined}
+          placeholder={isTopP ? t("help.llm_top_p_placeholder") : undefined}
+          aria-invalid={topKError || topPError || undefined}
         />
         {help ? <span className="field-hint">{help}</span> : null}
         {topKError ? <span className="field-error">{t("help.top_k_range")}</span> : null}
+        {topPError ? <span className="field-error">{t("help.llm_top_p_range")}</span> : null}
       </div>
     );
   }
@@ -481,6 +512,7 @@ export default function SettingsPage() {
       : ["openrouter_api_key", "openrouter_model", "openrouter_base_url"]),
     "temperature",
     "max_tokens",
+    "llm_top_p",
     "jina_api_key",
     "jina_embedding_model",
     "jina_embedding_dim",
@@ -594,7 +626,7 @@ export default function SettingsPage() {
                 <button
                   className={`btn${saving ? " is-loading" : ""}`}
                   type="submit"
-                  disabled={saving || loading || topKInvalid}
+                  disabled={saving || loading || topKInvalid || topPInvalid}
                 >
                   {saving ? <span className="spinner" /> : <Icon name="check" />}
                   {saving ? t("saving") : dirtyCount > 0 ? t("saveCount", { count: dirtyCount }) : t("save")}
