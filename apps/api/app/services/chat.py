@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.entities import ChatMessage, ChatSession
 from app.services.ingest import extract_text_from_pdf, sanitize_text
 from app.services.knowledge import get_dify_knowledge, get_local_knowledge
-from app.services.llm import get_llm_client
+from app.services.llm import get_llm_client, is_length_truncated
 from app.services.runtime_settings import build_system_prompt, get_merged
 from app.services.usage import usage_scope
 
@@ -197,6 +197,7 @@ def message_public(msg: ChatMessage) -> dict[str, Any]:
         "content": msg.content,
         "citations": msg.citations or [],
         "attachments": attachments,
+        "truncated": bool(msg.truncated) if msg.truncated is not None else False,
         "created_at": _iso(msg.created_at),
     }
 
@@ -345,6 +346,7 @@ async def answer_question(
                 "source_url": hit.get("source_url"),
                 "score": hit.get("score"),
                 "backend": "local",
+                "chunk_index": hit.get("chunk_index"),
             }
         )
     for i, hit in enumerate(dify_hits, start=1):
@@ -370,8 +372,16 @@ async def answer_question(
 
     llm = get_llm_client()
     with usage_scope("chat"):
-        answer = await llm.chat(messages, stream=False)
-    assert isinstance(answer, str)
+        # Prefer chat_with_meta so finish_reason=length can surface a continue UI.
+        chat_with_meta = getattr(llm, "chat_with_meta", None)
+        if callable(chat_with_meta):
+            completion = await chat_with_meta(messages, stream=False)
+            answer = completion.content
+            truncated = is_length_truncated(completion.finish_reason)
+        else:
+            answer = await llm.chat(messages, stream=False)
+            assert isinstance(answer, str)
+            truncated = False
 
     now = datetime.now(timezone.utc)
     stored_user = q_display or ("" if atts else PROMPT_ONLY_STORED)
@@ -390,6 +400,7 @@ async def answer_question(
             role="assistant",
             content=answer,
             citations=citations,
+            truncated=truncated,
             created_at=now + timedelta(milliseconds=1),
         )
     )
@@ -400,6 +411,7 @@ async def answer_question(
         "session_id": str(chat.id),
         "answer": answer,
         "citations": citations,
+        "truncated": truncated,
         "knowledge_source": knowledge_source,
         "programme": programme,
         "topic": topic,

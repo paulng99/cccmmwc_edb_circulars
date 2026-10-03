@@ -90,6 +90,12 @@ async def init_db() -> None:
         )
         await conn.execute(
             text(
+                "ALTER TABLE chat_messages "
+                "ADD COLUMN IF NOT EXISTS truncated BOOLEAN DEFAULT FALSE"
+            )
+        )
+        await conn.execute(
+            text(
                 "UPDATE chat_sessions AS s "
                 "SET updated_at = COALESCE("
                 "  (SELECT MAX(m.created_at) FROM chat_messages AS m WHERE m.session_id = s.id),"

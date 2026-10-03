@@ -9,7 +9,7 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
-from app.api.schemas import ChatRequest
+from app.api.schemas import ChatRequest, ChatResponse
 from app.core.db import get_db
 from app.models.entities import User
 from app.services.chat import (
@@ -82,7 +82,7 @@ async def chat(
     body: ChatRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
-) -> dict:
+) -> ChatResponse:
     ks = body.knowledge_source
     if ks not in ("local", "local_and_dify", "dify"):
         raise HTTPException(status_code=400, detail="Invalid knowledge_source")
@@ -101,8 +101,8 @@ async def chat(
                 topic=body.topic,
                 attachments=[att.model_dump() for att in body.attachments],
             )
-        log.info("chat done cites=%s", len(result.get("citations") or []))
-        return result
+        log.info("chat done cites=%s truncated=%s", len(result.get("citations") or []), result.get("truncated"))
+        return ChatResponse.model_validate(result)
     except Exception as exc:
         log.exception("chat failed")
         raise HTTPException(status_code=502, detail=f"Chat failed: {exc}") from exc
