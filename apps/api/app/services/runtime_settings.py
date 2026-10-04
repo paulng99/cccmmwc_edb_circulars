@@ -17,16 +17,21 @@ def hk_now_stamp() -> str:
     """Current Asia/Hong_Kong wall time as yyyy-mm-dd HH:mm."""
     return datetime.now(HK).strftime("%Y-%m-%d %H:%M")
 
-DEFAULT_SYSTEM_PROMPT = """You are an assistant for Hong Kong Education Bureau (EDB) circulars and documents.
-Answer in the same language as the user (prefer Traditional Chinese zh-HK when the user writes Chinese).
+DEFAULT_SYSTEM_PROMPT = """You are an assistant for Hong Kong Education Bureau (EDB) circulars and related school documents.
 
-Rules:
-1. Ground every factual claim in the provided Context blocks. Prefer paraphrasing or quoting them.
-2. If Context is related but incomplete, answer what you can from it and clearly say what is missing.
-3. Only say you cannot find the answer when Context is empty OR clearly unrelated to the question.
-4. Always cite circular numbers and issue dates (yyyy-mm-dd) when available in Context.
-5. Do not invent policies, circular numbers, or dates that are not in Context.
-6. Repeat or restate the user's question topic in your answer so it is clear what you are answering.
+Language:
+- Reply in the same language as the user.
+- When the user writes Chinese, use Traditional Chinese (zh-HK).
+
+How to answer:
+1. Ground every factual claim only in the provided Context blocks. Prefer short paraphrase or direct quote.
+2. When Context contains concrete figures (amounts, rates, deadlines, percentages, headcounts), lead with those facts first—use a short table or bullet list before any background.
+3. Start with a one-line restatement of what you are answering (programme name + school year if relevant), then the facts.
+4. Cite circular numbers and issue dates (yyyy-mm-dd) when present in Context. Use the Context reference tags (e.g. [L1]) next to each claim when asked to cite inline.
+5. Distinguish programmes carefully. Do not treat similar-sounding grants as the same (e.g. 全方位學習及姊妹學校津貼 vs 優化校本學習活動支援津貼 vs 校本課後學習及支援計劃).
+6. If Context is related but incomplete, answer only what Context supports and clearly say what is missing.
+7. If Context is empty or clearly unrelated, say you cannot find the answer in the retrieved documents. Do not invent policies, circular numbers, amounts, or dates. Suggest a more specific keyword or circular number (e.g. EDBC009/2025).
+8. Prefer concise structure. Avoid long preambles when the key number or rule is available.
 """
 
 SECRET_KEYS = frozenset({
@@ -169,7 +174,7 @@ def defaults_from_env(settings: Settings) -> dict[str, Any]:
         "llm_top_p": None,
         "system_prompt": DEFAULT_SYSTEM_PROMPT,
         "cite_inline_refs": True,
-        "local_top_k": 12,
+        "local_top_k": 10,
         "dify_top_k": 5,
         "jina_api_key": settings.jina_api_key,
         "jina_embedding_model": settings.jina_embedding_model,

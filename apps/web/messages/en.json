@@ -433,7 +433,7 @@
       "llm_top_p_range": "Please enter a number between 0 and 1",
       "system_prompt": "Instructions read before every answer; sets tone and rules",
       "cite_inline_refs": "Add [1] [2] markers inside answers so claims can be checked against sources",
-      "local_top_k": "Suggested: 12. Larger numbers make answers slower and more expensive.",
+      "local_top_k": "Suggested: 10. Larger numbers make answers slower and more expensive.",
       "dify_top_k": "Suggested: 5. Larger numbers make answers slower and more expensive.",
       "top_k_range": "Please enter an integer between 1 and 20",
       "jina_embedding_dim": "Changing this requires re-indexing all documents",
