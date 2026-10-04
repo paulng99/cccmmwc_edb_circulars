@@ -127,6 +127,69 @@ _ACADEMIC_YEAR_RE = re.compile(r"\d{4}\s*[/\-]\s*\d{2,4}")
 _ACADEMIC_YEAR_TERM_RE = re.compile(r"^\d{4}/\d{2,4}$")
 _CJK_RUN_RE = re.compile(r"[\u4e00-\u9fff]+")
 
+# Known EDB programme aliases: English acronyms / short Chinese names → full titles.
+# Prod miss: 「LWLSSG 的學生資助」never ILIKE-matches Chinese grant-rates PDF titles.
+_PROGRAMME_ALIAS_GROUPS: tuple[tuple[re.Pattern[str], tuple[str, ...]], ...] = (
+    (
+        re.compile(
+            r"(?i)\bLWLSSG\b|"
+            r"Life-wide\s+Learning\s+and\s+Sister\s+School\s+Grant|"
+            r"全方位學習及姊妹學校津貼|"
+            r"全方位學習津貼|"
+            r"姊妹學校津貼"
+        ),
+        (
+            # Prefer compact aliases so _query_terms stays within its 12-term budget.
+            "全方位學習及姊妹學校津貼",
+            "LWLSSG",
+        ),
+    ),
+)
+_AMOUNT_INTENT_RE = re.compile(
+    r"津貼額|資助|金額|撥款|幾多錢|每名學生|grant\s*rates?|\bamount\b|\bfunding\b",
+    re.IGNORECASE,
+)
+_AMOUNT_ALIAS_EXTRAS: tuple[str, ...] = ("津貼額",)
+
+
+def expand_programme_aliases(query: str) -> str:
+    """Append canonical programme names / amount cues missing from the raw query.
+
+    Keeps the original wording first so phrase match still works, then adds
+    aliases so keyword ILIKE and embeddings can reach Chinese grant-rate titles
+    when the user only typed an English acronym (e.g. LWLSSG).
+    """
+    q = (query or "").strip()
+    if not q:
+        return ""
+
+    extras: list[str] = []
+    q_fold = q.casefold()
+
+    def _missing(term: str) -> bool:
+        t = (term or "").strip()
+        if not t:
+            return False
+        if t in q or t.casefold() in q_fold:
+            return False
+        return t not in extras
+
+    for pattern, canonicals in _PROGRAMME_ALIAS_GROUPS:
+        if pattern.search(q) is None:
+            continue
+        for term in canonicals:
+            if _missing(term):
+                extras.append(term)
+        if _AMOUNT_INTENT_RE.search(q) is not None:
+            for term in _AMOUNT_ALIAS_EXTRAS:
+                if _missing(term):
+                    extras.append(term)
+        break
+
+    if not extras:
+        return q
+    return f"{q} {' '.join(extras)}"
+
 
 def _normalize_academic_year(raw: str) -> str:
     """Normalize academic-year spans to slash form (e.g. 2026-27 → 2026/27)."""
@@ -139,7 +202,7 @@ def _query_terms(query: str) -> list[str]:
     Prefer academic years (2026/27) over bare years (2026). Bare 4-digit years
     match too many chunks via ILIKE and drown out title hits with NULL issued_at.
     """
-    q = (query or "").strip()
+    q = expand_programme_aliases(query)
     if not q:
         return []
     terms: list[str] = []
@@ -203,11 +266,25 @@ def _keyword_score(
 
     # Near-title: query CJK bigrams overlapping the title (handles inserted words
     # like 「全方位學習及姊妹學校津貼」 vs query 「全方位學習津貼」).
-    overlap_query = query if query is not None else (terms[0] if terms else "")
+    overlap_query = expand_programme_aliases(
+        query if query is not None else (terms[0] if terms else "")
+    )
     overlap = _cjk_bigram_overlap(overlap_query, title or "")
     score += 0.30 * overlap
     if title_hits >= 1 and overlap >= 0.4:
         score += 0.08
+
+    # Prefer grant-rate schedule titles when the user asks about amounts / 資助.
+    title_l = title_blob.casefold()
+    if (
+        _AMOUNT_INTENT_RE.search(overlap_query or "") is not None
+        and ("津貼額" in title_blob or "grant rates" in title_l)
+        and any(
+            cue in (overlap_query or "")
+            for cue in ("全方位學習", "姊妹學校", "LWLSSG")
+        )
+    ):
+        score += 0.12
 
     return min(score, 0.99)
 
@@ -424,6 +501,7 @@ async def retrieve_chunks(
     """Hybrid retrieval: pgvector + keyword ILIKE, merged by score."""
     prog = programme if programme in _VALID_PROGRAMMES else None
     top = topic if topic in _VALID_TOPICS else None
+    query = expand_programme_aliases(query)
     # Fetch extra candidates so per-document diversity still fills top_k.
     fetch_k = max(top_k * 3, 12)
     vector_hits = await _vector_retrieve(

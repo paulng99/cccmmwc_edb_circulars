@@ -13,6 +13,7 @@ from app.models.entities import ChatMessage, ChatSession
 from app.services.ingest import extract_text_from_pdf, sanitize_text
 from app.services.knowledge import get_dify_knowledge, get_local_knowledge
 from app.services.llm import get_llm_client, is_length_truncated
+from app.services.rag import expand_programme_aliases
 from app.services.runtime_settings import build_system_prompt, get_merged
 from app.services.usage import usage_scope
 
@@ -41,7 +42,7 @@ _FILENAME_SAFE = re.compile(r"[^\w.\- ()\u4e00-\u9fff]+", re.UNICODE)
 # Cues that a standalone question already carries enough retrieval topic.
 _RETRIEVE_TOPIC_CUE_RE = re.compile(
     r"(?:20\d{2}\s*[/\-]\s*\d{2}|EDBC[M]?\s*\d+|通告|"
-    r"津貼|撥款|資助|姊妹學校|全方位學習|校本|課後|幼稚園|直資)",
+    r"LWLSSG|津貼|撥款|資助|姊妹學校|全方位學習|校本|課後|幼稚園|直資)",
     re.IGNORECASE,
 )
 
@@ -311,7 +312,7 @@ def build_retrieve_query(
         return ""
     prior = _user_turns_for_retrieve(history)
     if not prior or not needs_history_for_retrieve(q):
-        return clip_text(q, MAX_RETRIEVE_QUERY_CHARS)
+        return clip_text(expand_programme_aliases(q), MAX_RETRIEVE_QUERY_CHARS)
 
     topic_parts: list[str] = []
     for turn in prior[-MAX_RETRIEVE_HISTORY_TURNS:]:
@@ -319,9 +320,9 @@ def build_retrieve_query(
         if snippet:
             topic_parts.append(snippet)
     if not topic_parts:
-        return clip_text(q, MAX_RETRIEVE_QUERY_CHARS)
+        return clip_text(expand_programme_aliases(q), MAX_RETRIEVE_QUERY_CHARS)
     combined = " ".join(topic_parts) + "\n" + q
-    return clip_text(combined, MAX_RETRIEVE_QUERY_CHARS)
+    return clip_text(expand_programme_aliases(combined), MAX_RETRIEVE_QUERY_CHARS)
 
 
 async def answer_question(

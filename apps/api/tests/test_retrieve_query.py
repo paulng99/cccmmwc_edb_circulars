@@ -51,13 +51,17 @@ def test_build_retrieve_query_expands_short_follow_up_with_prior_user_turns():
     assert len(q) <= MAX_RETRIEVE_QUERY_CHARS
 
 
-def test_build_retrieve_query_keeps_specific_question_unchanged():
+def test_build_retrieve_query_keeps_specific_question_without_history_blend():
     history = [
         {"role": "user", "content": "先前問過姊妹學校"},
         {"role": "assistant", "content": "ok"},
     ]
     q = "全方位學習津貼 2026/27 的學生資助"
-    assert build_retrieve_query(q, history) == q
+    out = build_retrieve_query(q, history)
+    # Still the same question (no history blend); programme aliases may append.
+    assert out.startswith(q) or q in out
+    assert "先前問過" not in out
+    assert "全方位學習及姊妹學校津貼" in out
 
 
 def test_build_retrieve_query_no_history_returns_question():
