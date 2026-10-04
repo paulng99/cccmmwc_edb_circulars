@@ -150,6 +150,7 @@
     "groundingNote": "答案只根據已收集的通告與文件生成；未有相關文件時會如實告知。",
     "citations": "參考來源",
     "sourcesCount": "{count} 個參考來源",
+    "sourcesSelectPlaceholder": "請選擇參考來源",
     "citedChunks": "引用 {count} 段",
     "expandChunks": "展開引用段落",
     "collapseChunks": "收合引用段落",

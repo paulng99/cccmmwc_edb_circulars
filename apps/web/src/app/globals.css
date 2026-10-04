@@ -2221,6 +2221,22 @@ code {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+  max-width: 28rem;
+}
+
+.sources-select {
+  width: 100%;
+  cursor: pointer;
+}
+
+.sources-select:hover {
+  border-color: var(--slate-400);
+}
+
+.sources-select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--ring);
 }
 
 .sources-head {
