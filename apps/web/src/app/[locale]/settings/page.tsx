@@ -27,6 +27,7 @@ const NUMBER_KEYS = new Set([
   "max_tokens",
   "llm_top_p",
   "local_top_k",
+  "local_min_score",
   "dify_top_k",
   "jina_embedding_dim",
   "crawl_rate_limit_seconds",
@@ -34,7 +35,12 @@ const NUMBER_KEYS = new Set([
 ]);
 
 const TOP_K_KEYS = new Set(["local_top_k", "dify_top_k"]);
-const FLOAT_NUMBER_KEYS = new Set(["temperature", "crawl_rate_limit_seconds", "llm_top_p"]);
+const FLOAT_NUMBER_KEYS = new Set([
+  "temperature",
+  "crawl_rate_limit_seconds",
+  "llm_top_p",
+  "local_min_score",
+]);
 
 const BOOLEAN_KEYS = new Set([
   "cite_inline_refs",
@@ -541,7 +547,7 @@ export default function SettingsPage() {
     "google_client_id",
     "google_client_secret",
   ];
-  const chatKeys = ["system_prompt", "cite_inline_refs", "local_top_k", "dify_top_k"];
+  const chatKeys = ["system_prompt", "cite_inline_refs", "local_top_k", "local_min_score", "dify_top_k"];
 
   function matches(label: string) {
     return !q || label.toLowerCase().includes(q);

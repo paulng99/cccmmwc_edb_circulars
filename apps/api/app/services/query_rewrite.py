@@ -185,6 +185,20 @@ def merge_multi_query_hits(
     return merged[:top_k]
 
 
+def filter_hits_by_min_score(
+    hits: list[dict[str, Any]],
+    min_score: float,
+) -> list[dict[str, Any]]:
+    """Drop hits below min_score. min_score <= 0 keeps all (disabled)."""
+    try:
+        threshold = float(min_score)
+    except (TypeError, ValueError):
+        return list(hits)
+    if threshold <= 0:
+        return list(hits)
+    return [h for h in hits if float(h.get("score") or 0.0) >= threshold]
+
+
 async def rewrite_retrieve_query(question: str) -> RewriteResult | None:
     """Call LLM to expand a retrieve query. Returns None on timeout/parse/LLM failure."""
     q = (question or "").strip()

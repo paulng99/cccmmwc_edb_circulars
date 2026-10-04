@@ -131,6 +131,7 @@ class SettingsUpdate(BaseModel):
     system_prompt: str | None = None
     cite_inline_refs: bool | None = None
     local_top_k: int | None = None
+    local_min_score: float | None = None
     dify_top_k: int | None = None
     jina_api_key: str | None = None
     jina_embedding_model: str | None = None
