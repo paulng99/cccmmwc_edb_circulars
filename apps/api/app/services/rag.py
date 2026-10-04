@@ -123,6 +123,16 @@ def _row_to_hit(r: Any, *, score: float, match: str) -> dict[str, Any]:
     }
 
 
+_ACADEMIC_YEAR_RE = re.compile(r"\d{4}\s*[/\-]\s*\d{2,4}")
+_ACADEMIC_YEAR_TERM_RE = re.compile(r"^\d{4}/\d{2,4}$")
+_CJK_RUN_RE = re.compile(r"[\u4e00-\u9fff]+")
+
+
+def _normalize_academic_year(raw: str) -> str:
+    """Normalize academic-year spans to slash form (e.g. 2026-27 → 2026/27)."""
+    return re.sub(r"\s+", "", raw or "").replace("-", "/")
+
+
 def _query_terms(query: str) -> list[str]:
     """Extract searchable terms for ILIKE hybrid retrieval.
 
@@ -133,23 +143,45 @@ def _query_terms(query: str) -> list[str]:
     if not q:
         return []
     terms: list[str] = []
+
+    def _add(term: str) -> None:
+        t = (term or "").replace(" ", "").strip()
+        if len(t) >= 2 and t not in terms:
+            terms.append(t)
+
     # Full query (truncated) for phrase match
     if len(q) >= 2:
-        terms.append(q[:80])
-    # Academic year before other tokens (e.g. 2026/27, 2025/2026)
-    for m in re.finditer(r"\d{4}/\d{2,4}", q):
-        t = m.group(0)
-        if t not in terms:
-            terms.append(t)
+        _add(q[:80])
+
+    # Academic year before other tokens (e.g. 2026/27, 2026-27, 2025/2026)
+    for m in _ACADEMIC_YEAR_RE.finditer(q):
+        _add(_normalize_academic_year(m.group(0)))
+
     # Chinese 2–8 char grams + Latin words / EDBC numbers (no bare \\d{4})
     for m in re.finditer(r"[\u4e00-\u9fff]{2,8}|[A-Za-z]{3,}|EDBC(?:M)?\s*\d+/\d{4}", q, re.I):
-        t = m.group(0).replace(" ", "")
-        if t not in terms:
-            terms.append(t)
+        _add(m.group(0))
     return terms[:12]
 
 
-def _keyword_score(terms: list[str], title: str, circular_no: str | None, content: str) -> float:
+def _cjk_bigram_overlap(query: str, title: str) -> float:
+    """Share of query CJK bigrams that also appear in the title (0–1)."""
+    q_cjk = "".join(_CJK_RUN_RE.findall(query or ""))
+    t_cjk = "".join(_CJK_RUN_RE.findall(title or ""))
+    if len(q_cjk) < 2 or not t_cjk:
+        return 0.0
+    bigrams = {q_cjk[i : i + 2] for i in range(len(q_cjk) - 1)}
+    if not bigrams:
+        return 0.0
+    return sum(1 for b in bigrams if b in t_cjk) / len(bigrams)
+
+
+def _keyword_score(
+    terms: list[str],
+    title: str,
+    circular_no: str | None,
+    content: str,
+    query: str | None = None,
+) -> float:
     """Score a keyword hit; title/circular matches outrank weak content-only hits."""
     title_blob = f"{title or ''} {circular_no or ''}"
     blob = f"{title_blob} {content or ''}"
@@ -161,9 +193,22 @@ def _keyword_score(terms: list[str], title: str, circular_no: str | None, conten
         for t in terms[1:]
         if len(t) >= 4 and (t in title_blob or t.lower() in title_blob.lower())
     )
-    score = 0.45 + 0.08 * hits_count + 0.20 * title_hits
+    score = 0.40 + 0.06 * hits_count + 0.20 * title_hits
     if strong_title:
-        score += 0.18
+        score += 0.16
+
+    # Academic-year in title is a strong intent signal for EDB circulars.
+    if any(_ACADEMIC_YEAR_TERM_RE.match(t) and t in title_blob for t in terms):
+        score += 0.22
+
+    # Near-title: query CJK bigrams overlapping the title (handles inserted words
+    # like 「全方位學習及姊妹學校津貼」 vs query 「全方位學習津貼」).
+    overlap_query = query if query is not None else (terms[0] if terms else "")
+    overlap = _cjk_bigram_overlap(overlap_query, title or "")
+    score += 0.30 * overlap
+    if title_hits >= 1 and overlap >= 0.4:
+        score += 0.08
+
     return min(score, 0.99)
 
 
@@ -298,7 +343,11 @@ async def _keyword_retrieve(
         if key in by_key:
             continue
         score = _keyword_score(
-            terms, r["title"] or "", r["circular_no"], r["content"] or ""
+            terms,
+            r["title"] or "",
+            r["circular_no"],
+            r["content"] or "",
+            query=query,
         )
         by_key[key] = _row_to_hit(r, score=score, match="keyword")
 
