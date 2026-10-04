@@ -49,7 +49,7 @@ EDITABLE_KEYS = frozenset({
     "app_name", "cors_origins",
     "llm_provider", "openrouter_api_key", "openrouter_model", "openrouter_base_url",
     "ollama_base_url", "ollama_model", "temperature", "max_tokens", "llm_top_p",
-    "system_prompt", "cite_inline_refs", "local_top_k", "dify_top_k",
+    "system_prompt", "cite_inline_refs", "local_top_k", "local_min_score", "dify_top_k",
     "jina_api_key", "jina_embedding_model", "jina_embedding_dim", "jina_reranker_model",
     "dify_enabled", "dify_api_url", "dify_dataset_api_key", "dify_app_api_key", "dify_dataset_id",
     "crawl_enabled", "crawl_user_agent", "crawl_rate_limit_seconds",
@@ -175,6 +175,8 @@ def defaults_from_env(settings: Settings) -> dict[str, Any]:
         "system_prompt": DEFAULT_SYSTEM_PROMPT,
         "cite_inline_refs": True,
         "local_top_k": 10,
+        # Drop weak retrieval hits after rerank (0 = keep all). TRG-style noise was ~0.08–0.18.
+        "local_min_score": 0.25,
         "dify_top_k": 5,
         "jina_api_key": settings.jina_api_key,
         "jina_embedding_model": settings.jina_embedding_model,
@@ -238,6 +240,13 @@ def apply_patch(current: dict[str, Any], patch: dict[str, Any]) -> tuple[dict[st
         if k in ("local_top_k", "dify_top_k"):
             if isinstance(v, bool) or not isinstance(v, int) or not (1 <= v <= 20):
                 raise ValueError(f"{k} must be an integer between 1 and 20")
+        if k == "local_min_score":
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise ValueError("local_min_score must be a number between 0 and 1")
+            fv = float(v)
+            if not (0.0 <= fv <= 1.0):
+                raise ValueError("local_min_score must be a number between 0 and 1")
+            v = fv
         if k in ("max_tokens", "jina_embedding_dim"):
             if not isinstance(v, int) or v < 1:
                 raise ValueError(f"{k} must be int >= 1")

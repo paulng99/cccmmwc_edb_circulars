@@ -17,6 +17,7 @@ from app.services.knowledge import get_dify_knowledge, get_local_knowledge
 from app.services.llm import get_llm_client, is_length_truncated
 from app.services.query_rewrite import (
     build_dual_queries,
+    filter_hits_by_min_score,
     merge_multi_query_hits,
     rewrite_retrieve_query,
 )
@@ -432,6 +433,9 @@ async def answer_question(
                     )
             rerank_query = q_display or retrieve_query
             local_hits = await rerank_hits(rerank_query, merged, top_n=final_k)
+            # Settings: drop weak passages so the answer LLM is not fed noise.
+            min_score = float(rs.get("local_min_score") or 0.0)
+            local_hits = filter_hits_by_min_score(local_hits, min_score)
         # 每段內容上限維持 1200 字，避免單段過長佔用上下文。
         for hit in local_hits:
             content = hit.get("content") or ""
