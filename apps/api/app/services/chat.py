@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -10,6 +11,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import ChatMessage, ChatSession
+from app.services.hyde import generate_hyde_passage
 from app.services.ingest import extract_text_from_pdf, sanitize_text
 from app.services.knowledge import get_dify_knowledge, get_local_knowledge
 from app.services.llm import get_llm_client, is_length_truncated
@@ -18,6 +20,7 @@ from app.services.query_rewrite import (
     merge_multi_query_hits,
     rewrite_retrieve_query,
 )
+from app.services.rag import retrieve_vector_only
 from app.services.rerank import rerank_hits
 from app.services.runtime_settings import build_system_prompt, get_merged
 from app.services.usage import usage_scope
@@ -375,8 +378,10 @@ async def answer_question(
 
     rs = await get_merged(session)
 
-    # LLM rewrite → dual-query merge → rerank (fallback: original retrieve_query).
+    # LLM rewrite → dual-query merge → HyDE vector merge → rerank.
+    # Fallback: original retrieve_query; HyDE failure skips that path only.
     search_queries: list[str] = []
+    hyde_source_query = retrieve_query
     if retrieve_query:
         rewritten = await rewrite_retrieve_query(retrieve_query)
         search_queries = build_dual_queries(retrieve_query, rewritten)
@@ -393,6 +398,10 @@ async def answer_question(
             # Wider candidate pool for multi-query merge + rerank.
             pool_k = min(final_k * 2, 40)
             local_backend = get_local_knowledge()
+            # Start HyDE generation while dual-query hybrid retrieves run.
+            hyde_task = asyncio.create_task(
+                generate_hyde_passage(hyde_source_query or q_display)
+            )
             hit_lists: list[list[dict]] = []
             for q in search_queries:
                 hits = await local_backend.retrieve(
@@ -404,6 +413,23 @@ async def answer_question(
                 )
                 hit_lists.append(hits)
             merged = merge_multi_query_hits(hit_lists, top_k=pool_k)
+            try:
+                hyde_passage = await hyde_task
+            except Exception:
+                hyde_passage = None
+            if hyde_passage:
+                hyde_hits = await retrieve_vector_only(
+                    session,
+                    hyde_passage,
+                    pool_k,
+                    programme=programme,
+                    topic=topic,
+                    match="hyde",
+                )
+                if hyde_hits:
+                    merged = merge_multi_query_hits(
+                        [merged, hyde_hits], top_k=pool_k
+                    )
             rerank_query = q_display or retrieve_query
             local_hits = await rerank_hits(rerank_query, merged, top_n=final_k)
         # 每段內容上限維持 1200 字，避免單段過長佔用上下文。

@@ -87,6 +87,11 @@ async def _run_answer(
     )
     monkeypatch.setattr(
         chat_service,
+        "generate_hyde_passage",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        chat_service,
         "build_system_prompt",
         lambda rs, programme=None, topic=None: rs.get("system_prompt") or "系統提示",
     )
@@ -193,6 +198,11 @@ async def test_dify_top_k_120_clamped_to_20(monkeypatch):
     monkeypatch.setattr(
         chat_service,
         "rewrite_retrieve_query",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        chat_service,
+        "generate_hyde_passage",
         AsyncMock(return_value=None),
     )
     monkeypatch.setattr(
