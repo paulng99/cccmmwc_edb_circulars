@@ -136,6 +136,11 @@ async def test_answer_question_uses_history_in_retrieve_query(monkeypatch):
     )
     monkeypatch.setattr(
         chat_service,
+        "generate_hyde_passage",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        chat_service,
         "build_system_prompt",
         lambda rs, programme=None, topic=None: "系統提示",
     )

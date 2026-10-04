@@ -413,6 +413,25 @@ def diversify_hits_by_document(
     return selected
 
 
+async def retrieve_vector_only(
+    session: AsyncSession,
+    query: str,
+    top_k: int = 8,
+    *,
+    programme: str | None = None,
+    topic: str | None = None,
+    match: str = "vector",
+) -> list[dict[str, Any]]:
+    """pgvector-only retrieve (used by HyDE: embed a hypothetical passage as the query)."""
+    prog = programme if programme in _VALID_PROGRAMMES else None
+    top = topic if topic in _VALID_TOPICS else None
+    hits = await _vector_retrieve(session, query, top_k, programme=prog, topic=top)
+    if match != "vector":
+        for hit in hits:
+            hit["match"] = match
+    return hits
+
+
 async def retrieve_chunks(
     session: AsyncSession,
     query: str,

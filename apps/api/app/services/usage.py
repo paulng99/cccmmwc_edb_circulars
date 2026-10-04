@@ -40,6 +40,7 @@ FEATURES = (
     "web_search",
     "retrieve_rewrite",
     "rerank",
+    "hyde",
 )
 
 _feature: ContextVar[str] = ContextVar("api_usage_feature", default="other")
