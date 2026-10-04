@@ -409,6 +409,7 @@ export default function ChatPage() {
                       answerContent={m.content}
                       activeRef={preview?.ref}
                       onOpen={openCitation}
+                      onClose={() => setPreview(null)}
                     />
                   ) : m.role === "assistant" && !m.error ? (
                     <p className="msg-note">
