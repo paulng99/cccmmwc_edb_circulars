@@ -131,6 +131,11 @@ async def test_answer_question_uses_history_in_retrieve_query(monkeypatch):
     monkeypatch.setattr(chat_service, "get_llm_client", lambda: FakeLlm())
     monkeypatch.setattr(
         chat_service,
+        "rewrite_retrieve_query",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        chat_service,
         "build_system_prompt",
         lambda rs, programme=None, topic=None: "系統提示",
     )

@@ -13,6 +13,12 @@ from app.models.entities import ChatMessage, ChatSession
 from app.services.ingest import extract_text_from_pdf, sanitize_text
 from app.services.knowledge import get_dify_knowledge, get_local_knowledge
 from app.services.llm import get_llm_client, is_length_truncated
+from app.services.query_rewrite import (
+    build_dual_queries,
+    merge_multi_query_hits,
+    rewrite_retrieve_query,
+)
+from app.services.rerank import rerank_hits
 from app.services.runtime_settings import build_system_prompt, get_merged
 from app.services.usage import usage_scope
 
@@ -369,19 +375,37 @@ async def answer_question(
 
     rs = await get_merged(session)
 
+    # LLM rewrite → dual-query merge → rerank (fallback: original retrieve_query).
+    search_queries: list[str] = []
+    if retrieve_query:
+        rewritten = await rewrite_retrieve_query(retrieve_query)
+        search_queries = build_dual_queries(retrieve_query, rewritten)
+        if search_queries:
+            retrieve_query = search_queries[0]
+
     local_hits: list[dict] = []
     dify_hits: list[dict] = []
-    if retrieve_query:
+    if search_queries:
         if knowledge_source in ("local", "local_and_dify"):
             # 實際交給 AI 的段落數依設定 local_top_k（預設 10）。
             # 夾住 1–20，避免資料庫舊值（例如 120）直接傳入檢索。
-            local_hits = await get_local_knowledge().retrieve(
-                session,
-                retrieve_query,
-                top_k=min(max(int(rs["local_top_k"]), 1), 20),
-                programme=programme,
-                topic=topic,
-            )
+            final_k = min(max(int(rs["local_top_k"]), 1), 20)
+            # Wider candidate pool for multi-query merge + rerank.
+            pool_k = min(final_k * 2, 40)
+            local_backend = get_local_knowledge()
+            hit_lists: list[list[dict]] = []
+            for q in search_queries:
+                hits = await local_backend.retrieve(
+                    session,
+                    q,
+                    top_k=pool_k,
+                    programme=programme,
+                    topic=topic,
+                )
+                hit_lists.append(hits)
+            merged = merge_multi_query_hits(hit_lists, top_k=pool_k)
+            rerank_query = q_display or retrieve_query
+            local_hits = await rerank_hits(rerank_query, merged, top_n=final_k)
         # 每段內容上限維持 1200 字，避免單段過長佔用上下文。
         for hit in local_hits:
             content = hit.get("content") or ""

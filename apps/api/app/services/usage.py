@@ -38,6 +38,8 @@ FEATURES = (
     "embed_index",
     "embed_query",
     "web_search",
+    "retrieve_rewrite",
+    "rerank",
 )
 
 _feature: ContextVar[str] = ContextVar("api_usage_feature", default="other")
