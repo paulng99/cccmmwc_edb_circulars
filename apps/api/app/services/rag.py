@@ -124,7 +124,11 @@ def _row_to_hit(r: Any, *, score: float, match: str) -> dict[str, Any]:
 
 
 def _query_terms(query: str) -> list[str]:
-    """Extract searchable terms for ILIKE hybrid retrieval."""
+    """Extract searchable terms for ILIKE hybrid retrieval.
+
+    Prefer academic years (2026/27) over bare years (2026). Bare 4-digit years
+    match too many chunks via ILIKE and drown out title hits with NULL issued_at.
+    """
     q = (query or "").strip()
     if not q:
         return []
@@ -132,12 +136,35 @@ def _query_terms(query: str) -> list[str]:
     # Full query (truncated) for phrase match
     if len(q) >= 2:
         terms.append(q[:80])
-    # Chinese 2–4 char grams + alphanumerics / EDBC numbers
-    for m in re.finditer(r"[\u4e00-\u9fff]{2,8}|[A-Za-z]{3,}|EDBC(?:M)?\s*\d+/\d{4}|\d{4}", q, re.I):
+    # Academic year before other tokens (e.g. 2026/27, 2025/2026)
+    for m in re.finditer(r"\d{4}/\d{2,4}", q):
+        t = m.group(0)
+        if t not in terms:
+            terms.append(t)
+    # Chinese 2–8 char grams + Latin words / EDBC numbers (no bare \\d{4})
+    for m in re.finditer(r"[\u4e00-\u9fff]{2,8}|[A-Za-z]{3,}|EDBC(?:M)?\s*\d+/\d{4}", q, re.I):
         t = m.group(0).replace(" ", "")
         if t not in terms:
             terms.append(t)
     return terms[:12]
+
+
+def _keyword_score(terms: list[str], title: str, circular_no: str | None, content: str) -> float:
+    """Score a keyword hit; title/circular matches outrank weak content-only hits."""
+    title_blob = f"{title or ''} {circular_no or ''}"
+    blob = f"{title_blob} {content or ''}"
+    hits_count = sum(1 for t in terms if t.lower() in blob.lower() or t in blob)
+    title_hits = sum(1 for t in terms if t in title_blob or t.lower() in title_blob.lower())
+    # Skip the full-query phrase when counting "strong" title hits (often has spaces).
+    strong_title = sum(
+        1
+        for t in terms[1:]
+        if len(t) >= 4 and (t in title_blob or t.lower() in title_blob.lower())
+    )
+    score = 0.45 + 0.08 * hits_count + 0.20 * title_hits
+    if strong_title:
+        score += 0.18
+    return min(score, 0.99)
 
 
 def _filter_sql(
@@ -205,43 +232,77 @@ async def _keyword_retrieve(
     programme: str | None = None,
     topic: str | None = None,
 ) -> list[dict[str, Any]]:
+    """Keyword ILIKE retrieval with title-first pass so undated docs are not dropped."""
     terms = _query_terms(query)
     if not terms:
         return []
 
-    params: dict[str, Any] = {"limit": max(top_k * 3, 24)}
-    clauses: list[str] = []
-    for i, term in enumerate(terms):
-        key = f"p{i}"
-        params[key] = f"%{term}%"
-        clauses.append(
-            f"(d.title ILIKE :{key} OR COALESCE(d.circular_no, '') ILIKE :{key} OR c.content ILIKE :{key})"
-        )
-    where_sql = " OR ".join(clauses)
-    filt = _filter_sql(programme=programme, topic=topic, params=params)
-    sql = text(
+    filt_params: dict[str, Any] = {}
+    filt = _filter_sql(programme=programme, topic=topic, params=filt_params)
+
+    def _term_clauses(prefix: str, fields: list[str]) -> tuple[str, dict[str, Any]]:
+        params: dict[str, Any] = {}
+        clauses: list[str] = []
+        for i, term in enumerate(terms):
+            key = f"{prefix}{i}"
+            params[key] = f"%{term}%"
+            field_or = " OR ".join(f"{f} ILIKE :{key}" for f in fields)
+            clauses.append(f"({field_or})")
+        return " OR ".join(clauses), params
+
+    title_where, title_params = _term_clauses(
+        "t", ["d.title", "COALESCE(d.circular_no, '')"]
+    )
+    content_where, content_params = _term_clauses(
+        "c", ["d.title", "COALESCE(d.circular_no, '')", "c.content"]
+    )
+
+    # Pass 1: title / circular only — keeps NULL issued_at docs that match the name.
+    title_limit = max(top_k * 2, 24)
+    title_sql = text(
         f"""
         SELECT c.id, c.document_id, c.content, c.chunk_index,
                d.title, d.circular_no, d.issued_at, d.source_url, d.language
         FROM document_chunks c
         JOIN documents d ON d.id = c.document_id
         WHERE d.status = 'ready'
-          AND ({where_sql})
+          AND ({title_where})
+          {filt}
+        LIMIT :limit
+        """
+    )
+    title_bind = {**filt_params, **title_params, "limit": title_limit}
+    title_rows = (await session.execute(title_sql, title_bind)).mappings().all()
+
+    # Pass 2: content (and title) — still useful, but must not crowd out pass 1.
+    content_limit = max(top_k * 3, 24)
+    content_sql = text(
+        f"""
+        SELECT c.id, c.document_id, c.content, c.chunk_index,
+               d.title, d.circular_no, d.issued_at, d.source_url, d.language
+        FROM document_chunks c
+        JOIN documents d ON d.id = c.document_id
+        WHERE d.status = 'ready'
+          AND ({content_where})
           {filt}
         ORDER BY d.issued_at DESC NULLS LAST
         LIMIT :limit
         """
     )
-    result = await session.execute(sql, params)
-    hits: list[dict[str, Any]] = []
-    for r in result.mappings().all():
-        blob = f"{r['title'] or ''} {r['circular_no'] or ''} {r['content'] or ''}"
-        hits_count = sum(1 for t in terms if t.lower() in blob.lower() or t in blob)
-        title_blob = f"{r['title'] or ''} {r['circular_no'] or ''}"
-        title_hits = sum(1 for t in terms if t in title_blob or t.lower() in title_blob.lower())
-        score = 0.45 + 0.08 * hits_count + 0.12 * title_hits
-        hits.append(_row_to_hit(r, score=min(score, 0.99), match="keyword"))
-    hits.sort(key=lambda h: h["score"], reverse=True)
+    content_bind = {**filt_params, **content_params, "limit": content_limit}
+    content_rows = (await session.execute(content_sql, content_bind)).mappings().all()
+
+    by_key: dict[str, dict[str, Any]] = {}
+    for r in list(title_rows) + list(content_rows):
+        key = f"{r['document_id']}:{r['chunk_index']}"
+        if key in by_key:
+            continue
+        score = _keyword_score(
+            terms, r["title"] or "", r["circular_no"], r["content"] or ""
+        )
+        by_key[key] = _row_to_hit(r, score=score, match="keyword")
+
+    hits = sorted(by_key.values(), key=lambda h: float(h["score"]), reverse=True)
     return hits[:top_k]
 
 
