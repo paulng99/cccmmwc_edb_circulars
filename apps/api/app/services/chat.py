@@ -33,8 +33,17 @@ MAX_ATTACHMENT_CHARS = 12_000
 MAX_HISTORY_MESSAGES = 12
 MAX_HISTORY_CHARS = 1_600
 MAX_HISTORY_TURN_CHARS = 5_000
+MAX_RETRIEVE_QUERY_CHARS = 400
+MAX_RETRIEVE_HISTORY_TURNS = 2
+MAX_RETRIEVE_HISTORY_TURN_CHARS = 160
 
 _FILENAME_SAFE = re.compile(r"[^\w.\- ()\u4e00-\u9fff]+", re.UNICODE)
+# Cues that a standalone question already carries enough retrieval topic.
+_RETRIEVE_TOPIC_CUE_RE = re.compile(
+    r"(?:20\d{2}\s*[/\-]\s*\d{2}|EDBC[M]?\s*\d+|通告|"
+    r"津貼|撥款|資助|姊妹學校|全方位學習|校本|課後|幼稚園|直資)",
+    re.IGNORECASE,
+)
 
 
 def is_prompt_only(question: str) -> bool:
@@ -264,6 +273,57 @@ async def _history_for_llm(session: AsyncSession, chat_id: uuid.UUID) -> list[di
     return history
 
 
+def _user_turns_for_retrieve(history: list[dict[str, str]] | None) -> list[str]:
+    turns: list[str] = []
+    for msg in history or []:
+        if msg.get("role") != "user":
+            continue
+        content = (msg.get("content") or "").strip()
+        if not content or content == PROMPT_ONLY_STORED:
+            continue
+        turns.append(content)
+    return turns
+
+
+def needs_history_for_retrieve(question: str) -> bool:
+    """True when the latest question is too thin for standalone retrieval.
+
+    Short follow-ups like「中學每名學生幾多錢？」lack programme/year cues and must
+    borrow topic from prior user turns. Questions that already name a grant, academic
+    year, or circular stay as-is so we do not dilute a precise query with history.
+    """
+    q = (question or "").strip()
+    if not q:
+        return False
+    if _RETRIEVE_TOPIC_CUE_RE.search(q) is not None:
+        return False
+    # No programme/year/circular cues: expand whenever history exists (caller checks).
+    return True
+
+
+def build_retrieve_query(
+    question: str,
+    history: list[dict[str, str]] | None = None,
+) -> str:
+    """Build the RAG query; expand short follow-ups with recent user topic turns."""
+    q = (question or "").strip()
+    if not q:
+        return ""
+    prior = _user_turns_for_retrieve(history)
+    if not prior or not needs_history_for_retrieve(q):
+        return clip_text(q, MAX_RETRIEVE_QUERY_CHARS)
+
+    topic_parts: list[str] = []
+    for turn in prior[-MAX_RETRIEVE_HISTORY_TURNS:]:
+        snippet = clip_text(turn, MAX_RETRIEVE_HISTORY_TURN_CHARS).rstrip("…").strip()
+        if snippet:
+            topic_parts.append(snippet)
+    if not topic_parts:
+        return clip_text(q, MAX_RETRIEVE_QUERY_CHARS)
+    combined = " ".join(topic_parts) + "\n" + q
+    return clip_text(combined, MAX_RETRIEVE_QUERY_CHARS)
+
+
 async def answer_question(
     session: AsyncSession,
     *,
@@ -279,7 +339,7 @@ async def answer_question(
     atts = normalize_attachments(attachments)
     prompt_only = is_prompt_only(question) and not atts
     q_display = question.strip() if not is_prompt_only(question) else ""
-    retrieve_query = q_display or (atts[0]["text"][:400] if atts else "")
+    base_retrieve = q_display or (atts[0]["text"][:400] if atts else "")
 
     if session_id:
         chat = await session.get(ChatSession, session_id)
@@ -303,6 +363,9 @@ async def answer_question(
     chat.knowledge_source = knowledge_source
 
     history = await _history_for_llm(session, chat.id)
+    retrieve_query = (
+        build_retrieve_query(base_retrieve, history) if base_retrieve else ""
+    )
 
     rs = await get_merged(session)
 
@@ -310,7 +373,7 @@ async def answer_question(
     dify_hits: list[dict] = []
     if retrieve_query:
         if knowledge_source in ("local", "local_and_dify"):
-            # 實際交給 AI 的段落數依設定 local_top_k（預設 12）。
+            # 實際交給 AI 的段落數依設定 local_top_k（預設 10）。
             # 夾住 1–20，避免資料庫舊值（例如 120）直接傳入檢索。
             local_hits = await get_local_knowledge().retrieve(
                 session,

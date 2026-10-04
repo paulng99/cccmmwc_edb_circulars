@@ -218,7 +218,7 @@ async def test_each_chunk_clipped_to_1200_chars(monkeypatch):
 def test_retrieve_chunks_fetch_k_covers_top_k():
     """合併前取回數量須不少於 top_k，否則無法湊滿設定的段落數。"""
     for top_k in (1, 5, 8, 12, 20, 50):
-        fetch_k = max(top_k * 2, 12)
+        fetch_k = max(top_k * 3, 12)
         assert fetch_k >= top_k
 
 
@@ -242,3 +242,44 @@ async def test_retrieve_chunks_returns_at_most_top_k(monkeypatch):
 
     out = await retrieve_chunks(MagicMock(), "姊妹學校", top_k=12)
     assert len(out) == 12
+
+
+@pytest.mark.asyncio
+async def test_retrieve_chunks_diversifies_per_document(monkeypatch):
+    """同一 document_id 不應佔滿全部 top_k 槽位。"""
+    dominant_id = str(uuid.uuid4())
+    other_ids = [str(uuid.uuid4()) for _ in range(6)]
+
+    def _hit(doc_id: str, idx: int, score: float) -> dict[str, Any]:
+        return {
+            "document_id": doc_id,
+            "title": f"doc-{doc_id[:8]}",
+            "circular_no": None,
+            "issued_at": None,
+            "source_url": None,
+            "content": f"chunk-{idx}",
+            "chunk_index": idx,
+            "score": score,
+            "backend": "local",
+        }
+
+    # Highest scores all from one document; lower scores from others.
+    vector = [_hit(dominant_id, i, 0.99 - i * 0.01) for i in range(10)]
+    keyword = [_hit(other_ids[i % len(other_ids)], 100 + i, 0.5 - i * 0.01) for i in range(8)]
+
+    async def fake_vector(session, query, top_k, **kwargs):
+        return vector[:top_k]
+
+    async def fake_keyword(session, query, top_k, **kwargs):
+        return keyword[:top_k]
+
+    monkeypatch.setattr("app.services.rag._vector_retrieve", fake_vector)
+    monkeypatch.setattr("app.services.rag._keyword_retrieve", fake_keyword)
+
+    out = await retrieve_chunks(MagicMock(), "津貼", top_k=8)
+    assert len(out) == 8
+    from collections import Counter
+
+    counts = Counter(h["document_id"] for h in out)
+    assert counts[dominant_id] <= 2
+    assert len(counts) >= 4

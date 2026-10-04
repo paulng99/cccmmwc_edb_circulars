@@ -355,6 +355,10 @@ async def _keyword_retrieve(
     return hits[:top_k]
 
 
+# Cap how many chunks from one document fill the final context window.
+MAX_CHUNKS_PER_DOCUMENT = 2
+
+
 def _merge_hits(
     vector_hits: list[dict[str, Any]],
     keyword_hits: list[dict[str, Any]],
@@ -377,6 +381,38 @@ def _merge_hits(
     return merged[:top_k]
 
 
+def diversify_hits_by_document(
+    hits: list[dict[str, Any]],
+    top_k: int,
+    *,
+    max_per_doc: int = MAX_CHUNKS_PER_DOCUMENT,
+) -> list[dict[str, Any]]:
+    """Keep score order but cap chunks per document_id; backfill if under-filled."""
+    if top_k <= 0:
+        return []
+    if max_per_doc <= 0:
+        return list(hits[:top_k])
+
+    selected: list[dict[str, Any]] = []
+    per_doc: dict[str, int] = {}
+    deferred: list[dict[str, Any]] = []
+    for hit in hits:
+        doc_id = str(hit.get("document_id") or "")
+        count = per_doc.get(doc_id, 0)
+        if count < max_per_doc:
+            selected.append(hit)
+            per_doc[doc_id] = count + 1
+            if len(selected) >= top_k:
+                return selected
+        else:
+            deferred.append(hit)
+    for hit in deferred:
+        if len(selected) >= top_k:
+            break
+        selected.append(hit)
+    return selected
+
+
 async def retrieve_chunks(
     session: AsyncSession,
     query: str,
@@ -388,7 +424,8 @@ async def retrieve_chunks(
     """Hybrid retrieval: pgvector + keyword ILIKE, merged by score."""
     prog = programme if programme in _VALID_PROGRAMMES else None
     top = topic if topic in _VALID_TOPICS else None
-    fetch_k = max(top_k * 2, 12)
+    # Fetch extra candidates so per-document diversity still fills top_k.
+    fetch_k = max(top_k * 3, 12)
     vector_hits = await _vector_retrieve(
         session, query, fetch_k, programme=prog, topic=top
     )
@@ -398,7 +435,8 @@ async def retrieve_chunks(
     if not vector_hits and not keyword_hits:
         return []
     if not vector_hits:
-        return keyword_hits[:top_k]
+        return diversify_hits_by_document(keyword_hits, top_k)
     if not keyword_hits:
-        return vector_hits[:top_k]
-    return _merge_hits(vector_hits, keyword_hits, top_k)
+        return diversify_hits_by_document(vector_hits, top_k)
+    merged = _merge_hits(vector_hits, keyword_hits, fetch_k)
+    return diversify_hits_by_document(merged, top_k)
