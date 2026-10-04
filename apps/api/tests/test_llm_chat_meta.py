@@ -208,6 +208,7 @@ async def test_answer_question_sets_truncated_and_chunk_index(monkeypatch):
     monkeypatch.setattr(chat_mod, "get_llm_client", lambda: FakeLlm())
     monkeypatch.setattr(chat_mod, "get_local_knowledge", lambda: FakeLocal())
     monkeypatch.setattr(chat_mod, "get_dify_knowledge", lambda: FakeDify())
+    monkeypatch.setattr(chat_mod, "rewrite_retrieve_query", AsyncMock(return_value=None))
     monkeypatch.setattr(chat_mod, "get_merged", AsyncMock(return_value={
         "local_top_k": 8,
         "dify_top_k": 4,

@@ -82,6 +82,11 @@ async def _run_answer(
     monkeypatch.setattr(chat_service, "get_llm_client", lambda: FakeLlm())
     monkeypatch.setattr(
         chat_service,
+        "rewrite_retrieve_query",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        chat_service,
         "build_system_prompt",
         lambda rs, programme=None, topic=None: rs.get("system_prompt") or "系統提示",
     )
@@ -116,7 +121,8 @@ async def test_local_top_k_12_passes_twelve_chunks_and_citations(monkeypatch):
         monkeypatch, local_top_k=12, retrieved_count=20, content_len=100
     )
     captured = result["_captured"]
-    assert captured["retrieve_top_k"] == 12
+    # Candidate pool is 2× local_top_k; final context stays at local_top_k after rerank.
+    assert captured["retrieve_top_k"] == 24
 
     blocks = _context_blocks_from_messages(captured["messages"])
     assert len(blocks) == 12
@@ -132,7 +138,7 @@ async def test_local_top_k_5_passes_five_chunks_and_citations(monkeypatch):
         monkeypatch, local_top_k=5, retrieved_count=20, content_len=100
     )
     captured = result["_captured"]
-    assert captured["retrieve_top_k"] == 5
+    assert captured["retrieve_top_k"] == 10
 
     blocks = _context_blocks_from_messages(captured["messages"])
     assert len(blocks) == 5
@@ -149,7 +155,8 @@ async def test_local_top_k_120_clamped_to_20(monkeypatch):
         monkeypatch, local_top_k=120, retrieved_count=30, content_len=100
     )
     captured = result["_captured"]
-    assert captured["retrieve_top_k"] == 20
+    # final_k clamped to 20 → pool_k = 40
+    assert captured["retrieve_top_k"] == 40
 
     blocks = _context_blocks_from_messages(captured["messages"])
     assert len(blocks) == 20
@@ -183,6 +190,11 @@ async def test_dify_top_k_120_clamped_to_20(monkeypatch):
     )
     monkeypatch.setattr(chat_service, "get_dify_knowledge", lambda: FakeDify())
     monkeypatch.setattr(chat_service, "get_llm_client", lambda: FakeLlm())
+    monkeypatch.setattr(
+        chat_service,
+        "rewrite_retrieve_query",
+        AsyncMock(return_value=None),
+    )
     monkeypatch.setattr(
         chat_service,
         "build_system_prompt",

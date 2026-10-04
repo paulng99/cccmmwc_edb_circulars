@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     jina_api_key: str = ""
     jina_embedding_model: str = "jina-embeddings-v3"
     jina_embedding_dim: int = 1024
+    jina_reranker_model: str = "jina-reranker-v2-base-multilingual"
 
     llm_provider: Literal["openrouter", "ollama"] = "openrouter"
     ollama_base_url: str = "http://host.docker.internal:11434"
