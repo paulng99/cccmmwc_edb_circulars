@@ -1701,12 +1701,71 @@ code {
   align-items: start;
 }
 
+.detail-grid.has-chat {
+  grid-template-columns: minmax(0, 1fr) 300px minmax(300px, 360px);
+}
+
 .detail-side {
   display: flex;
   flex-direction: column;
   gap: 1.1rem;
   position: sticky;
   top: 1.5rem;
+}
+
+.document-chat-panel {
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 1.5rem;
+  max-height: min(82vh, 1200px);
+  min-height: 420px;
+  overflow: hidden;
+}
+
+.document-chat-banner {
+  margin: 0 1rem 0.75rem;
+}
+
+.document-chat-log {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 0.85rem 0.5rem;
+}
+
+.document-chat-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.85rem 0.9rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.document-chat-composer textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 3.2rem;
+  max-height: 8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.55rem 0.7rem;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.45;
+}
+
+.document-chat-composer textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.document-chat-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 .meta-list {
@@ -3420,8 +3479,17 @@ input[type="checkbox"] {
     grid-template-columns: 1fr;
   }
 
+  .detail-grid.has-chat {
+    grid-template-columns: 1fr;
+  }
+
   .detail-side {
     position: static;
+  }
+
+  .document-chat-panel {
+    position: static;
+    max-height: none;
   }
 
   .chat-workspace.has-preview {

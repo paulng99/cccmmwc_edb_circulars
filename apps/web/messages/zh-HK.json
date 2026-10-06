@@ -115,7 +115,18 @@
     "pagination": "分頁",
     "prevPage": "上一頁",
     "nextPage": "下一頁",
-    "pageOf": "第 {page} / {totalPages} 頁"
+    "pageOf": "第 {page} / {totalPages} 頁",
+    "ask": "詢問",
+    "chatTitle": "就此文件提問",
+    "chatClose": "關閉",
+    "chatPlaceholder": "就此通告提出問題…",
+    "chatEmptyTitle": "就此 PDF 提問",
+    "chatEmptyLead": "回答會優先引用本文件，必要時亦可引用知識庫中其他相關通告。",
+    "chatNotReady": "此文件尚未完成索引。仍可提問，但答案可能較多依賴其他通告。",
+    "chatRestoring": "正在載入對話…",
+    "chatRestoreFail": "無法還原此文件的先前對話。",
+    "chatFail": "發生錯誤，請再試一次。",
+    "chatTimeout": "回應逾時，請再試一次。"
   },
   "chat": {
     "title": "通告問答",

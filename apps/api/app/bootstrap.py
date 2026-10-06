@@ -84,6 +84,19 @@ async def init_db() -> None:
         )
         await conn.execute(
             text(
+                "ALTER TABLE chat_sessions "
+                "ADD COLUMN IF NOT EXISTS focus_document_id UUID "
+                "REFERENCES documents(id) ON DELETE SET NULL"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_chat_sessions_focus_document_id "
+                "ON chat_sessions (focus_document_id)"
+            )
+        )
+        await conn.execute(
+            text(
                 "ALTER TABLE chat_messages "
                 "ADD COLUMN IF NOT EXISTS attachments JSONB"
             )

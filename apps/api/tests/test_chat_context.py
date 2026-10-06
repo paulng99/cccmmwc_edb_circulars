@@ -1,6 +1,14 @@
+import uuid
+
 import pytest
 
-from app.services.chat import build_chat_messages, extract_upload, format_user_turn
+from app.services.chat import (
+    build_chat_messages,
+    extract_upload,
+    focus_session_title,
+    format_user_turn,
+    prioritize_focus_hits,
+)
 
 
 def test_history_precedes_current_question():
@@ -59,3 +67,31 @@ def test_extract_rejects_unknown_type():
 def test_extract_rejects_empty_text():
     with pytest.raises(ValueError, match="no_text"):
         extract_upload("blank.txt", b"   \n\t")
+
+
+def test_prioritize_focus_hits_reserves_and_boosts():
+    focus = uuid.uuid4()
+    other = uuid.uuid4()
+    hits = [
+        {"document_id": str(other), "chunk_index": 0, "score": 0.9, "content": "o0"},
+        {"document_id": str(focus), "chunk_index": 1, "score": 0.4, "content": "f1"},
+        {"document_id": str(focus), "chunk_index": 0, "score": 0.5, "content": "f0"},
+        {"document_id": str(other), "chunk_index": 1, "score": 0.8, "content": "o1"},
+        {"document_id": str(focus), "chunk_index": 2, "score": 0.3, "content": "f2"},
+        {"document_id": str(focus), "chunk_index": 3, "score": 0.2, "content": "f3"},
+    ]
+    out = prioritize_focus_hits(hits, focus, final_k=5, reserve=3, boost=0.15)
+    assert len(out) == 5
+    focus_ids = [h["document_id"] for h in out[:3]]
+    assert all(fid == str(focus) for fid in focus_ids)
+    assert {h["chunk_index"] for h in out[:3]} == {0, 1, 2}
+    assert any(h["document_id"] == str(other) for h in out[3:])
+
+
+def test_focus_session_title_prefixes_circular():
+    from types import SimpleNamespace
+
+    doc = SimpleNamespace(circular_no="EDBCM001/2026", title="Long title")
+    title = focus_session_title(doc, "What is the deadline?")
+    assert title.startswith("「EDBCM001/2026」")
+    assert "deadline" in title

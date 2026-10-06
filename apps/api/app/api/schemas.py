@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -34,7 +35,21 @@ class ChatRequest(BaseModel):
     locale: str = "zh-HK"
     programme: str | None = None
     topic: str | None = None
+    focus_document_id: str | None = None
     attachments: list[ChatAttachmentIn] = Field(default_factory=list, max_length=3)
+
+    @field_validator("focus_document_id", mode="before")
+    @classmethod
+    def normalize_focus_document_id(cls, value: Any) -> str | None:
+        if value is None or value == "":
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            return str(uuid.UUID(text))
+        except (ValueError, TypeError) as exc:
+            raise ValueError("focus_document_id must be a valid UUID") from exc
 
 
 class ChatAttachmentOut(BaseModel):

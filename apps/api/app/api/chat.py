@@ -90,6 +90,7 @@ async def chat(
     log.info("chat start user=%s q_len=%s source=%s files=%s", user.username, len(body.question), ks, len(body.attachments))
     try:
         with usage_user(user.id):
+            focus_id = uuid.UUID(body.focus_document_id) if body.focus_document_id else None
             result = await answer_question(
                 db,
                 user_id=user.id,
@@ -99,6 +100,7 @@ async def chat(
                 locale=body.locale,
                 programme=body.programme,
                 topic=body.topic,
+                focus_document_id=focus_id,
                 attachments=[att.model_dump() for att in body.attachments],
             )
         log.info("chat done cites=%s truncated=%s", len(result.get("citations") or []), result.get("truncated"))

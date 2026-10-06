@@ -432,6 +432,77 @@ async def retrieve_vector_only(
     return hits
 
 
+async def retrieve_document_chunks(
+    session: AsyncSession,
+    document_id: uuid.UUID,
+    *,
+    query: str = "",
+    top_k: int = 3,
+) -> list[dict[str, Any]]:
+    """Fetch top chunks from one document (vector-ranked when query embeds, else by index)."""
+    limit = max(1, min(int(top_k), 20))
+    q = (query or "").strip()
+    if q:
+        try:
+            embedder = get_embedding_backend()
+            with usage_scope("embed_query"):
+                vectors = await embedder.embed([q])
+            if vectors:
+                emb_literal = "[" + ",".join(str(float(x)) for x in vectors[0]) + "]"
+                sql = text(
+                    """
+                    SELECT c.id, c.document_id, c.content, c.chunk_index,
+                           d.title, d.circular_no, d.issued_at, d.source_url, d.language,
+                           1 - (c.embedding <=> CAST(:embedding AS vector)) AS score
+                    FROM document_chunks c
+                    JOIN documents d ON d.id = c.document_id
+                    WHERE c.document_id = :document_id
+                      AND d.status = 'ready'
+                      AND c.embedding IS NOT NULL
+                    ORDER BY c.embedding <=> CAST(:embedding AS vector)
+                    LIMIT :top_k
+                    """
+                )
+                result = await session.execute(
+                    sql,
+                    {
+                        "document_id": document_id,
+                        "embedding": emb_literal,
+                        "top_k": limit,
+                    },
+                )
+                rows = result.mappings().all()
+                if rows:
+                    return [
+                        _row_to_hit(
+                            r,
+                            score=float(r["score"]) if r["score"] is not None else 0.0,
+                            match="focus",
+                        )
+                        for r in rows
+                    ]
+        except Exception:
+            logger.exception("Focus-document vector retrieve failed; falling back to index order")
+
+    sql = text(
+        """
+        SELECT c.id, c.document_id, c.content, c.chunk_index,
+               d.title, d.circular_no, d.issued_at, d.source_url, d.language
+        FROM document_chunks c
+        JOIN documents d ON d.id = c.document_id
+        WHERE c.document_id = :document_id
+          AND d.status = 'ready'
+        ORDER BY c.chunk_index ASC
+        LIMIT :top_k
+        """
+    )
+    result = await session.execute(sql, {"document_id": document_id, "top_k": limit})
+    return [
+        _row_to_hit(r, score=1.0 - (i * 0.01), match="focus")
+        for i, r in enumerate(result.mappings().all())
+    ]
+
+
 async def retrieve_chunks(
     session: AsyncSession,
     query: str,

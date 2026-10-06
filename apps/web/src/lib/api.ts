@@ -99,6 +99,7 @@ export async function chatAsk(
     locale?: string;
     programme?: string | null;
     topic?: string | null;
+    focus_document_id?: string | null;
     attachments?: { filename: string; text: string }[];
   },
   opts?: { timeoutMs?: number; signal?: AbortSignal },
@@ -136,6 +137,7 @@ export type ChatSessionSummary = {
   id: string;
   title: string;
   knowledge_source: KnowledgeSource;
+  focus_document_id?: string | null;
   created_at: string | null;
   updated_at: string | null;
 };

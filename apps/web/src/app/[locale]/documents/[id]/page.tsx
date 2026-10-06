@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/routing";
+import DocumentChatPanel from "@/components/DocumentChatPanel";
 import PdfPreview from "@/components/PdfPreview";
 import { apiBase, fileUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -55,6 +56,7 @@ export default function DocumentDetailPage() {
   const [pdfOpening, setPdfOpening] = useState(false);
   const [pdfFailed, setPdfFailed] = useState(false);
   const [blobDownloadUrl, setBlobDownloadUrl] = useState<string | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const pdfApiUrl = useMemo(() => (params?.id ? fileUrl(params.id) : ""), [params?.id]);
 
@@ -255,7 +257,7 @@ export default function DocumentDetailPage() {
       ) : null}
 
       {status === "success" && doc ? (
-        <div className="detail-grid">
+        <div className={`detail-grid${chatOpen ? " has-chat" : ""}`}>
           <section className="card">
             <div className="card-head">
               <h2>
@@ -263,6 +265,15 @@ export default function DocumentDetailPage() {
                 {t("preview")}
               </h2>
               <div className="row-actions">
+                <button
+                  className={`btn sm${chatOpen ? "" : " secondary"}`}
+                  type="button"
+                  onClick={() => setChatOpen((v) => !v)}
+                  aria-pressed={chatOpen}
+                >
+                  <Icon name="message-square" />
+                  {chatOpen ? t("chatClose") : t("ask")}
+                </button>
                 <button
                   className={`btn sm${pdfOpening ? " is-loading" : ""}`}
                   type="button"
@@ -375,6 +386,15 @@ export default function DocumentDetailPage() {
               </p>
             </section>
           </aside>
+
+          {chatOpen && token ? (
+            <DocumentChatPanel
+              documentId={doc.id}
+              documentStatus={doc.status}
+              token={token}
+              onClose={() => setChatOpen(false)}
+            />
+          ) : null}
         </div>
       ) : null}
     </div>

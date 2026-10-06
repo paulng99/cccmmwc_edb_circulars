@@ -115,7 +115,18 @@
     "pagination": "Pagination",
     "prevPage": "Previous",
     "nextPage": "Next",
-    "pageOf": "Page {page} / {totalPages}"
+    "pageOf": "Page {page} / {totalPages}",
+    "ask": "Ask",
+    "chatTitle": "Ask about this document",
+    "chatClose": "Close",
+    "chatPlaceholder": "Ask a question about this circular…",
+    "chatEmptyTitle": "Ask about this PDF",
+    "chatEmptyLead": "Answers prioritise this document and may cite related circulars from the library.",
+    "chatNotReady": "This document is not fully indexed yet. You can still ask; answers may rely more on other circulars.",
+    "chatRestoring": "Loading conversation…",
+    "chatRestoreFail": "Could not restore the previous conversation for this document.",
+    "chatFail": "Something went wrong. Please try again.",
+    "chatTimeout": "The reply took too long. Please try again."
   },
   "chat": {
     "title": "Ask about EDB materials",

@@ -10,7 +10,7 @@ from typing import Any, Literal
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import ChatMessage, ChatSession
+from app.models.entities import ChatMessage, ChatSession, Document
 from app.services.hyde import generate_hyde_passage
 from app.services.ingest import extract_text_from_pdf, sanitize_text
 from app.services.knowledge import get_dify_knowledge, get_local_knowledge
@@ -21,7 +21,7 @@ from app.services.query_rewrite import (
     merge_multi_query_hits,
     rewrite_retrieve_query,
 )
-from app.services.rag import retrieve_vector_only
+from app.services.rag import retrieve_document_chunks, retrieve_vector_only
 from app.services.rerank import rerank_hits
 from app.services.runtime_settings import build_system_prompt, get_merged
 from app.services.usage import usage_scope
@@ -46,6 +46,8 @@ MAX_HISTORY_TURN_CHARS = 5_000
 MAX_RETRIEVE_QUERY_CHARS = 400
 MAX_RETRIEVE_HISTORY_TURNS = 2
 MAX_RETRIEVE_HISTORY_TURN_CHARS = 160
+FOCUS_DOC_RESERVE = 3
+FOCUS_DOC_SCORE_BOOST = 0.15
 
 _FILENAME_SAFE = re.compile(r"[^\w.\- ()\u4e00-\u9fff]+", re.UNICODE)
 # Cues that a standalone question already carries enough retrieval topic.
@@ -194,9 +196,79 @@ def session_summary(chat: ChatSession) -> dict[str, Any]:
         "id": str(chat.id),
         "title": chat.title,
         "knowledge_source": chat.knowledge_source,
+        "focus_document_id": str(chat.focus_document_id) if chat.focus_document_id else None,
         "created_at": _iso(chat.created_at),
         "updated_at": _iso(chat.updated_at or chat.created_at),
     }
+
+
+def _hit_doc_id(hit: dict[str, Any]) -> str:
+    return str(hit.get("document_id") or "")
+
+
+def prioritize_focus_hits(
+    hits: list[dict[str, Any]],
+    focus_document_id: uuid.UUID | None,
+    *,
+    final_k: int,
+    reserve: int = FOCUS_DOC_RESERVE,
+    boost: float = FOCUS_DOC_SCORE_BOOST,
+) -> list[dict[str, Any]]:
+    """Boost focus-document scores and reserve up to `reserve` slots for them."""
+    if not hits or not focus_document_id:
+        return hits[:final_k]
+    focus = str(focus_document_id)
+    boosted: list[dict[str, Any]] = []
+    for hit in hits:
+        row = dict(hit)
+        if _hit_doc_id(row) == focus:
+            try:
+                score = float(row.get("score") or 0.0)
+            except (TypeError, ValueError):
+                score = 0.0
+            row["score"] = score + boost
+        boosted.append(row)
+    boosted.sort(key=lambda h: float(h.get("score") or 0.0), reverse=True)
+    focus_hits = [h for h in boosted if _hit_doc_id(h) == focus][:reserve]
+    focus_keys = {
+        f"{_hit_doc_id(h)}:{h.get('chunk_index')}" for h in focus_hits
+    }
+    rest = [
+        h
+        for h in boosted
+        if f"{_hit_doc_id(h)}:{h.get('chunk_index')}" not in focus_keys
+    ]
+    out = focus_hits + rest
+    return out[:final_k]
+
+
+def focus_document_hint(doc: Document | None, locale: str) -> str:
+    if not doc:
+        return ""
+    label = (doc.circular_no or doc.title or str(doc.id)).strip()
+    if locale.startswith("zh"):
+        return (
+            f"The user is currently viewing circular/document「{label}」. "
+            "Prioritize passages from this document when answering, but you may "
+            "cite other circulars when they add relevant context. Cite sources as usual."
+        )
+    return (
+        f'The user is currently viewing circular/document "{label}". '
+        "Prioritize passages from this document when answering, but you may "
+        "cite other circulars when they add relevant context. Cite sources as usual."
+    )
+
+
+def focus_session_title(doc: Document | None, question: str) -> str:
+    label = ""
+    if doc:
+        label = (doc.circular_no or (doc.title or "")[:40] or "").strip()
+    q = (question or "").strip()
+    if label and q:
+        return clip_text(f"「{label}」{q}", 255)
+    if label:
+        return clip_text(f"「{label}」", 255)
+    return clip_text(q, 80) or "New chat"
 
 
 def message_public(msg: ChatMessage) -> dict[str, Any]:
@@ -344,12 +416,19 @@ async def answer_question(
     locale: str = "zh-HK",
     programme: str | None = None,
     topic: str | None = None,
+    focus_document_id: uuid.UUID | None = None,
     attachments: list[dict] | None = None,
 ) -> dict[str, Any]:
     atts = normalize_attachments(attachments)
     prompt_only = is_prompt_only(question) and not atts
     q_display = question.strip() if not is_prompt_only(question) else ""
     base_retrieve = q_display or (atts[0]["text"][:400] if atts else "")
+
+    focus_doc: Document | None = None
+    if focus_document_id:
+        focus_doc = await session.get(Document, focus_document_id)
+        if not focus_doc:
+            focus_document_id = None
 
     if session_id:
         chat = await session.get(ChatSession, session_id)
@@ -359,18 +438,37 @@ async def answer_question(
         chat = None
 
     if not chat:
-        if q_display:
+        if focus_document_id and (q_display or atts):
+            title = focus_session_title(focus_doc, q_display or (atts[0]["filename"] if atts else ""))
+        elif q_display:
             title = q_display[:80]
         elif atts:
             title = atts[0]["filename"][:80]
         else:
             title = PROMPT_ONLY_STORED
-        chat = ChatSession(user_id=user_id, title=title, knowledge_source=knowledge_source)
+        chat = ChatSession(
+            user_id=user_id,
+            title=title,
+            knowledge_source=knowledge_source,
+            focus_document_id=focus_document_id,
+        )
         session.add(chat)
         await session.flush()
     elif chat.title in ("New chat", PROMPT_ONLY_STORED) and q_display:
-        chat.title = q_display[:80]
+        if chat.focus_document_id or focus_document_id:
+            if not focus_doc and chat.focus_document_id:
+                focus_doc = await session.get(Document, chat.focus_document_id)
+            chat.title = focus_session_title(focus_doc, q_display)
+        else:
+            chat.title = q_display[:80]
     chat.knowledge_source = knowledge_source
+    if focus_document_id and not chat.focus_document_id:
+        chat.focus_document_id = focus_document_id
+    # Prefer session-stored focus when continuing without re-sending the id.
+    if not focus_document_id and chat.focus_document_id:
+        focus_document_id = chat.focus_document_id
+        if not focus_doc:
+            focus_doc = await session.get(Document, focus_document_id)
 
     history = await _history_for_llm(session, chat.id)
     retrieve_query = (
@@ -432,10 +530,29 @@ async def answer_question(
                         [merged, hyde_hits], top_k=pool_k
                     )
             rerank_query = q_display or retrieve_query
-            local_hits = await rerank_hits(rerank_query, merged, top_n=final_k)
+            # Rerank a wider pool so focus-document reserve can still pick strong focus chunks.
+            rerank_n = min(max(final_k * 2, final_k + FOCUS_DOC_RESERVE), 40) if focus_document_id else final_k
+            local_hits = await rerank_hits(rerank_query, merged, top_n=rerank_n)
             # Settings: drop weak passages so the answer LLM is not fed noise.
             min_score = float(rs.get("local_min_score") or 0.0)
             local_hits = filter_hits_by_min_score(local_hits, min_score)
+            if focus_document_id:
+                focus_hits = await retrieve_document_chunks(
+                    session,
+                    focus_document_id,
+                    query=rerank_query,
+                    top_k=FOCUS_DOC_RESERVE,
+                )
+                if focus_hits:
+                    local_hits = merge_multi_query_hits(
+                        [local_hits, focus_hits],
+                        top_k=max(len(local_hits) + len(focus_hits), final_k),
+                    )
+                local_hits = prioritize_focus_hits(
+                    local_hits, focus_document_id, final_k=final_k
+                )
+            else:
+                local_hits = local_hits[:final_k]
         # 每段內容上限維持 1200 字，避免單段過長佔用上下文。
         for hit in local_hits:
             content = hit.get("content") or ""
@@ -481,6 +598,9 @@ async def answer_question(
         )
 
     lang_hint = "Respond in Traditional Chinese (Hong Kong)." if locale.startswith("zh") else "Respond in English."
+    focus_hint = focus_document_hint(focus_doc, locale)
+    if focus_hint:
+        lang_hint = f"{lang_hint}\n{focus_hint}"
     messages = build_chat_messages(
         system=build_system_prompt(rs, programme=programme, topic=topic),
         lang_hint=lang_hint,
