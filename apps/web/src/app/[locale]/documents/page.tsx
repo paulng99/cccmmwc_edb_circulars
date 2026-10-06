@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Link, useRouter } from "@/i18n/routing";
 import { listDocuments } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { formatHkDate } from "@/lib/date";
 import { Icon } from "@/components/Icon";
 import {
   PROGRAMME_OPTIONS,
@@ -31,6 +32,7 @@ type DocGroup = {
   title: string;
   circular_no?: string | null;
   issued_at?: string | null;
+  downloaded_at?: string | null;
   source_id: string;
   primary_id: string;
   programme?: string;
@@ -40,6 +42,13 @@ type DocGroup = {
 };
 
 type ListStatus = "idle" | "loading" | "success" | "empty" | "error";
+type SortBy = "issued_at" | "downloaded_at";
+type SortDir = "asc" | "desc";
+
+const SORT_FIELDS: { value: SortBy; key: "sortIssued" | "sortDownloaded" }[] = [
+  { value: "issued_at", key: "sortIssued" },
+  { value: "downloaded_at", key: "sortDownloaded" },
+];
 
 const SKELETON_COUNT = 5;
 const PAGE_SIZE = 20;
@@ -65,6 +74,8 @@ export default function DocumentsPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<ListStatus>("idle");
   const [reloadKey, setReloadKey] = useState(0);
+  const [sortBy, setSortBy] = useState<SortBy>("issued_at");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   useEffect(() => {
     if (ready && !token) router.replace("/login");
@@ -88,6 +99,8 @@ export default function DocumentsPage() {
       page_size: PAGE_SIZE,
       programme,
       topic,
+      sort_by: sortBy,
+      sort_dir: sortDir,
     })
       .then((data) => {
         if (cancelled) return;
@@ -107,7 +120,7 @@ export default function DocumentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, debouncedQ, page, programme, topic, reloadKey]);
+  }, [token, debouncedQ, page, programme, topic, sortBy, sortDir, reloadKey]);
 
   if (!token) return null;
 
@@ -129,6 +142,30 @@ export default function DocumentsPage() {
     setQ("");
     setProgramme("all");
     setTopic("all");
+    setPage(1);
+  }
+
+  function selectSortField(next: SortBy) {
+    if (sortBy === next) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setSortBy(next);
+      setSortDir("desc");
+    }
+    setPage(1);
+  }
+
+  function selectSortDir(next: SortDir) {
+    switch (next) {
+      case "asc":
+      case "desc":
+        setSortDir(next);
+        break;
+      default: {
+        const _never: never = next;
+        return _never;
+      }
+    }
     setPage(1);
   }
 
@@ -202,6 +239,37 @@ export default function DocumentsPage() {
             ))}
           </div>
         </div>
+
+        <div className="filter-row">
+          <span className="label" id="sort-label">
+            {t("sortLabel")}
+          </span>
+          <div className="list-sort" role="group" aria-labelledby="sort-label">
+            <div className="chips">
+              {SORT_FIELDS.map(({ value, key }) => (
+                <button
+                  key={value}
+                  type="button"
+                  className="chip"
+                  aria-pressed={sortBy === value}
+                  onClick={() => selectSortField(value)}
+                >
+                  {t(key)}
+                </button>
+              ))}
+            </div>
+            <div className="segmented">
+              <button type="button" aria-pressed={sortDir === "desc"} onClick={() => selectSortDir("desc")}>
+                <Icon name="arrow-down" />
+                {t("sortNewest")}
+              </button>
+              <button type="button" aria-pressed={sortDir === "asc"} onClick={() => selectSortDir("asc")}>
+                <Icon name="arrow-up" />
+                {t("sortOldest")}
+              </button>
+            </div>
+          </div>
+        </div>
       </section>
 
       {status === "success" || status === "empty" ? (
@@ -234,7 +302,10 @@ export default function DocumentsPage() {
                     <span className="skeleton" style={{ height: 22, width: 90 }} />
                   </div>
                 </div>
-                <span className="skeleton" style={{ height: "0.85rem", width: 84 }} />
+                <span className="doc-dates" aria-hidden>
+                  <span className="skeleton" style={{ height: "0.85rem", width: 108 }} />
+                  <span className="skeleton" style={{ height: "0.85rem", width: 108 }} />
+                </span>
               </div>
             </div>
           ))}
@@ -315,10 +386,24 @@ export default function DocumentsPage() {
                       ) : null}
                     </div>
                   </div>
-                  <time className="doc-date" dateTime={group.issued_at || undefined}>
-                    <Icon name="calendar" />
-                    {group.issued_at || "—"}
-                  </time>
+                  <div className="doc-dates">
+                    <time
+                      className={`doc-date${sortBy === "issued_at" ? " is-active" : ""}`}
+                      dateTime={group.issued_at || undefined}
+                    >
+                      <Icon name="calendar" />
+                      <span className="doc-date-label">{t("issuedAt")}</span>
+                      {formatHkDate(group.issued_at)}
+                    </time>
+                    <time
+                      className={`doc-date${sortBy === "downloaded_at" ? " is-active" : ""}`}
+                      dateTime={group.downloaded_at || undefined}
+                    >
+                      <Icon name="download" />
+                      <span className="doc-date-label">{t("downloadedAt")}</span>
+                      {formatHkDate(group.downloaded_at)}
+                    </time>
+                  </div>
                 </Link>
                 <div className="doc-langs" role="group" aria-label={t("languages")}>
                   <span className="label">{t("languages")}</span>

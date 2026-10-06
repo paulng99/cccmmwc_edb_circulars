@@ -20,6 +20,41 @@ from app.services.storage import get_object_bytes
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 _LANG_RANK = {"zh-HK": 0, "zh-CN": 1, "en": 2}
+SORT_ISSUED = "issued_at"
+SORT_DOWNLOADED = "downloaded_at"
+
+
+def _normalize_sort(sort_by: str | None, sort_dir: str | None) -> tuple[str, bool]:
+    field = SORT_DOWNLOADED if sort_by == SORT_DOWNLOADED else SORT_ISSUED
+    descending = (sort_dir or "desc").lower() != "asc"
+    return field, descending
+
+
+def _iso_ts(value) -> str | None:
+    if value is None:
+        return None
+    iso = value.isoformat()
+    return iso
+
+
+def _group_downloaded_at(docs: list[Document]) -> str | None:
+    times = [d.created_at for d in docs if d.created_at]
+    if not times:
+        return None
+    return max(times).isoformat()
+
+
+def _sort_groups(groups: list[DocumentGroupOut], sort_by: str, descending: bool) -> list[DocumentGroupOut]:
+    def value(g: DocumentGroupOut) -> str:
+        if sort_by == SORT_DOWNLOADED:
+            return g.downloaded_at or ""
+        return g.issued_at or ""
+
+    present = [g for g in groups if value(g)]
+    missing = [g for g in groups if not value(g)]
+    present.sort(key=lambda g: (value(g), g.circular_no or "", g.key), reverse=descending)
+    missing.sort(key=lambda g: (g.circular_no or "", g.key), reverse=descending)
+    return present + missing
 
 
 def _download_filename(doc: Document) -> str:
@@ -51,6 +86,7 @@ def _to_out(doc: Document, *, chunk_count: int = 0) -> DocumentOut:
         title=doc.title,
         circular_no=doc.circular_no,
         issued_at=doc.issued_at.isoformat() if doc.issued_at else None,
+        downloaded_at=_iso_ts(doc.created_at),
         language=doc.language,
         source_url=doc.source_url,
         file_url=doc.file_url,
@@ -94,7 +130,12 @@ def _merge_topics(docs: list[Document]) -> list[str]:
     return seen
 
 
-def _to_groups(docs: list[Document]) -> list[DocumentGroupOut]:
+def _to_groups(
+    docs: list[Document],
+    *,
+    sort_by: str = SORT_ISSUED,
+    descending: bool = True,
+) -> list[DocumentGroupOut]:
     buckets: dict[str, list[Document]] = {}
     for d in docs:
         buckets.setdefault(_group_key(d), []).append(d)
@@ -119,6 +160,7 @@ def _to_groups(docs: list[Document]) -> list[DocumentGroupOut]:
                 title=_pick_title(members_sorted),
                 circular_no=circular,
                 issued_at=issued.isoformat() if issued else None,
+                downloaded_at=_group_downloaded_at(members_sorted),
                 source_id=primary.source_id,
                 primary_id=str(primary.id),
                 programme=prog,
@@ -137,14 +179,7 @@ def _to_groups(docs: list[Document]) -> list[DocumentGroupOut]:
             )
         )
 
-    groups.sort(
-        key=lambda g: (
-            g.issued_at or "",
-            g.circular_no or "",
-        ),
-        reverse=True,
-    )
-    return groups
+    return _sort_groups(groups, sort_by, descending)
 
 
 @router.get("")
@@ -164,7 +199,10 @@ async def list_documents(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     grouped: bool = Query(True),
+    sort_by: Optional[str] = Query(None, description="issued_at | downloaded_at"),
+    sort_dir: Optional[str] = Query(None, description="desc | asc"),
 ) -> dict:
+    field, descending = _normalize_sort(sort_by, sort_dir)
     stmt = select(Document)
     if q:
         like = f"%{q}%"
@@ -188,7 +226,11 @@ async def list_documents(
     if topic_id in TOPICS:
         stmt = stmt.where(Document.topics.contains([topic_id]))
 
-    stmt = stmt.order_by(Document.issued_at.desc().nullslast(), Document.created_at.desc())
+    sort_col = Document.created_at if field == SORT_DOWNLOADED else Document.issued_at
+    if descending:
+        stmt = stmt.order_by(sort_col.desc().nullslast(), Document.created_at.desc())
+    else:
+        stmt = stmt.order_by(sort_col.asc().nullslast(), Document.created_at.asc())
     rows = list((await db.scalars(stmt)).all())
 
     if not grouped or status_filter == "failed":
@@ -202,10 +244,12 @@ async def list_documents(
             "programme": prog or "all",
             "topic": topic_id or "all",
             "category": category or "all",
+            "sort_by": field,
+            "sort_dir": "desc" if descending else "asc",
             "items": [_to_out(d) for d in page_rows],
         }
 
-    groups = _to_groups(rows)
+    groups = _to_groups(rows, sort_by=field, descending=descending)
     total = len(groups)
     page_groups = groups[(page - 1) * page_size : page * page_size]
     return {
@@ -216,6 +260,8 @@ async def list_documents(
         "programme": prog or "all",
         "topic": topic_id or "all",
         "category": category or "all",
+        "sort_by": field,
+        "sort_dir": "desc" if descending else "asc",
         "file_count": len(rows),
         "items": [g.model_dump() for g in page_groups],
     }

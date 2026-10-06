@@ -7,6 +7,7 @@ import { Link, useRouter } from "@/i18n/routing";
 import PdfPreview from "@/components/PdfPreview";
 import { apiBase, fileUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { formatHkDate } from "@/lib/date";
 import { Icon } from "@/components/Icon";
 import { langLabel, statusTone } from "@/lib/taxonomy";
 
@@ -15,6 +16,7 @@ type Doc = {
   title: string;
   circular_no?: string | null;
   issued_at?: string | null;
+  downloaded_at?: string | null;
   source_id: string;
   source_url: string;
   file_url?: string | null;
@@ -194,6 +196,10 @@ export default function DocumentDetailPage() {
                 {doc.issued_at || "—"}
               </span>
               <span className="badge">
+                <Icon name="download" />
+                {formatHkDate(doc.downloaded_at)}
+              </span>
+              <span className="badge">
                 <Icon name="globe" />
                 {langLabel(doc.language, t)}
               </span>
@@ -313,6 +319,10 @@ export default function DocumentDetailPage() {
                   <div>
                     <dt>{t("issuedAt")}</dt>
                     <dd>{doc.issued_at || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>{t("downloadedAt")}</dt>
+                    <dd>{formatHkDate(doc.downloaded_at)}</dd>
                   </div>
                   <div>
                     <dt>{t("language")}</dt>

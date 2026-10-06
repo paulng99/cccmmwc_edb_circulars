@@ -327,6 +327,26 @@ const PATHS = {
       <circle cx="5" cy="14" r="3" />
     </>
   ),
+  "arrow-up-down": (
+    <>
+      <path d="m21 16-4 4-4-4" />
+      <path d="M17 20V4" />
+      <path d="m3 8 4-4 4 4" />
+      <path d="M7 4v16" />
+    </>
+  ),
+  "arrow-up": (
+    <>
+      <path d="M12 19V5" />
+      <path d="m5 12 7-7 7 7" />
+    </>
+  ),
+  "arrow-down": (
+    <>
+      <path d="M12 5v14" />
+      <path d="m19 12-7 7-7-7" />
+    </>
+  ),
   "corner-down-left": (
     <>
       <polyline points="9 10 4 15 9 20" />

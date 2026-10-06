@@ -60,6 +60,8 @@ export async function listDocuments(
     category?: "all" | "circular" | "document";
     programme?: "all" | "circular" | "sister_school" | "lwlssg" | "other";
     topic?: "all" | string;
+    sort_by?: "issued_at" | "downloaded_at";
+    sort_dir?: "asc" | "desc";
   } = {},
 ) {
   const sp = new URLSearchParams();
@@ -68,6 +70,8 @@ export async function listDocuments(
   if (params.programme && params.programme !== "all") sp.set("programme", params.programme);
   else if (params.category && params.category !== "all") sp.set("category", params.category);
   if (params.topic && params.topic !== "all") sp.set("topic", params.topic);
+  if (params.sort_by) sp.set("sort_by", params.sort_by);
+  if (params.sort_dir) sp.set("sort_dir", params.sort_dir);
   sp.set("page", String(params.page || 1));
   sp.set("page_size", String(params.page_size || 20));
   sp.set("grouped", String(params.grouped ?? true));

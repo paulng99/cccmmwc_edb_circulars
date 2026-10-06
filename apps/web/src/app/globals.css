@@ -1452,6 +1452,40 @@ code {
   flex-wrap: wrap;
 }
 
+.list-sort {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.list-sort .label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.list-sort .label .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.list-sort .segmented button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.list-sort .segmented .icon {
+  width: 13px;
+  height: 13px;
+}
+
 .result-count {
   color: var(--text-2);
   font-size: 0.86rem;
@@ -1561,6 +1595,14 @@ code {
   gap: 0.25rem;
 }
 
+.doc-dates {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.22rem;
+  min-width: 11.25rem;
+}
+
 .doc-date {
   display: inline-flex;
   align-items: center;
@@ -1569,12 +1611,27 @@ code {
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  padding-top: 0.3rem;
+}
+
+.doc-date-label {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.doc-date.is-active {
+  color: var(--primary-text);
+  font-weight: 600;
+}
+
+.doc-date.is-active .doc-date-label {
+  color: var(--primary-text);
 }
 
 .doc-date .icon {
   width: 14px;
   height: 14px;
+  flex-shrink: 0;
 }
 
 .doc-langs {
@@ -3600,9 +3657,10 @@ input[type="checkbox"] {
     display: none;
   }
 
-  .doc-date {
-    padding-top: 0;
+  .doc-dates {
     grid-row: 2;
+    align-items: flex-start;
+    min-width: 0;
   }
 
   .doc-langs {

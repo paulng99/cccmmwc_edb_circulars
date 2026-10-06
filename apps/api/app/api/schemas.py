@@ -60,6 +60,7 @@ class DocumentOut(BaseModel):
     title: str
     circular_no: str | None
     issued_at: str | None
+    downloaded_at: str | None = None
     language: str
     source_url: str
     file_url: str | None
@@ -87,6 +88,7 @@ class DocumentGroupOut(BaseModel):
     title: str
     circular_no: str | None
     issued_at: str | None
+    downloaded_at: str | None = None
     source_id: str
     primary_id: str
     programme: str = "other"
