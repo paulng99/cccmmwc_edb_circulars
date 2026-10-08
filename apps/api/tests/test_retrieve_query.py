@@ -84,6 +84,7 @@ async def test_answer_question_uses_history_in_retrieve_query(monkeypatch):
             self.user_id = user_id
             self.title = "全方位學習及姊妹學校津貼2026/27"
             self.knowledge_source = "local"
+            self.focus_document_id = None
             self.updated_at = None
 
     class FakeLocal:
