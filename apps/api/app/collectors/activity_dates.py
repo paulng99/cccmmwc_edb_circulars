@@ -1,9 +1,12 @@
-"""Extract activity start/deadline dates and details from circular text (local regex only).
+"""Extract calendar deadlines/starts and details from circular text (local regex only).
 
-A document may contain several activities. Each activity may have a start date,
-a deadline, or both, plus an optional title, one-line summary, and venue.
-Dates that are clearly not activity dates (issue/update stamps, school years,
-reply-by deadlines) are recorded as rejected, not stored.
+A document may contain several items: activities, enrolment, submission, and
+reply deadlines. Each may have a start date, a deadline, or both, plus an
+optional title, one-line summary, and venue.
+
+Excluded from the calendar (recorded as rejected): issue/update stamps, school
+years, effective-from dates, and background/supersession dates.
+Reply-by / submit-by deadlines ARE included (legacy reply exclusion is revoked).
 Education Bureau letterhead / signature addresses are never used as venues.
 """
 
@@ -75,14 +78,40 @@ _REVISE_STAMP = re.compile(
     r"(?:Updated|Revised)\s+(?:on|in)\s+[^)）]+)\s*[)）]",
     re.IGNORECASE,
 )
-# HK circulars often shorten 回覆 to 覆.
+# HK circulars often shorten 回覆 to 覆. These are calendar deadlines (included).
 _REPLY_BY_ZH = re.compile(
-    r"請於.{0,40}前(?:回覆|覆本局|作出回覆|回覆確認|確認回覆|回覆有關|覆有關)"
+    r"請於.{0,40}前(?:交回|遞交|提交|呈交|回覆|覆本局|作出回覆|回覆確認|確認回覆|回覆有關|覆有關)"
 )
 _REPLY_BY_EN = re.compile(
-    r"(?:please\s+)?(?:reply|respond|return(?:\s+the\s+reply)?)\s+"
+    r"(?:please\s+)?(?:reply|respond|return(?:\s+the\s+reply)?|submit|hand\s+in)\s+"
     r"(?:to\s+(?:this|the)\s+(?:circular|letter)\s+)?"
     r"(?:by|before|on\s+or\s+before)\b",
+    re.IGNORECASE,
+)
+
+# What is being submitted — used for titles like 「交回問卷」.
+_SUBMIT_OBJECT_ZH = re.compile(
+    r"(?:交回|遞交|提交|呈交)(?P<object>[^\n，。；;：:]{1,40})"
+)
+
+_DEFAULT_SUBMIT_TITLE = "交回文件"
+
+# Effective-from dates — easy to over-extract; keep off the calendar.
+_EFFECTIVE_LABEL = re.compile(
+    r"(?:生效日期|Effective\s+Date)\s*[:：]?",
+    re.IGNORECASE,
+)
+_EFFECTIVE_PHRASE = re.compile(
+    r"(?:本通告|本通函|本公告|本文件).{0,24}自.{0,48}(?:起|開始)(?:生效|實施)|"
+    r"(?:takes?\s+effect|comes?\s+into\s+(?:effect|force)|effective\s+(?:from|on))\b",
+    re.IGNORECASE,
+)
+
+# Background / supersession dates — not calendar events.
+_BACKGROUND_SUPERSEDE = re.compile(
+    r"(?:取代|廢除|撤銷|代替).{0,60}(?:通告|通函|公告)|"
+    r"(?:supersede[sd]?|replace[sd]?|revoke[sd]?|cancel(?:s|led)?).{0,80}"
+    r"(?:circular|memorandum|notice)",
     re.IGNORECASE,
 )
 
@@ -101,11 +130,11 @@ _EN_DATE_MDY = re.compile(
 _START_LABEL = re.compile(
     r"(?P<label>"
     r"活動開始日期|報名開始日期|申請開始日期|開始報名日期|開始日期|"
-    r"生效日期|活動日期|舉行日期|開課日期|"
+    r"活動日期|舉行日期|開課日期|"
     r"Start[^\S\n]+Date|Commencement[^\S\n]+Date|Starting[^\S\n]+Date|"
     r"Application[^\S\n]+Start[^\S\n]+Date|"
     r"Enrolment[^\S\n]+Start[^\S\n]+Date|Enrollment[^\S\n]+Start[^\S\n]+Date|"
-    r"Event[^\S\n]+Date|Activity[^\S\n]+Date|Effective[^\S\n]+Date"
+    r"Event[^\S\n]+Date|Activity[^\S\n]+Date"
     r")"
     + _S
     + r"[:：]?"
@@ -116,10 +145,11 @@ _START_LABEL = re.compile(
 _DEADLINE_LABEL = re.compile(
     r"(?P<label>"
     r"截止報名日期|報名截止日期|申請截止日期|遞交截止日期|提交截止日期|"
-    r"最後提交日期|最後遞交日期|活動截止日期|截止日期|"
+    r"交回截止日期|回覆截止日期|最後提交日期|最後遞交日期|活動截止日期|截止日期|"
     r"Closing[^\S\n]+Date(?:[^\S\n]+for[^\S\n]+Applications?)?|"
     r"Application[^\S\n]+Deadline|Submission[^\S\n]+Deadline|"
     r"Enrolment[^\S\n]+Deadline|Enrollment[^\S\n]+Deadline|"
+    r"Reply[^\S\n]+Deadline|"
     r"Deadline(?:[^\S\n]+for[^\S\n]+Applications?)?"
     r")"
     + _S
@@ -222,19 +252,17 @@ _BARE_BUREAU_LINE = re.compile(
     re.IGNORECASE,
 )
 
-_REJECT_REASONS = ("issued", "revised", "school_year", "reply_deadline")
+_REJECT_REASONS = ("issued", "revised", "school_year", "effective", "background")
 
 _GENERIC_LABELS = frozenset(
     {
         "開始日期",
         "截止日期",
-        "生效日期",
         "活動日期",
         "舉行日期",
         "start date",
         "commencement date",
         "starting date",
-        "effective date",
         "event date",
         "activity date",
         "closing date",
@@ -403,9 +431,44 @@ def _find_nearby_name(text: str, pos: int) -> str | None:
     return None
 
 
-def _resolve_name(text: str, pos: int, label: str | None) -> str | None:
-    # Explicit 活動名稱 / Activity Name wins over label-derived names.
-    return _find_nearby_name(text, pos) or _label_to_name(label)
+def _title_from_submit_sentence(sentence: str) -> str | None:
+    """Build titles like 「交回問卷」 from a submit/reply sentence."""
+    m = _SUBMIT_OBJECT_ZH.search(sentence)
+    if not m:
+        return None
+    obj = _clean_field(m.group("object"), max_len=40)
+    if not obj:
+        return None
+    obj = re.sub(
+        r"(?:本局|有關安排|事宜|予本局|到本局|的截止日期|截止日期)$",
+        "",
+        obj,
+    ).strip(" ：:.-–—、，,的")
+    if not obj or len(obj) > 36:
+        return None
+    if obj.startswith("交回") or obj.startswith("遞交") or obj.startswith("提交"):
+        return obj[:40]
+    return f"交回{obj}"[:40]
+
+
+def _resolve_name(
+    text: str,
+    pos: int,
+    label: str | None,
+    *,
+    sentence: str | None = None,
+) -> str | None:
+    # Explicit 活動名稱 / Activity Name wins over submit-object / label names.
+    return (
+        _find_nearby_name(text, pos)
+        or (_title_from_submit_sentence(sentence) if sentence else None)
+        or _label_to_name(label)
+    )
+
+
+def _deadline_title(name: str | None) -> str:
+    """Deadlines without an extracted title default to 「交回文件」 (not circular title)."""
+    return name or _DEFAULT_SUBMIT_TITLE
 
 
 def _activity_detail_window(text: str, pos: int) -> tuple[int, int]:
@@ -579,7 +642,7 @@ def _take_date_after_label(
 
 
 def _collect_rejected_non_activity(text: str, rejected: list[RejectedDate]) -> None:
-    """Scan for common non-activity dates so PR sampling can show them."""
+    """Scan dates that must stay off the calendar (for PR sampling)."""
     for m in _ISSUE_LABEL.finditer(text):
         parsed = _parse_date_token(text[m.end() : m.end() + 40])
         sentence = _sentence_around(text, m.start(), m.end() + 40)
@@ -598,12 +661,22 @@ def _collect_rejected_non_activity(text: str, rejected: list[RejectedDate]) -> N
             continue
         sentence = _sentence_around(text, m.start(), m.end())
         _reject(rejected, value=None, reason="school_year", sentence=sentence)
-    for rx in (_REPLY_BY_ZH, _REPLY_BY_EN):
-        for m in rx.finditer(text):
-            window = text[m.start() : min(len(text), m.end() + 50)]
-            parsed = _parse_date_token(window)
-            sentence = _sentence_around(text, m.start(), min(len(text), m.end() + 50))
-            _reject(rejected, value=parsed, reason="reply_deadline", sentence=sentence)
+    for m in _EFFECTIVE_LABEL.finditer(text):
+        parsed = _parse_date_token(text[m.end() : m.end() + 40])
+        sentence = _sentence_around(text, m.start(), m.end() + 40)
+        _reject(rejected, value=parsed, reason="effective", sentence=sentence)
+    for m in _EFFECTIVE_PHRASE.finditer(text):
+        parsed = _parse_date_token(m.group(0)) or _parse_date_token(
+            text[m.start() : min(len(text), m.end() + 40)]
+        )
+        sentence = _sentence_around(text, m.start(), min(len(text), m.end() + 40))
+        _reject(rejected, value=parsed, reason="effective", sentence=sentence)
+    for m in _BACKGROUND_SUPERSEDE.finditer(text):
+        parsed = _parse_date_token(m.group(0)) or _parse_date_token(
+            text[max(0, m.start() - 20) : min(len(text), m.end() + 40)]
+        )
+        sentence = _sentence_around(text, m.start(), min(len(text), m.end() + 40))
+        _reject(rejected, value=parsed, reason="background", sentence=sentence)
 
 
 def _activity_key(act: ActivityDates) -> tuple:
@@ -683,8 +756,67 @@ def _merge_activities(items: list[ActivityDates]) -> list[ActivityDates]:
     return out
 
 
+def _span_taken(used_spans: set[tuple[int, int]], start: int, end: int) -> bool:
+    """True if this match overlaps a span already used (same sentence, multi-pattern)."""
+    for a, b in used_spans:
+        if start < b and end > a:
+            return True
+    return False
+
+
+def _append_unique(
+    found: list[ActivityDates],
+    used_spans: set[tuple[int, int]],
+    act: ActivityDates,
+    *,
+    span: tuple[int, int],
+) -> None:
+    """Keep at most one calendar item per source match span (not per identical wording)."""
+    if _span_taken(used_spans, span[0], span[1]):
+        return
+    used_spans.add(span)
+    found.append(act)
+
+
+def _collect_reply_deadlines(
+    text: str,
+    found: list[ActivityDates],
+    used_spans: set[tuple[int, int]],
+    rejected_locations: list[RejectedLocation],
+) -> None:
+    """Include 請於…前覆 / please reply by as deadline rows (no longer excluded).
+
+    Do not borrow a nearby 活動名稱 — reply/submit titles come from the sentence
+    object (交回問卷) or default to 交回文件.
+    """
+    for rx in (_REPLY_BY_ZH, _REPLY_BY_EN):
+        for m in rx.finditer(text):
+            window_end = min(len(text), m.end() + 50)
+            window = text[m.start() : window_end]
+            parsed = _parse_date_token(window)
+            sentence = _sentence_around(text, m.start(), window_end)
+            if parsed is None:
+                continue
+            name = _deadline_title(_title_from_submit_sentence(sentence))
+            _append_unique(
+                found,
+                used_spans,
+                _attach_details(
+                    text,
+                    m.start(),
+                    rejected_locations,
+                    name=name,
+                    starts_at=None,
+                    deadline_at=parsed,
+                    start_sentence=None,
+                    deadline_sentence=sentence,
+                ),
+                span=(m.start(), window_end),
+            )
+
+
 def extract_activities(text: str | None) -> ActivityExtractionResult:
-    """Pull activity dates/details from stored circular text only (no external AI)."""
+    """Pull calendar dates/details from stored circular text only (no external AI)."""
     if not text or not text.strip():
         return ActivityExtractionResult()
     sample = _norm(text)
@@ -694,6 +826,7 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
     _collect_bureau_address_rejects(sample, rejected_locations)
 
     found: list[ActivityDates] = []
+    used_spans: set[tuple[int, int]] = set()
 
     for m in _RANGE_ZH.finditer(sample):
         sentence = _sentence_around(sample, m.start(), m.end())
@@ -701,8 +834,10 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
         end_d = _parse_zh_ymd(m.group("end"))
         if not start_d and not end_d:
             continue
-        name = _resolve_name(sample, m.start(), m.group("label"))
-        found.append(
+        name = _resolve_name(sample, m.start(), m.group("label"), sentence=sentence)
+        _append_unique(
+            found,
+            used_spans,
             _attach_details(
                 sample,
                 m.start(),
@@ -712,7 +847,8 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
                 deadline_at=end_d,
                 start_sentence=sentence if start_d else None,
                 deadline_sentence=sentence if end_d else None,
-            )
+            ),
+            span=(m.start(), m.end()),
         )
 
     for m in _RANGE_EN.finditer(sample):
@@ -721,8 +857,10 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
         end_d = _parse_date_token(m.group("end"))
         if not start_d and not end_d:
             continue
-        name = _resolve_name(sample, m.start(), m.group("label"))
-        found.append(
+        name = _resolve_name(sample, m.start(), m.group("label"), sentence=sentence)
+        _append_unique(
+            found,
+            used_spans,
             _attach_details(
                 sample,
                 m.start(),
@@ -732,15 +870,18 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
                 deadline_at=end_d,
                 start_sentence=sentence if start_d else None,
                 deadline_sentence=sentence if end_d else None,
-            )
+            ),
+            span=(m.start(), m.end()),
         )
 
     for m in _START_LABEL.finditer(sample):
         parsed, sentence = _take_date_after_label(sample, m, rejected)
         if parsed is None:
             continue
-        name = _resolve_name(sample, m.start(), m.group("label"))
-        found.append(
+        name = _resolve_name(sample, m.start(), m.group("label"), sentence=sentence)
+        _append_unique(
+            found,
+            used_spans,
             _attach_details(
                 sample,
                 m.start(),
@@ -750,15 +891,21 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
                 deadline_at=None,
                 start_sentence=sentence,
                 deadline_sentence=None,
-            )
+            ),
+            span=(m.start(), m.end()),
         )
 
     for m in _DEADLINE_LABEL.finditer(sample):
         parsed, sentence = _take_date_after_label(sample, m, rejected)
         if parsed is None:
             continue
-        name = _resolve_name(sample, m.start(), m.group("label"))
-        found.append(
+        name = _resolve_name(sample, m.start(), m.group("label"), sentence=sentence)
+        # Deadline rows without a title use 「交回文件」 — never the circular title.
+        if not name:
+            name = _DEFAULT_SUBMIT_TITLE
+        _append_unique(
+            found,
+            used_spans,
             _attach_details(
                 sample,
                 m.start(),
@@ -768,10 +915,30 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
                 deadline_at=parsed,
                 start_sentence=None,
                 deadline_sentence=sentence,
-            )
+            ),
+            span=(m.start(), m.end()),
         )
 
+    _collect_reply_deadlines(sample, found, used_spans, rejected_locations)
+
     activities = _merge_activities(found)
+    # After merge, deadline-bearing items still need a display title.
+    activities = [
+        ActivityDates(
+            name=_deadline_title(a.name) if a.deadline_at and not a.name else a.name,
+            starts_at=a.starts_at,
+            deadline_at=a.deadline_at,
+            summary=a.summary,
+            location=a.location,
+            start_sentence=a.start_sentence,
+            deadline_sentence=a.deadline_sentence,
+            summary_sentence=a.summary_sentence,
+            location_sentence=a.location_sentence,
+        )
+        if a.deadline_at and not a.name
+        else a
+        for a in activities
+    ]
     return ActivityExtractionResult(
         activities=activities,
         rejected=rejected,
@@ -783,9 +950,12 @@ def activities_to_stored(result: ActivityExtractionResult) -> list[dict]:
     """Serialize activities for Document.activities JSONB (no sentence fields)."""
     out: list[dict] = []
     for act in result.activities:
+        name = act.name
+        if act.deadline_at and not name:
+            name = _DEFAULT_SUBMIT_TITLE
         out.append(
             {
-                "name": act.name,
+                "name": name,
                 "starts_at": act.starts_at.isoformat() if act.starts_at else None,
                 "deadline_at": act.deadline_at.isoformat() if act.deadline_at else None,
                 "summary": act.summary,

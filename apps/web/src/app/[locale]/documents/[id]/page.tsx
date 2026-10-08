@@ -354,9 +354,18 @@ export default function DocumentDetailPage() {
                   <p className="muted">{t("activitiesEmpty")}</p>
                 ) : (
                   <ul className="activity-blocks">
-                    {(doc.activities || []).map((act, idx) => (
+                    {(doc.activities || []).map((act, idx) => {
+                      const itemTitle =
+                        act.name?.trim() ||
+                        (act.deadline_at ? "交回文件" : doc.title);
+                      const showDocTitle =
+                        Boolean(doc.title?.trim()) && doc.title.trim() !== itemTitle;
+                      return (
                       <li key={`${act.name || "a"}-${act.starts_at || ""}-${act.deadline_at || ""}-${idx}`}>
-                        <strong>{act.name || doc.title}</strong>
+                        <strong>{itemTitle}</strong>
+                        {showDocTitle ? (
+                          <p className="activity-doc-title">{doc.title}</p>
+                        ) : null}
                         {act.summary?.trim() ? (
                           <p className="activity-summary">{act.summary.trim()}</p>
                         ) : null}
@@ -372,7 +381,8 @@ export default function DocumentDetailPage() {
                           <span>{formatHkDate(act.deadline_at, t("dateMissing"))}</span>
                         </div>
                       </li>
-                    ))}
+                      );
+                    })}
                   </ul>
                 )}
               </div>
@@ -433,9 +443,18 @@ export default function DocumentDetailPage() {
                           <span>{t("activitiesEmpty")}</span>
                         ) : (
                           <ul className="activity-blocks">
-                            {(doc.activities || []).map((act, idx) => (
+                            {(doc.activities || []).map((act, idx) => {
+                              const itemTitle =
+                                act.name?.trim() ||
+                                (act.deadline_at ? "交回文件" : doc.title);
+                              const showDocTitle =
+                                Boolean(doc.title?.trim()) && doc.title.trim() !== itemTitle;
+                              return (
                               <li key={`${act.name || "a"}-${act.starts_at || ""}-${act.deadline_at || ""}-${idx}`}>
-                                <strong>{act.name || doc.title}</strong>
+                                <strong>{itemTitle}</strong>
+                                {showDocTitle ? (
+                                  <p className="activity-doc-title">{doc.title}</p>
+                                ) : null}
                                 {act.summary?.trim() ? (
                                   <p className="activity-summary">{act.summary.trim()}</p>
                                 ) : null}
@@ -451,7 +470,8 @@ export default function DocumentDetailPage() {
                                   <span>{formatHkDate(act.deadline_at, t("dateMissing"))}</span>
                                 </div>
                               </li>
-                            ))}
+                              );
+                            })}
                           </ul>
                         )}
                       </dd>

@@ -60,7 +60,7 @@ async def index_document(session: AsyncSession, document_id: uuid.UUID) -> dict[
             doc.extra = {
                 **(doc.extra or {}),
                 "dates_parsed": "1",
-                "activities_parsed": "2",
+                "activities_parsed": "3",
             }
         chunks = chunk_text(text)
         if not chunks:

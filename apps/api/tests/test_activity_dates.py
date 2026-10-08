@@ -1,4 +1,4 @@
-"""Unit tests for local multi-activity date/detail extraction (no external services)."""
+"""Unit tests for local calendar date/detail extraction (no external services)."""
 
 from datetime import date
 from types import SimpleNamespace
@@ -81,7 +81,7 @@ Issue Date: 1 March 2026
 Commencement Date: 1 September 2026
 """
 
-FIXTURE_NO_ACTIVITY = """
+FIXTURE_REPLY_ONLY = """
 教育局通告第 1/2026 號
 發出日期：2026年1月2日
 （2026 年 2 月 1 日更新）
@@ -149,6 +149,49 @@ Activity Name: Coding workshop enrolment
 Closing Date: 30 July 2026
 """
 
+FIXTURE_SUBMIT_QUESTIONNAIRE = """
+教育局通告第 30/2026 號
+發出日期：2026年7月1日
+
+請於2026年8月15日前交回問卷。
+"""
+
+FIXTURE_SUBMIT_FALLBACK = """
+教育局通告第 31/2026 號
+發出日期：2026年7月2日
+
+截止日期：2026年9月1日
+"""
+
+# Same reply sentence must not create two calendar rows.
+FIXTURE_SAME_SENTENCE_ONCE = """
+教育局通告第 32/2026 號
+發出日期：2026年7月3日
+
+請於2026年10月1日前交回問卷。
+"""
+
+FIXTURE_EFFECTIVE_DATE = """
+教育局通告第 40/2026 號
+發出日期：2026年1月10日
+
+生效日期：2026年2月1日
+本通告自2026年2月1日起生效。
+
+活動名稱：教師交流團報名
+報名截止日期：2026年3月20日
+"""
+
+FIXTURE_BACKGROUND_SUPERSEDE = """
+教育局通告第 41/2026 號
+發出日期：2026年4月1日
+
+本通告取代2025年6月15日的通告。
+
+活動名稱：津貼申請
+申請截止日期：2026年5月30日
+"""
+
 
 def _deadlines(result):
     return [a.deadline_at for a in result.activities]
@@ -168,7 +211,7 @@ def _rejected_location_values(result):
 
 def test_chinese_multi_activity_dates():
     result = extract_activities(FIXTURE_MULTI_ZH)
-    assert len(result.activities) == 2
+    assert len(result.activities) == 3
     names = {a.name for a in result.activities}
     assert "校本教師專業發展工作坊" in names
     assert "家長講座報名" in names
@@ -184,15 +227,18 @@ def test_chinese_multi_activity_dates():
     assert lecture.location == "社區會堂"
 
 
-def test_chinese_rejects_issue_update_school_year_and_reply():
+def test_reply_deadline_is_listed_not_excluded():
     result = extract_activities(FIXTURE_MULTI_ZH)
     reasons = _rejected_reasons(result)
     assert "issued" in reasons
     assert "revised" in reasons
     assert "school_year" in reasons
-    assert "reply_deadline" in reasons
-    # Reply-by date must not become an activity deadline
-    assert date(2026, 12, 15) not in _deadlines(result)
+    assert "reply_deadline" not in reasons
+    # Reply-by date is now a calendar deadline
+    assert date(2026, 12, 15) in _deadlines(result)
+    reply = next(a for a in result.activities if a.deadline_at == date(2026, 12, 15))
+    assert reply.name == "交回文件"
+    assert reply.starts_at is None
     assert date(2026, 3, 1) not in _starts(result)
     assert date(2026, 5, 10) not in _starts(result) + _deadlines(result)
 
@@ -210,7 +256,7 @@ def test_chinese_range_becomes_one_activity():
 
 def test_english_multi_activity():
     result = extract_activities(FIXTURE_EN_MULTI)
-    assert len(result.activities) == 2
+    assert len(result.activities) == 3
     stem = next(a for a in result.activities if a.name and "STEM" in a.name)
     assert stem.starts_at == date(2026, 9, 1)
     assert stem.deadline_at == date(2026, 9, 30)
@@ -220,8 +266,9 @@ def test_english_multi_activity():
     assert grant.starts_at is None
     assert grant.summary is None
     assert grant.location is None
-    assert date(2026, 2, 28) not in _deadlines(result)
-    assert "reply_deadline" in _rejected_reasons(result)
+    reply = next(a for a in result.activities if a.deadline_at == date(2026, 2, 28))
+    assert reply.name == "交回文件"
+    assert "reply_deadline" not in _rejected_reasons(result)
     assert "issued" in _rejected_reasons(result)
     assert "school_year" in _rejected_reasons(result)
 
@@ -249,14 +296,17 @@ def test_deadline_only_and_start_only():
     assert only_start.activities[0].deadline_at is None
 
 
-def test_no_activity_returns_empty_but_records_rejects():
-    result = extract_activities(FIXTURE_NO_ACTIVITY)
-    assert result.activities == []
+def test_reply_only_becomes_submit_deadline():
+    result = extract_activities(FIXTURE_REPLY_ONLY)
+    assert len(result.activities) == 1
+    act = result.activities[0]
+    assert act.deadline_at == date(2026, 3, 31)
+    assert act.name == "交回文件"
     reasons = _rejected_reasons(result)
     assert "issued" in reasons
     assert "revised" in reasons
     assert "school_year" in reasons
-    assert "reply_deadline" in reasons
+    assert "reply_deadline" not in reasons
 
 
 def test_labeled_range_with_programme_name():
@@ -276,16 +326,59 @@ def test_same_deadline_different_activities_stay_separate():
     assert len(names) == 2
 
 
-def test_generic_labels_ok_without_activity_name():
+def test_generic_deadline_title_is_submit_document():
     result = extract_activities(FIXTURE_GENERIC_LABELS)
     assert len(result.activities) == 1
     act = result.activities[0]
     assert act.starts_at == date(2026, 9, 1)
     assert act.deadline_at == date(2026, 9, 30)
-    # Generic "開始日期/截止日期" should not invent a name
-    assert act.name is None
+    # No activity name → deadline title defaults to 交回文件 (not circular title)
+    assert act.name == "交回文件"
     assert act.summary is None
     assert act.location is None
+
+
+def test_submit_questionnaire_title():
+    result = extract_activities(FIXTURE_SUBMIT_QUESTIONNAIRE)
+    assert len(result.activities) == 1
+    act = result.activities[0]
+    assert act.deadline_at == date(2026, 8, 15)
+    assert act.name == "交回問卷"
+    assert act.summary is None
+    assert act.location is None
+
+
+def test_submit_fallback_title_not_circular_title():
+    result = extract_activities(FIXTURE_SUBMIT_FALLBACK)
+    assert len(result.activities) == 1
+    act = result.activities[0]
+    assert act.deadline_at == date(2026, 9, 1)
+    assert act.name == "交回文件"
+
+
+def test_same_sentence_listed_once():
+    result = extract_activities(FIXTURE_SAME_SENTENCE_ONCE)
+    assert len(result.activities) == 1
+    assert result.activities[0].name == "交回問卷"
+    assert result.activities[0].deadline_at == date(2026, 10, 1)
+
+
+def test_effective_date_excluded_from_calendar():
+    result = extract_activities(FIXTURE_EFFECTIVE_DATE)
+    assert "effective" in _rejected_reasons(result)
+    assert date(2026, 2, 1) not in _starts(result) + _deadlines(result)
+    assert date(2026, 3, 20) in _deadlines(result)
+    eff = [r for r in result.rejected if r.reason == "effective"]
+    assert any("生效日期" in r.sentence or "起生效" in r.sentence for r in eff)
+
+
+def test_background_supersede_excluded_from_calendar():
+    result = extract_activities(FIXTURE_BACKGROUND_SUPERSEDE)
+    assert "background" in _rejected_reasons(result)
+    assert date(2025, 6, 15) not in _starts(result) + _deadlines(result)
+    assert date(2026, 5, 30) in _deadlines(result)
+    bg = [r for r in result.rejected if r.reason == "background"]
+    assert any("取代" in r.sentence for r in bg)
 
 
 def test_letterhead_with_real_venue_keeps_only_venue():
@@ -310,7 +403,6 @@ def test_letterhead_only_leaves_location_empty():
     assert act.location is None
     rejected = _rejected_location_values(result)
     assert any("皇后大道東" in v for v in rejected)
-    # Must not surface 「未有」 — empty string / None only
     assert act.location in (None, "")
 
 
@@ -357,5 +449,19 @@ def test_apply_document_activities_stores_summary_and_location():
             "deadline_at": "2026-10-20",
             "summary": "中一至中三報名",
             "location": "學校禮堂",
+        }
+    ]
+
+
+def test_apply_stores_reply_as_submit_document():
+    doc = SimpleNamespace(activities=[])
+    assert apply_document_activities(doc, FIXTURE_REPLY_ONLY) is True
+    assert doc.activities == [
+        {
+            "name": "交回文件",
+            "starts_at": None,
+            "deadline_at": "2026-03-31",
+            "summary": None,
+            "location": None,
         }
     ]

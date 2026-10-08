@@ -6,9 +6,17 @@ type Props = {
   kindLabel: string;
 };
 
-/** Google Calendar–style agenda row: kind on the left, title / summary / location on the right. */
+/**
+ * Google Calendar–style agenda row: kind on the left; title, optional circular
+ * title (smaller), optional summary, optional location on the right.
+ * Missing summary/location omit those lines (no blank placeholders).
+ */
 export function AgendaEventRow({ event, kindLabel }: Props) {
-  const title = event.activity_name || event.document_title;
+  const itemTitle =
+    event.activity_name?.trim() ||
+    (event.kind === "deadline" ? "交回文件" : event.document_title);
+  const docTitle = event.document_title?.trim() || "";
+  const showDocTitle = Boolean(docTitle) && docTitle !== itemTitle;
   const summary = event.summary?.trim() || "";
   const location = event.location?.trim() || "";
 
@@ -18,7 +26,8 @@ export function AgendaEventRow({ event, kindLabel }: Props) {
         {kindLabel}
       </span>
       <span className="agenda-body">
-        <strong className="agenda-title">{title}</strong>
+        <strong className="agenda-title">{itemTitle}</strong>
+        {showDocTitle ? <span className="agenda-doc-title">{docTitle}</span> : null}
         {summary ? <span className="agenda-summary">{summary}</span> : null}
         {location ? <span className="agenda-location">{location}</span> : null}
       </span>
