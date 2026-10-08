@@ -4233,6 +4233,12 @@ input[type="checkbox"] {
   line-height: 1.35;
 }
 
+.agenda-doc-title {
+  font-size: 0.8rem;
+  color: var(--text-2);
+  line-height: 1.35;
+}
+
 .agenda-summary,
 .agenda-location {
   font-size: 0.875rem;
@@ -4288,6 +4294,13 @@ input[type="checkbox"] {
 .activity-blocks li strong {
   display: block;
   margin-bottom: 0.25rem;
+}
+
+.activity-doc-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  color: var(--text-2);
+  line-height: 1.35;
 }
 
 .activity-summary,
