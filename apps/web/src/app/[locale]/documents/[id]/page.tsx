@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/routing";
 import DocumentChatPanel from "@/components/DocumentChatPanel";
 import PdfPreview from "@/components/PdfPreview";
-import { apiBase, fileUrl } from "@/lib/api";
+import { apiBase, fileUrl, type DocumentActivity } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDate } from "@/lib/date";
 import { Icon } from "@/components/Icon";
@@ -19,6 +19,7 @@ type Doc = {
   issued_at?: string | null;
   revised_at?: string | null;
   downloaded_at?: string | null;
+  activities?: DocumentActivity[];
   source_id: string;
   source_url: string;
   file_url?: string | null;
@@ -344,6 +345,31 @@ export default function DocumentDetailPage() {
                 </div>
               ) : null}
               <PdfPreview fileUrl={pdfApiUrl} token={token} />
+              <div className="doc-activities">
+                <h3>
+                  <Icon name="calendar" />
+                  {t("activities")}
+                </h3>
+                {(doc.activities || []).length === 0 ? (
+                  <p className="muted">{t("activitiesEmpty")}</p>
+                ) : (
+                  <ul className="activity-blocks">
+                    {(doc.activities || []).map((act, idx) => (
+                      <li key={`${act.name || "a"}-${act.starts_at || ""}-${act.deadline_at || ""}-${idx}`}>
+                        <strong>{act.name || t("unnamedActivity")}</strong>
+                        <div>
+                          <span>{t("activityStartsAt")}</span>
+                          <span>{formatHkDate(act.starts_at, t("dateMissing"))}</span>
+                        </div>
+                        <div>
+                          <span>{t("activityDeadlineAt")}</span>
+                          <span>{formatHkDate(act.deadline_at, t("dateMissing"))}</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           </section>
 
@@ -384,15 +410,39 @@ export default function DocumentDetailPage() {
                     </div>
                     <div>
                       <dt>{t("issuedAt")}</dt>
-                      <dd>{formatHkDate(doc.issued_at)}</dd>
+                      <dd>{formatHkDate(doc.issued_at, t("dateMissing"))}</dd>
                     </div>
                     <div>
                       <dt>{t("revisedAt")}</dt>
-                      <dd>{formatHkDate(doc.revised_at)}</dd>
+                      <dd>{formatHkDate(doc.revised_at, t("dateMissing"))}</dd>
                     </div>
                     <div>
                       <dt>{t("downloadedAt")}</dt>
-                      <dd>{formatHkDate(doc.downloaded_at)}</dd>
+                      <dd>{formatHkDate(doc.downloaded_at, t("dateMissing"))}</dd>
+                    </div>
+                    <div className="meta-activities">
+                      <dt>{t("activities")}</dt>
+                      <dd>
+                        {(doc.activities || []).length === 0 ? (
+                          <span>{t("activitiesEmpty")}</span>
+                        ) : (
+                          <ul className="activity-blocks">
+                            {(doc.activities || []).map((act, idx) => (
+                              <li key={`${act.name || "a"}-${act.starts_at || ""}-${act.deadline_at || ""}-${idx}`}>
+                                <strong>{act.name || t("unnamedActivity")}</strong>
+                                <div>
+                                  <span>{t("activityStartsAt")}</span>
+                                  <span>{formatHkDate(act.starts_at, t("dateMissing"))}</span>
+                                </div>
+                                <div>
+                                  <span>{t("activityDeadlineAt")}</span>
+                                  <span>{formatHkDate(act.deadline_at, t("dateMissing"))}</span>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </dd>
                     </div>
                     <div>
                       <dt>{t("language")}</dt>

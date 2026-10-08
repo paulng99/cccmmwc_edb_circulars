@@ -20,6 +20,7 @@ from app.models import (  # noqa: F401
     Source,
     User,
 )
+from app.services.activity_dates import backfill_document_activities
 from app.services.doc_dates import backfill_document_dates
 from app.services.pipeline import sync_sources_table
 from app.services.runtime_settings import ensure_seeded
@@ -131,6 +132,12 @@ async def init_db() -> None:
                 "ON documents (revised_at)"
             )
         )
+        await conn.execute(
+            text(
+                "ALTER TABLE documents "
+                "ADD COLUMN IF NOT EXISTS activities JSONB DEFAULT '[]'::jsonb"
+            )
+        )
 
 
 async def seed_admin(session: AsyncSession) -> None:
@@ -165,4 +172,9 @@ async def bootstrap() -> None:
             await backfill_document_dates(session)
         except Exception:
             logger.exception("document date backfill failed")
+            await session.rollback()
+        try:
+            await backfill_document_activities(session)
+        except Exception:
+            logger.exception("document activity backfill failed")
             await session.rollback()

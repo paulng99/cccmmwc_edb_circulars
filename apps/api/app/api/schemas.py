@@ -70,6 +70,12 @@ class ChatResponse(BaseModel):
     attachments: list[ChatAttachmentOut] = Field(default_factory=list)
 
 
+class DocumentActivityOut(BaseModel):
+    name: str | None = None
+    starts_at: str | None = None
+    deadline_at: str | None = None
+
+
 class DocumentOut(BaseModel):
     id: str
     source_id: str
@@ -78,6 +84,7 @@ class DocumentOut(BaseModel):
     issued_at: str | None
     revised_at: str | None = None
     downloaded_at: str | None = None
+    activities: list[DocumentActivityOut] = Field(default_factory=list)
     language: str
     source_url: str
     file_url: str | None
@@ -88,6 +95,20 @@ class DocumentOut(BaseModel):
     topics: list[str] = []
     index_error: str | None = None
     warning: str | None = None
+
+
+class CalendarEventOut(BaseModel):
+    date: str
+    kind: str  # start | deadline
+    activity_name: str | None = None
+    document_id: str
+    document_title: str
+    circular_no: str | None = None
+
+
+class CalendarDayOut(BaseModel):
+    date: str
+    events: list[CalendarEventOut] = Field(default_factory=list)
 
 
 class DocumentVariantOut(BaseModel):
@@ -130,6 +151,7 @@ class SettingsResponse(BaseModel):
     readonly: dict[str, Any]
     meta: SettingsMeta
     warnings: list[str] = []
+    defaults: dict[str, Any] = Field(default_factory=dict)
 
 
 class SettingsUpdate(BaseModel):

@@ -1,21 +1,32 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date, datetime, timedelta
 from pathlib import PurePosixPath
 from typing import Annotated, Optional
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
-from app.api.schemas import DocumentGroupOut, DocumentOut, DocumentVariantOut
+from app.api.schemas import (
+    CalendarDayOut,
+    CalendarEventOut,
+    DocumentActivityOut,
+    DocumentGroupOut,
+    DocumentOut,
+    DocumentVariantOut,
+)
 from app.collectors.circular_meta import is_language_label
 from app.core.db import get_db
 from app.models.entities import Document, DocumentChunk, User
 from app.services.classify import PROGRAMMES, TOPICS, programme_for
 from app.services.storage import get_object_bytes
+
+_HK = ZoneInfo("Asia/Hong_Kong")
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -89,6 +100,63 @@ def _doc_topics(doc: Document) -> list[str]:
     return [t for t in raw if t in TOPICS]
 
 
+def _normalize_activities(raw: object) -> list[DocumentActivityOut]:
+    if not isinstance(raw, list):
+        return []
+    out: list[DocumentActivityOut] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        starts = item.get("starts_at")
+        deadline = item.get("deadline_at")
+        if not starts and not deadline and not name:
+            continue
+        out.append(
+            DocumentActivityOut(
+                name=str(name).strip() if name else None,
+                starts_at=str(starts) if starts else None,
+                deadline_at=str(deadline) if deadline else None,
+            )
+        )
+    return out
+
+
+def _parse_iso_date(value: object) -> date | None:
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError:
+        return None
+
+
+def _activity_events_for_doc(doc: Document) -> list[CalendarEventOut]:
+    """Expand each activity into separate start/deadline rows (deduped per activity+date+kind)."""
+    events: list[CalendarEventOut] = []
+    seen: set[tuple[str, str, str | None, str]] = set()
+    for act in _normalize_activities(doc.activities):
+        name = act.name
+        for kind, raw in (("start", act.starts_at), ("deadline", act.deadline_at)):
+            if not raw:
+                continue
+            key = (raw, kind, name, str(doc.id))
+            if key in seen:
+                continue
+            seen.add(key)
+            events.append(
+                CalendarEventOut(
+                    date=raw,
+                    kind=kind,
+                    activity_name=name,
+                    document_id=str(doc.id),
+                    document_title=doc.title,
+                    circular_no=doc.circular_no,
+                )
+            )
+    return events
+
+
 def _to_out(doc: Document, *, chunk_count: int = 0) -> DocumentOut:
     extra = doc.extra or {}
     return DocumentOut(
@@ -99,6 +167,7 @@ def _to_out(doc: Document, *, chunk_count: int = 0) -> DocumentOut:
         issued_at=doc.issued_at.isoformat() if doc.issued_at else None,
         revised_at=doc.revised_at.isoformat() if doc.revised_at else None,
         downloaded_at=_iso_ts(doc.created_at),
+        activities=_normalize_activities(doc.activities),
         language=doc.language,
         source_url=doc.source_url,
         file_url=doc.file_url,
@@ -283,6 +352,59 @@ async def list_documents(
         "file_count": len(rows),
         "items": [g.model_dump() for g in page_groups],
     }
+
+
+@router.get("/calendar/upcoming-deadlines")
+async def upcoming_deadlines(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+    days: int = Query(7, ge=0, le=90),
+) -> dict:
+    """Deadlines from today through today+days (Asia/Hong_Kong), one row per activity."""
+    today = datetime.now(_HK).date()
+    end = today + timedelta(days=days)
+    rows = list((await db.scalars(select(Document))).all())
+    events: list[CalendarEventOut] = []
+    for doc in rows:
+        for ev in _activity_events_for_doc(doc):
+            if ev.kind != "deadline":
+                continue
+            d = _parse_iso_date(ev.date)
+            if d is None or d < today or d > end:
+                continue
+            events.append(ev)
+    events.sort(key=lambda e: (e.date, e.activity_name or "", e.document_title, e.document_id))
+    return {
+        "from": today.isoformat(),
+        "to": end.isoformat(),
+        "items": [e.model_dump() for e in events],
+    }
+
+
+@router.get("/calendar/events")
+async def calendar_events(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """All activity start/deadline events grouped by date."""
+    rows = list((await db.scalars(select(Document))).all())
+    by_day: dict[str, list[CalendarEventOut]] = {}
+    for doc in rows:
+        for ev in _activity_events_for_doc(doc):
+            by_day.setdefault(ev.date, []).append(ev)
+    days: list[CalendarDayOut] = []
+    for day in sorted(by_day.keys()):
+        day_events = by_day[day]
+        day_events.sort(
+            key=lambda e: (
+                0 if e.kind == "start" else 1,
+                e.activity_name or "",
+                e.document_title,
+                e.document_id,
+            )
+        )
+        days.append(CalendarDayOut(date=day, events=day_events))
+    return {"days": [d.model_dump() for d in days]}
 
 
 @router.get("/{document_id}")

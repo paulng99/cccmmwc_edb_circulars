@@ -33,6 +33,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   const links: { href: string; label: string; match: string; icon: IconName }[] = [
+    { href: "/", label: t("nav.home"), match: "/", icon: "clock" },
+    { href: "/calendar", label: t("nav.calendar"), match: "/calendar", icon: "calendar" },
     { href: "/documents", label: t("nav.documents"), match: "/documents", icon: "file-text" },
     { href: "/chat", label: t("nav.chat"), match: "/chat", icon: "message-square" },
     { href: "/status", label: t("nav.status"), match: "/status", icon: "activity" },
@@ -47,8 +49,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const switchLocale = () => router.replace(pathname, { locale: otherLocale });
 
+  const isActive = (match: string) => {
+    if (match === "/") return pathname === "/";
+    return pathname.startsWith(match);
+  };
+
   const brand = (
-    <Link href="/documents" className="brand" aria-label={t("app.name")}>
+    <Link href="/" className="brand" aria-label={t("app.name")}>
       <span className="brand-mark">
         <Icon name="book-open" />
       </span>
@@ -69,8 +76,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link
               key={item.href}
               href={item.href}
-              className={pathname.startsWith(item.match) ? "active" : ""}
-              aria-current={pathname.startsWith(item.match) ? "page" : undefined}
+              className={isActive(item.match) ? "active" : ""}
+              aria-current={isActive(item.match) ? "page" : undefined}
             >
               <Icon name={item.icon} />
               <span>{item.label}</span>
@@ -126,8 +133,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link
             key={item.href}
             href={item.href}
-            className={pathname.startsWith(item.match) ? "active" : ""}
-            aria-current={pathname.startsWith(item.match) ? "page" : undefined}
+            className={isActive(item.match) ? "active" : ""}
+            aria-current={isActive(item.match) ? "page" : undefined}
           >
             <Icon name={item.icon} />
             <span>{item.label}</span>

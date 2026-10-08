@@ -157,6 +157,7 @@ def build_settings_response(
         "readonly": readonly,
         "meta": meta,
         "warnings": warnings or [],
+        "defaults": {"system_prompt": DEFAULT_SYSTEM_PROMPT},
     }
 
 
@@ -255,6 +256,10 @@ def apply_patch(current: dict[str, Any], patch: dict[str, Any]) -> tuple[dict[st
             raise ValueError("llm_provider must be openrouter or ollama")
         if k == "storage_backend" and v not in ("local", "minio"):
             raise ValueError("storage_backend must be local or minio")
+        if k == "system_prompt":
+            if v is None or (isinstance(v, str) and not v.strip()):
+                raise ValueError("system_prompt must not be blank")
+            v = str(v)
         new[k] = v
     return new, warnings
 

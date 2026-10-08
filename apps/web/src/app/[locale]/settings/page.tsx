@@ -6,7 +6,7 @@ import { useRouter } from "@/i18n/routing";
 import SourcesSection from "@/components/SourcesSection";
 import { Icon, type IconName } from "@/components/Icon";
 import { Switch } from "@/components/Switch";
-import { getSettings, improveSystemPrompt, SecretField, SettingsResponse, updateSettings } from "@/lib/api";
+import { getSettings, SecretField, SettingsResponse, updateSettings } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDateTime } from "@/lib/date";
 import { isValidTopK } from "@/lib/top-k";
@@ -116,7 +116,6 @@ export default function SettingsPage() {
   const [group, setGroup] = useState<Group>("sources");
   const [query, setQuery] = useState("");
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
-  const [improvingPrompt, setImprovingPrompt] = useState(false);
 
   useEffect(() => {
     if (ready && !token) router.replace("/login");
@@ -313,6 +312,15 @@ export default function SettingsPage() {
       return;
     }
 
+    if ("system_prompt" in patch) {
+      const prompt = String(patch.system_prompt ?? "").trim();
+      if (!prompt) {
+        setError(t("systemPromptBlank"));
+        return;
+      }
+      patch.system_prompt = prompt;
+    }
+
     const nextDim = patch.jina_embedding_dim;
     if (typeof nextDim === "number" && typeof originalDim === "number" && nextDim !== originalDim) {
       if (!window.confirm(t("dimConfirm"))) return;
@@ -336,21 +344,13 @@ export default function SettingsPage() {
     }
   }
 
-  async function onImproveSystemPrompt() {
-    if (!token || improvingPrompt) return;
-    const current = displayString("system_prompt").trim();
-    if (!current) return;
-    setImprovingPrompt(true);
+  function onRestoreSystemPrompt() {
+    const original = data?.defaults?.system_prompt;
+    if (!original) return;
+    if (!window.confirm(t("restoreSystemPromptConfirm"))) return;
+    updateDraft("system_prompt", original);
     setError("");
-    setSuccess("");
-    try {
-      const res = await improveSystemPrompt(token, current);
-      updateDraft("system_prompt", res.prompt);
-    } catch {
-      setError(t("improveSystemPromptFailed"));
-    } finally {
-      setImprovingPrompt(false);
-    }
+    setSuccess(t("restoreSystemPromptDone"));
   }
 
   function onDiscard() {
@@ -410,25 +410,35 @@ export default function SettingsPage() {
 
     if (TEXTAREA_KEYS.has(key)) {
       const isSystemPrompt = key === "system_prompt";
-      const canImprove = isSystemPrompt && displayString(key).trim().length > 0;
       return (
         <div className="field span-2" key={key}>
           <label
             htmlFor={key}
-            style={isSystemPrompt ? { display: "flex", alignItems: "center", gap: "0.5rem" } : undefined}
+            style={isSystemPrompt ? { display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" } : undefined}
           >
             <span style={{ flex: 1 }}>{label}</span>
             {isSystemPrompt ? (
-              <button
-                type="button"
-                className="btn ghost sm icon-only"
-                onClick={onImproveSystemPrompt}
-                disabled={!canImprove || improvingPrompt}
-                aria-label={improvingPrompt ? t("improvingSystemPrompt") : t("improveSystemPrompt")}
-                title={improvingPrompt ? t("improvingSystemPrompt") : t("improveSystemPrompt")}
-              >
-                {improvingPrompt ? <span className="spinner" /> : <Icon name="wand" />}
-              </button>
+              <span className="prompt-actions">
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  disabled
+                  aria-disabled="true"
+                  title={t("improveSystemPromptDisabled")}
+                >
+                  <Icon name="wand" />
+                  <span>{t("improveSystemPrompt")}</span>
+                  <span className="badge amber">{t("improveSystemPromptDisabled")}</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn secondary sm"
+                  onClick={onRestoreSystemPrompt}
+                  disabled={!data?.defaults?.system_prompt}
+                >
+                  {t("restoreSystemPrompt")}
+                </button>
+              </span>
             ) : null}
           </label>
           <textarea
@@ -437,7 +447,6 @@ export default function SettingsPage() {
             value={displayString(key)}
             onChange={(e) => updateDraft(key, e.target.value)}
             placeholder={isSecretKey(key) ? secretPlaceholder(key) : undefined}
-            disabled={isSystemPrompt && improvingPrompt}
           />
           {help ? <span className="field-hint">{help}</span> : null}
         </div>
