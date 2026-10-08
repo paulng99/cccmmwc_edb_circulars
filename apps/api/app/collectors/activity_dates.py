@@ -1,8 +1,10 @@
-"""Extract activity start/deadline dates from circular text (local regex only).
+"""Extract activity start/deadline dates and details from circular text (local regex only).
 
 A document may contain several activities. Each activity may have a start date,
-a deadline, or both. Dates that are clearly not activity dates (issue/update
-stamps, school years, reply-by deadlines) are recorded as rejected, not stored.
+a deadline, or both, plus an optional title, one-line summary, and venue.
+Dates that are clearly not activity dates (issue/update stamps, school years,
+reply-by deadlines) are recorded as rejected, not stored.
+Education Bureau letterhead / signature addresses are never used as venues.
 """
 
 from __future__ import annotations
@@ -175,6 +177,51 @@ _NAME_LABEL = re.compile(
     re.IGNORECASE,
 )
 
+# One-line activity blurb — colon required so bare 「內容」 in body text is ignored.
+_SUMMARY_LABEL = re.compile(
+    r"(?:活動內容|活動簡介|內容概要|活動目的|活動詳情|簡介|詳情|內容|"
+    r"Description|Summary|Details|Aim|Objective|Purpose)"
+    + _S
+    + r"[:：]"
+    + _S
+    + r"(?P<value>[^\n。；;]{2,100})",
+    re.IGNORECASE,
+)
+
+# Only clear venue labels (not bare 地址 / Address — those are often letterhead).
+_LOCATION_LABEL = re.compile(
+    r"(?:舉行地點|活動地點|比賽地點|講座地點|報名地點|活動場地|比賽場地|舉行場地|"
+    r"地點|"
+    r"Venue(?:[^\S\n]+(?:of|for)[^\S\n]+(?:the[^\S\n]+)?"
+    r"(?:activity|event|lecture|competition|enrolment|enrollment|seminar))?|"
+    r"Location(?:[^\S\n]+(?:of|for)[^\S\n]+(?:the[^\S\n]+)?"
+    r"(?:activity|event|lecture|competition|seminar))?|"
+    r"(?:to[^\S\n]+be[^\S\n]+)?held[^\S\n]+(?:at|in))"
+    + _S
+    + r"[:：]?"
+    + _S
+    + r"(?P<value>[^\n。；;]{2,80})",
+    re.IGNORECASE,
+)
+
+# Letterhead / signature / footer bureau addresses — never activity venues.
+_BUREAU_ADDRESS = re.compile(
+    r"(?:"
+    r"皇后大道東|歸仁街|胡忠大廈|"
+    r"Queen'?s?\s+Road\s+East|Kau\s+Yan\s+Street|Wu\s+Chung\s+House|"
+    r"Education\s+Bureau.{0,60}(?:Office|Headquarters|Building|address)|"
+    r"教育局.{0,30}(?:總部|辦公室|大廈|地址)"
+    r")",
+    re.IGNORECASE,
+)
+
+# Bare bureau office lines without a venue label (for sampling rejected addresses).
+_BARE_BUREAU_LINE = re.compile(
+    r"(?P<value>[^\n]{0,40}(?:皇后大道東|歸仁街|胡忠大廈|"
+    r"Queen'?s?\s+Road\s+East|Kau\s+Yan\s+Street|Wu\s+Chung\s+House)[^\n]{0,40})",
+    re.IGNORECASE,
+)
+
 _REJECT_REASONS = ("issued", "revised", "school_year", "reply_deadline")
 
 _GENERIC_LABELS = frozenset(
@@ -208,8 +255,12 @@ class ActivityDates:
     name: str | None = None
     starts_at: date | None = None
     deadline_at: date | None = None
+    summary: str | None = None
+    location: str | None = None
     start_sentence: str | None = None
     deadline_sentence: str | None = None
+    summary_sentence: str | None = None
+    location_sentence: str | None = None
 
 
 @dataclass(frozen=True)
@@ -219,10 +270,18 @@ class RejectedDate:
     sentence: str
 
 
+@dataclass(frozen=True)
+class RejectedLocation:
+    value: str
+    reason: str
+    sentence: str
+
+
 @dataclass
 class ActivityExtractionResult:
     activities: list[ActivityDates] = field(default_factory=list)
     rejected: list[RejectedDate] = field(default_factory=list)
+    rejected_locations: list[RejectedLocation] = field(default_factory=list)
 
 
 def _norm(text: str) -> str:
@@ -290,6 +349,32 @@ def _sentence_around(text: str, start: int, end: int) -> str:
     return re.sub(r"\s+", " ", chunk)
 
 
+def _clean_field(value: str | None, *, max_len: int) -> str | None:
+    if not value:
+        return None
+    cleaned = re.sub(r"\s+", " ", value).strip(" ：:.-–—、，,")
+    if not cleaned:
+        return None
+    return cleaned[:max_len]
+
+
+def _is_bureau_address(value: str) -> bool:
+    return bool(_BUREAU_ADDRESS.search(value))
+
+
+def _reject_location(
+    rejected: list[RejectedLocation],
+    *,
+    value: str,
+    reason: str,
+    sentence: str,
+) -> None:
+    key = (value, reason, sentence)
+    if any((r.value, r.reason, r.sentence) == key for r in rejected):
+        return
+    rejected.append(RejectedLocation(value=value, reason=reason, sentence=sentence))
+
+
 def _label_to_name(label: str | None) -> str | None:
     if not label:
         return None
@@ -301,12 +386,19 @@ def _label_to_name(label: str | None) -> str | None:
 
 
 def _find_nearby_name(text: str, pos: int) -> str | None:
-    """Prefer an explicit activity/programme name on a recent preceding line."""
+    """Prefer an explicit activity/programme name near the date match.
+
+    Look on recent preceding lines first; if none, accept a name that follows
+    within a short distance (common when 申請期… sits above 活動名稱…).
+    """
     window_start = max(0, pos - 300)
-    window = text[window_start:pos]
-    matches = list(_NAME_LABEL.finditer(window))
-    if matches:
-        name = matches[-1].group("name").strip(" ：:.-–—")
+    preceding = list(_NAME_LABEL.finditer(text, window_start, pos + 1))
+    if preceding:
+        name = preceding[-1].group("name").strip(" ：:.-–—")
+        return name[:80] if name else None
+    following = _NAME_LABEL.search(text, pos, min(len(text), pos + 200))
+    if following:
+        name = following.group("name").strip(" ：:.-–—")
         return name[:80] if name else None
     return None
 
@@ -314,6 +406,141 @@ def _find_nearby_name(text: str, pos: int) -> str | None:
 def _resolve_name(text: str, pos: int, label: str | None) -> str | None:
     # Explicit 活動名稱 / Activity Name wins over label-derived names.
     return _find_nearby_name(text, pos) or _label_to_name(label)
+
+
+def _activity_detail_window(text: str, pos: int) -> tuple[int, int]:
+    """Limit summary/location search to the current activity block.
+
+    Anchor on the nearest activity/programme name at or before ``pos``, or a
+    name that follows within a short distance (range line then 活動名稱).
+    The window runs to the next name so one activity cannot borrow another's
+    Description / Venue.
+    """
+    names = list(_NAME_LABEL.finditer(text))
+    if not names:
+        return max(0, pos - 140), min(len(text), pos + 220)
+
+    anchor_idx: int | None = None
+    for i, m in enumerate(names):
+        if m.start() <= pos:
+            anchor_idx = i
+        else:
+            break
+    if anchor_idx is None:
+        for i, m in enumerate(names):
+            if 0 <= m.start() - pos <= 200:
+                anchor_idx = i
+                break
+    if anchor_idx is None:
+        return max(0, pos - 140), min(len(text), pos + 220)
+
+    start = names[anchor_idx].start()
+    if pos < start:
+        # Date/range line sits just above the name — keep it in-window.
+        start = pos
+    end = names[anchor_idx + 1].start() if anchor_idx + 1 < len(names) else len(text)
+    if end <= start:
+        end = min(len(text), pos + 220)
+    return start, end
+
+
+def _find_nearby_summary(text: str, pos: int) -> tuple[str | None, str | None]:
+    window_start, window_end = _activity_detail_window(text, pos)
+    window = text[window_start:window_end]
+    best: re.Match[str] | None = None
+    best_dist = 10**9
+    for m in _SUMMARY_LABEL.finditer(window):
+        abs_start = window_start + m.start()
+        dist = abs(abs_start - pos)
+        if dist < best_dist:
+            best = m
+            best_dist = dist
+    if not best:
+        return None, None
+    value = _clean_field(best.group("value"), max_len=100)
+    if not value:
+        return None, None
+    abs_start = window_start + best.start()
+    abs_end = window_start + best.end()
+    return value, _sentence_around(text, abs_start, abs_end)
+
+
+def _find_nearby_location(
+    text: str,
+    pos: int,
+    rejected_locations: list[RejectedLocation],
+) -> tuple[str | None, str | None]:
+    window_start, window_end = _activity_detail_window(text, pos)
+    window = text[window_start:window_end]
+    best: re.Match[str] | None = None
+    best_dist = 10**9
+    for m in _LOCATION_LABEL.finditer(window):
+        abs_start = window_start + m.start()
+        dist = abs(abs_start - pos)
+        if dist < best_dist:
+            best = m
+            best_dist = dist
+    if not best:
+        return None, None
+    value = _clean_field(best.group("value"), max_len=80)
+    abs_start = window_start + best.start()
+    abs_end = window_start + best.end()
+    sentence = _sentence_around(text, abs_start, abs_end)
+    if not value:
+        return None, None
+    if _is_bureau_address(value):
+        _reject_location(
+            rejected_locations,
+            value=value,
+            reason="bureau_address",
+            sentence=sentence,
+        )
+        return None, None
+    return value, sentence
+
+
+def _collect_bureau_address_rejects(
+    text: str,
+    rejected_locations: list[RejectedLocation],
+) -> None:
+    """Record letterhead/signature bureau lines that must not become venues."""
+    for m in _BARE_BUREAU_LINE.finditer(text):
+        value = _clean_field(m.group("value"), max_len=80)
+        if not value:
+            continue
+        sentence = _sentence_around(text, m.start(), m.end())
+        _reject_location(
+            rejected_locations,
+            value=value,
+            reason="bureau_address",
+            sentence=sentence,
+        )
+
+
+def _attach_details(
+    text: str,
+    pos: int,
+    rejected_locations: list[RejectedLocation],
+    *,
+    name: str | None,
+    starts_at: date | None,
+    deadline_at: date | None,
+    start_sentence: str | None,
+    deadline_sentence: str | None,
+) -> ActivityDates:
+    summary, summary_sentence = _find_nearby_summary(text, pos)
+    location, location_sentence = _find_nearby_location(text, pos, rejected_locations)
+    return ActivityDates(
+        name=name,
+        starts_at=starts_at,
+        deadline_at=deadline_at,
+        summary=summary,
+        location=location,
+        start_sentence=start_sentence,
+        deadline_sentence=deadline_sentence,
+        summary_sentence=summary_sentence,
+        location_sentence=location_sentence,
+    )
 
 
 def _reject(
@@ -380,7 +607,7 @@ def _collect_rejected_non_activity(text: str, rejected: list[RejectedDate]) -> N
 
 
 def _activity_key(act: ActivityDates) -> tuple:
-    return (act.name or "", act.starts_at, act.deadline_at)
+    return (act.name or "", act.starts_at, act.deadline_at, act.summary or "", act.location or "")
 
 
 def _merge_pair(start: ActivityDates, end: ActivityDates) -> ActivityDates:
@@ -388,8 +615,12 @@ def _merge_pair(start: ActivityDates, end: ActivityDates) -> ActivityDates:
         name=start.name or end.name,
         starts_at=start.starts_at,
         deadline_at=end.deadline_at,
+        summary=start.summary or end.summary,
+        location=start.location or end.location,
         start_sentence=start.start_sentence,
         deadline_sentence=end.deadline_sentence,
+        summary_sentence=start.summary_sentence or end.summary_sentence,
+        location_sentence=start.location_sentence or end.location_sentence,
     )
 
 
@@ -453,12 +684,14 @@ def _merge_activities(items: list[ActivityDates]) -> list[ActivityDates]:
 
 
 def extract_activities(text: str | None) -> ActivityExtractionResult:
-    """Pull activity start/deadline dates from stored circular text only."""
+    """Pull activity dates/details from stored circular text only (no external AI)."""
     if not text or not text.strip():
         return ActivityExtractionResult()
     sample = _norm(text)
     rejected: list[RejectedDate] = []
+    rejected_locations: list[RejectedLocation] = []
     _collect_rejected_non_activity(sample, rejected)
+    _collect_bureau_address_rejects(sample, rejected_locations)
 
     found: list[ActivityDates] = []
 
@@ -470,7 +703,10 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
             continue
         name = _resolve_name(sample, m.start(), m.group("label"))
         found.append(
-            ActivityDates(
+            _attach_details(
+                sample,
+                m.start(),
+                rejected_locations,
                 name=name,
                 starts_at=start_d,
                 deadline_at=end_d,
@@ -487,7 +723,10 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
             continue
         name = _resolve_name(sample, m.start(), m.group("label"))
         found.append(
-            ActivityDates(
+            _attach_details(
+                sample,
+                m.start(),
+                rejected_locations,
                 name=name,
                 starts_at=start_d,
                 deadline_at=end_d,
@@ -502,7 +741,10 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
             continue
         name = _resolve_name(sample, m.start(), m.group("label"))
         found.append(
-            ActivityDates(
+            _attach_details(
+                sample,
+                m.start(),
+                rejected_locations,
                 name=name,
                 starts_at=parsed,
                 deadline_at=None,
@@ -517,7 +759,10 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
             continue
         name = _resolve_name(sample, m.start(), m.group("label"))
         found.append(
-            ActivityDates(
+            _attach_details(
+                sample,
+                m.start(),
+                rejected_locations,
                 name=name,
                 starts_at=None,
                 deadline_at=parsed,
@@ -527,7 +772,11 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
         )
 
     activities = _merge_activities(found)
-    return ActivityExtractionResult(activities=activities, rejected=rejected)
+    return ActivityExtractionResult(
+        activities=activities,
+        rejected=rejected,
+        rejected_locations=rejected_locations,
+    )
 
 
 def activities_to_stored(result: ActivityExtractionResult) -> list[dict]:
@@ -539,6 +788,8 @@ def activities_to_stored(result: ActivityExtractionResult) -> list[dict]:
                 "name": act.name,
                 "starts_at": act.starts_at.isoformat() if act.starts_at else None,
                 "deadline_at": act.deadline_at.isoformat() if act.deadline_at else None,
+                "summary": act.summary,
+                "location": act.location,
             }
         )
     return out

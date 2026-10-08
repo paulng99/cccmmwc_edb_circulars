@@ -74,6 +74,8 @@ class DocumentActivityOut(BaseModel):
     name: str | None = None
     starts_at: str | None = None
     deadline_at: str | None = None
+    summary: str | None = None
+    location: str | None = None
 
 
 class DocumentOut(BaseModel):
@@ -101,6 +103,8 @@ class CalendarEventOut(BaseModel):
     date: str
     kind: str  # start | deadline
     activity_name: str | None = None
+    summary: str | None = None
+    location: str | None = None
     document_id: str
     document_title: str
     circular_no: str | None = None

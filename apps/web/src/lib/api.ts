@@ -272,12 +272,16 @@ export type DocumentActivity = {
   name?: string | null;
   starts_at?: string | null;
   deadline_at?: string | null;
+  summary?: string | null;
+  location?: string | null;
 };
 
 export type CalendarEvent = {
   date: string;
   kind: "start" | "deadline";
   activity_name?: string | null;
+  summary?: string | null;
+  location?: string | null;
   document_id: string;
   document_title: string;
   circular_no?: string | null;

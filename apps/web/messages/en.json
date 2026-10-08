@@ -111,6 +111,8 @@
     "dateMissing": "Not available",
     "activities": "Activities",
     "activityName": "Activity",
+    "activitySummary": "Summary",
+    "activityLocation": "Location",
     "activityStartsAt": "Start date",
     "activityDeadlineAt": "Deadline",
     "activitiesEmpty": "No activity dates extracted for this circular",
