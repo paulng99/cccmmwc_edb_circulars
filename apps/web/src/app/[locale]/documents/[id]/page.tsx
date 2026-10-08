@@ -58,6 +58,7 @@ export default function DocumentDetailPage() {
   const [pdfFailed, setPdfFailed] = useState(false);
   const [blobDownloadUrl, setBlobDownloadUrl] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const pdfApiUrl = useMemo(() => (params?.id ? fileUrl(params.id) : ""), [params?.id]);
 
@@ -70,6 +71,15 @@ export default function DocumentDetailPage() {
       if (blobDownloadUrl) URL.revokeObjectURL(blobDownloadUrl);
     };
   }, [blobDownloadUrl]);
+
+  useEffect(() => {
+    if (!detailsOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDetailsOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [detailsOpen]);
 
   useEffect(() => {
     if (!token || !params?.id) return;
@@ -273,6 +283,15 @@ export default function DocumentDetailPage() {
               </h2>
               <div className="row-actions">
                 <button
+                  className="btn sm secondary icon-only"
+                  type="button"
+                  onClick={() => setDetailsOpen(true)}
+                  aria-label={t("details")}
+                  title={t("details")}
+                >
+                  <Icon name="info" />
+                </button>
+                <button
                   className={`btn sm${chatOpen ? "" : " secondary"}`}
                   type="button"
                   onClick={() => setChatOpen((v) => !v)}
@@ -321,57 +340,6 @@ export default function DocumentDetailPage() {
           </section>
 
           <aside className="detail-side">
-            <section className="card">
-              <div className="card-head">
-                <h2>
-                  <Icon name="info" />
-                  {t("details")}
-                </h2>
-              </div>
-              <div className="card-pad" style={{ paddingTop: "0.35rem", paddingBottom: "0.5rem" }}>
-                <dl className="meta-list">
-                  <div>
-                    <dt>{t("circularNo")}</dt>
-                    <dd>{doc.circular_no || "—"}</dd>
-                  </div>
-                  <div>
-                    <dt>{t("issuedAt")}</dt>
-                    <dd>{formatHkDate(doc.issued_at)}</dd>
-                  </div>
-                  <div>
-                    <dt>{t("revisedAt")}</dt>
-                    <dd>{formatHkDate(doc.revised_at)}</dd>
-                  </div>
-                  <div>
-                    <dt>{t("downloadedAt")}</dt>
-                    <dd>{formatHkDate(doc.downloaded_at)}</dd>
-                  </div>
-                  <div>
-                    <dt>{t("language")}</dt>
-                    <dd>{langLabel(doc.language, t)}</dd>
-                  </div>
-                  <div>
-                    <dt>{t("status")}</dt>
-                    <dd>{statusLabelKey[doc.status] ? t(statusLabelKey[doc.status]) : doc.status}</dd>
-                  </div>
-                  <div>
-                    <dt>{t("chunks")}</dt>
-                    <dd>{doc.chunk_count ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt>{t("fileSize")}</dt>
-                    <dd>{formatBytes(doc.file_size)}</dd>
-                  </div>
-                  <div>
-                    <dt>{t("source")}</dt>
-                    <dd>
-                      <code>{doc.source_id}</code>
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-            </section>
-
             <section className="card card-pad">
               <div className="detail-actions">
                 <button
@@ -405,6 +373,72 @@ export default function DocumentDetailPage() {
               token={token}
               onClose={() => setChatOpen(false)}
             />
+          ) : null}
+
+          {detailsOpen ? (
+            <>
+              <div className="drawer-backdrop" onClick={() => setDetailsOpen(false)} />
+              <div
+                className="detail-meta-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="doc-details-title"
+              >
+                <div className="drawer-head">
+                  <h3 id="doc-details-title">{t("details")}</h3>
+                  <button
+                    type="button"
+                    className="btn ghost sm icon-only"
+                    onClick={() => setDetailsOpen(false)}
+                    aria-label={t("detailsClose")}
+                  >
+                    <Icon name="x" />
+                  </button>
+                </div>
+                <div className="detail-meta-dialog-body">
+                  <dl className="meta-list">
+                    <div>
+                      <dt>{t("circularNo")}</dt>
+                      <dd>{doc.circular_no || "—"}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("issuedAt")}</dt>
+                      <dd>{formatHkDate(doc.issued_at)}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("revisedAt")}</dt>
+                      <dd>{formatHkDate(doc.revised_at)}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("downloadedAt")}</dt>
+                      <dd>{formatHkDate(doc.downloaded_at)}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("language")}</dt>
+                      <dd>{langLabel(doc.language, t)}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("status")}</dt>
+                      <dd>{statusLabelKey[doc.status] ? t(statusLabelKey[doc.status]) : doc.status}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("chunks")}</dt>
+                      <dd>{doc.chunk_count ?? 0}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("fileSize")}</dt>
+                      <dd>{formatBytes(doc.file_size)}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("source")}</dt>
+                      <dd>
+                        <code>{doc.source_id}</code>
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+            </>
           ) : null}
         </div>
       ) : null}

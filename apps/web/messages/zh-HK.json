@@ -80,6 +80,7 @@
     "backToList": "返回文件列表",
     "detailLoadError": "無法載入文件詳情，請檢查網絡後重試。",
     "details": "文件資料",
+    "detailsClose": "關閉文件資料",
     "pdfOpening": "準備中…",
     "pdfOpenFail": "無法下載此檔案。",
     "pdfDownloadFallback": "改用原始連結",

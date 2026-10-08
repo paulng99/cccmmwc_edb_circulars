@@ -80,6 +80,7 @@
     "backToList": "Back to documents",
     "detailLoadError": "Could not load document details. Check your network and retry.",
     "details": "Details",
+    "detailsClose": "Close details",
     "pdfOpening": "Preparing…",
     "pdfOpenFail": "Unable to download this file.",
     "pdfDownloadFallback": "Use original link",
