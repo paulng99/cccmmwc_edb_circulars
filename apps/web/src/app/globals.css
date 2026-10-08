@@ -1700,21 +1700,13 @@ code {
    ------------------------------------------------------------------ */
 .detail-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.1rem;
   align-items: start;
 }
 
 .detail-grid.has-chat {
-  grid-template-columns: minmax(0, 1fr) 300px minmax(300px, 360px);
-}
-
-.detail-side {
-  display: flex;
-  flex-direction: column;
-  gap: 1.1rem;
-  position: sticky;
-  top: 1.5rem;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
 }
 
 .document-chat-panel {
@@ -1824,26 +1816,6 @@ code {
   font-variant-numeric: tabular-nums;
   min-width: 0;
   overflow-wrap: anywhere;
-}
-
-.detail-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.detail-source {
-  font-size: 0.8rem;
-  color: var(--text-3);
-  overflow-wrap: anywhere;
-}
-
-.detail-source a {
-  color: var(--primary-text);
-}
-
-.detail-source a:hover {
-  text-decoration: underline;
 }
 
 .pdf-preview {
@@ -3553,10 +3525,6 @@ input[type="checkbox"] {
 
   .detail-grid.has-chat {
     grid-template-columns: 1fr;
-  }
-
-  .detail-side {
-    position: static;
   }
 
   .document-chat-panel {

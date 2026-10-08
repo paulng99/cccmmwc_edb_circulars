@@ -232,11 +232,6 @@ export default function DocumentDetailPage() {
           <div className="card card-pad">
             <span className="skeleton" style={{ height: 420 }} />
           </div>
-          <div className="card card-pad">
-            <span className="skeleton" style={{ height: "0.9rem", width: "70%", marginBottom: "0.8rem" }} />
-            <span className="skeleton" style={{ height: "0.9rem", width: "55%", marginBottom: "0.8rem" }} />
-            <span className="skeleton" style={{ height: "0.9rem", width: "62%" }} />
-          </div>
         </div>
       ) : null}
 
@@ -301,14 +296,27 @@ export default function DocumentDetailPage() {
                   {chatOpen ? t("chatClose") : t("ask")}
                 </button>
                 <button
-                  className={`btn sm${pdfOpening ? " is-loading" : ""}`}
+                  className={`btn sm icon-only${pdfOpening ? " is-loading" : ""}`}
                   type="button"
                   onClick={() => void openPdf()}
                   disabled={pdfOpening}
+                  aria-label={pdfOpening ? t("pdfOpening") : t("download")}
+                  title={pdfOpening ? t("pdfOpening") : t("download")}
                 >
                   {pdfOpening ? <span className="spinner" /> : <Icon name="download" />}
-                  {pdfOpening ? t("pdfOpening") : t("download")}
                 </button>
+                {doc.source_url ? (
+                  <a
+                    className="btn sm secondary icon-only"
+                    href={doc.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={t("openSource")}
+                    title={t("openSource")}
+                  >
+                    <Icon name="external-link" />
+                  </a>
+                ) : null}
               </div>
             </div>
             <div className="card-pad">
@@ -338,33 +346,6 @@ export default function DocumentDetailPage() {
               <PdfPreview fileUrl={pdfApiUrl} token={token} />
             </div>
           </section>
-
-          <aside className="detail-side">
-            <section className="card card-pad">
-              <div className="detail-actions">
-                <button
-                  className={`btn${pdfOpening ? " is-loading" : ""}`}
-                  type="button"
-                  onClick={() => void openPdf()}
-                  disabled={pdfOpening}
-                >
-                  {pdfOpening ? <span className="spinner" /> : <Icon name="download" />}
-                  {pdfOpening ? t("pdfOpening") : t("download")}
-                </button>
-                {doc.file_url ? (
-                  <a className="btn secondary" href={doc.file_url} target="_blank" rel="noreferrer">
-                    <Icon name="external-link" />
-                    {t("openSource")}
-                  </a>
-                ) : null}
-              </div>
-              <p className="detail-source" style={{ marginTop: "0.85rem" }}>
-                <a href={doc.source_url} target="_blank" rel="noreferrer">
-                  {doc.source_url}
-                </a>
-              </p>
-            </section>
-          </aside>
 
           {chatOpen && token ? (
             <DocumentChatPanel
@@ -435,6 +416,16 @@ export default function DocumentDetailPage() {
                         <code>{doc.source_id}</code>
                       </dd>
                     </div>
+                    {doc.source_url ? (
+                      <div>
+                        <dt>{t("openSource")}</dt>
+                        <dd>
+                          <a href={doc.source_url} target="_blank" rel="noreferrer">
+                            {doc.source_url}
+                          </a>
+                        </dd>
+                      </div>
+                    ) : null}
                   </dl>
                 </div>
               </div>
