@@ -107,8 +107,9 @@ class Document(Base):
     issued_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
     # Official content revision, only when it is later than issued_at.
     revised_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
-    # Activity start/deadline dates extracted locally from document text.
-    # Each item: {"name": str|null, "starts_at": "yyyy-mm-dd"|null, "deadline_at": "yyyy-mm-dd"|null}
+    # Activity dates/details extracted locally from document text.
+    # Each item: {"name", "starts_at", "deadline_at", "summary", "location"}
+    # (dates yyyy-mm-dd|null; name/summary/location str|null).
     activities: Mapped[list] = mapped_column(JSONB, default=list)
     language: Mapped[str] = mapped_column(String(16), default="zh-HK")
     source_url: Mapped[str] = mapped_column(String(2048))
