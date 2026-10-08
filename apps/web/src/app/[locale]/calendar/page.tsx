@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Link, useRouter } from "@/i18n/routing";
+import { useRouter } from "@/i18n/routing";
 import { getCalendarEvents, type CalendarEvent } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDate } from "@/lib/date";
+import { AgendaEventRow } from "@/components/AgendaEventRow";
 import { Icon } from "@/components/Icon";
 
 type LoadState = "loading" | "success" | "error";
@@ -85,18 +86,13 @@ export default function CalendarPage() {
               </h2>
               <ul>
                 {day.events.map((ev) => (
-                  <li key={`${ev.document_id}-${ev.kind}-${ev.activity_name || ""}-${ev.date}`}>
-                    <Link href={`/documents/${ev.document_id}`} className="calendar-row">
-                      <span className={`badge ${ev.kind === "start" ? "green" : "amber"}`}>
-                        {ev.kind === "start" ? t("kindStart") : t("kindDeadline")}
-                      </span>
-                      <span className="calendar-row-text">
-                        {ev.activity_name ? (
-                          <strong>{ev.activity_name}</strong>
-                        ) : null}
-                        <span className="deadline-doc-title">{ev.document_title}</span>
-                      </span>
-                    </Link>
+                  <li
+                    key={`${ev.document_id}-${ev.kind}-${ev.activity_name || ""}-${ev.date}-${ev.summary || ""}`}
+                  >
+                    <AgendaEventRow
+                      event={ev}
+                      kindLabel={ev.kind === "start" ? t("kindStart") : t("kindDeadline")}
+                    />
                   </li>
                 ))}
               </ul>

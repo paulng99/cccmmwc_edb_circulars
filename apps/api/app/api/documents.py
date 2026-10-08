@@ -100,6 +100,13 @@ def _doc_topics(doc: Document) -> list[str]:
     return [t for t in raw if t in TOPICS]
 
 
+def _optional_text(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _normalize_activities(raw: object) -> list[DocumentActivityOut]:
     if not isinstance(raw, list):
         return []
@@ -107,16 +114,20 @@ def _normalize_activities(raw: object) -> list[DocumentActivityOut]:
     for item in raw:
         if not isinstance(item, dict):
             continue
-        name = item.get("name")
+        name = _optional_text(item.get("name"))
         starts = item.get("starts_at")
         deadline = item.get("deadline_at")
-        if not starts and not deadline and not name:
+        summary = _optional_text(item.get("summary"))
+        location = _optional_text(item.get("location"))
+        if not starts and not deadline and not name and not summary and not location:
             continue
         out.append(
             DocumentActivityOut(
-                name=str(name).strip() if name else None,
+                name=name,
                 starts_at=str(starts) if starts else None,
                 deadline_at=str(deadline) if deadline else None,
+                summary=summary,
+                location=location,
             )
         )
     return out
@@ -136,7 +147,8 @@ def _activity_events_for_doc(doc: Document) -> list[CalendarEventOut]:
     events: list[CalendarEventOut] = []
     seen: set[tuple[str, str, str | None, str]] = set()
     for act in _normalize_activities(doc.activities):
-        name = act.name
+        # Missing extracted title falls back to the circular title at read time.
+        name = act.name or doc.title
         for kind, raw in (("start", act.starts_at), ("deadline", act.deadline_at)):
             if not raw:
                 continue
@@ -149,6 +161,8 @@ def _activity_events_for_doc(doc: Document) -> list[CalendarEventOut]:
                     date=raw,
                     kind=kind,
                     activity_name=name,
+                    summary=act.summary,
+                    location=act.location,
                     document_id=str(doc.id),
                     document_title=doc.title,
                     circular_no=doc.circular_no,

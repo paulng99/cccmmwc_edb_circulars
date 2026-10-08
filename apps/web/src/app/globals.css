@@ -4187,34 +4187,22 @@ input[type="checkbox"] {
 }
 
 /* ------------------------------------------------------------------
-   Home deadlines + calendar list + document activities
+   Home deadlines + calendar agenda list + document activities
    ------------------------------------------------------------------ */
-.deadline-list,
 .calendar-days ul {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.65rem;
-}
-
-.deadline-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  text-decoration: none;
-  color: inherit;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.calendar-row {
-  display: flex;
-  align-items: flex-start;
   gap: 0.55rem;
-  padding: 0.85rem 1rem;
+}
+
+.agenda-row {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr);
+  align-items: start;
+  column-gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
   border: 1px solid var(--border);
   background: var(--surface);
   text-decoration: none;
@@ -4222,29 +4210,38 @@ input[type="checkbox"] {
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.deadline-row:hover,
-.calendar-row:hover {
+.agenda-row:hover {
   border-color: var(--primary-soft-border);
   background: var(--primary-soft);
 }
 
-.deadline-row-meta {
+.agenda-kind {
+  justify-self: start;
+  margin-top: 0.1rem;
+}
+
+.agenda-body {
   display: flex;
-  align-items: center;
-  gap: 0.55rem;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
 }
 
-.deadline-row-meta time,
-.calendar-day > h2 {
+.agenda-title {
+  font-size: 0.95rem;
   font-weight: 650;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
+  line-height: 1.35;
 }
 
-.deadline-doc-title {
+.agenda-summary,
+.agenda-location {
   font-size: 0.875rem;
   color: var(--text-2);
   line-height: 1.35;
+}
+
+.agenda-location {
+  color: var(--text-3, var(--text-2));
 }
 
 .calendar-days {
@@ -4255,17 +4252,9 @@ input[type="checkbox"] {
 .calendar-day > h2 {
   margin: 0 0 0.55rem;
   font-size: 1.05rem;
-}
-
-.calendar-row-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-width: 0;
-}
-
-.calendar-row-text strong {
-  font-size: 0.95rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }
 
 .doc-activities {
@@ -4298,7 +4287,19 @@ input[type="checkbox"] {
 
 .activity-blocks li strong {
   display: block;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.25rem;
+}
+
+.activity-summary,
+.activity-location {
+  margin: 0 0 0.35rem;
+  font-size: 0.875rem;
+  color: var(--text-2);
+  line-height: 1.35;
+}
+
+.activity-location {
+  color: var(--text-3, var(--text-2));
 }
 
 .activity-blocks li > div {

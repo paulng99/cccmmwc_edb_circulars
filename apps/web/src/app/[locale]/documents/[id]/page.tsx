@@ -356,7 +356,13 @@ export default function DocumentDetailPage() {
                   <ul className="activity-blocks">
                     {(doc.activities || []).map((act, idx) => (
                       <li key={`${act.name || "a"}-${act.starts_at || ""}-${act.deadline_at || ""}-${idx}`}>
-                        <strong>{act.name || t("unnamedActivity")}</strong>
+                        <strong>{act.name || doc.title}</strong>
+                        {act.summary?.trim() ? (
+                          <p className="activity-summary">{act.summary.trim()}</p>
+                        ) : null}
+                        {act.location?.trim() ? (
+                          <p className="activity-location">{act.location.trim()}</p>
+                        ) : null}
                         <div>
                           <span>{t("activityStartsAt")}</span>
                           <span>{formatHkDate(act.starts_at, t("dateMissing"))}</span>
@@ -429,7 +435,13 @@ export default function DocumentDetailPage() {
                           <ul className="activity-blocks">
                             {(doc.activities || []).map((act, idx) => (
                               <li key={`${act.name || "a"}-${act.starts_at || ""}-${act.deadline_at || ""}-${idx}`}>
-                                <strong>{act.name || t("unnamedActivity")}</strong>
+                                <strong>{act.name || doc.title}</strong>
+                                {act.summary?.trim() ? (
+                                  <p className="activity-summary">{act.summary.trim()}</p>
+                                ) : null}
+                                {act.location?.trim() ? (
+                                  <p className="activity-location">{act.location.trim()}</p>
+                                ) : null}
                                 <div>
                                   <span>{t("activityStartsAt")}</span>
                                   <span>{formatHkDate(act.starts_at, t("dateMissing"))}</span>

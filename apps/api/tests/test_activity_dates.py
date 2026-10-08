@@ -1,4 +1,4 @@
-"""Unit tests for local multi-activity date extraction (no external services)."""
+"""Unit tests for local multi-activity date/detail extraction (no external services)."""
 
 from datetime import date
 from types import SimpleNamespace
@@ -18,10 +18,14 @@ FIXTURE_MULTI_ZH = """
 適用學年：2026/27
 
 活動名稱：校本教師專業發展工作坊
+內容：為中學教師提供 STEM 教學培訓
+地點：學校禮堂
 開始日期：2026年9月15日
 截止日期：2026年10月31日
 
 活動名稱：家長講座報名
+內容：介紹家校合作支援措施
+舉行地點：社區會堂
 報名開始日期：2026年11月1日
 報名截止日期：2026年11月20日
 
@@ -34,6 +38,8 @@ FIXTURE_RANGE_ZH = """
 
 申請期由2025年9月1日至2025年9月30日
 活動名稱：姊妹學校交流計劃申請
+內容：供學校申請姊妹學校交流資助
+地點：各參與學校
 """
 
 FIXTURE_EN_MULTI = """
@@ -43,6 +49,8 @@ Issue Date: 15 January 2026
 School year: 2026/27
 
 Activity Name: STEM Fair enrolment
+Description: Hands-on science booths for secondary students
+Venue: City Hall Exhibition Gallery
 Start Date: 1 September 2026
 Closing Date: 30 September 2026
 
@@ -106,6 +114,41 @@ FIXTURE_GENERIC_LABELS = """
 截止日期：2026年9月30日
 """
 
+# Letterhead has bureau address; activity has a real venue — only venue is kept.
+FIXTURE_LETTERHEAD_WITH_VENUE = """
+教育局
+Education Bureau
+香港灣仔皇后大道東213號胡忠大廈13樓
+發出日期：2026年4月8日
+
+活動名稱：校內歌唱比賽
+內容：中一至中三報名
+地點：學校禮堂
+開始日期：2026年10月12日
+截止日期：2026年10月20日
+"""
+
+# Only bureau letterhead address — location must stay empty.
+FIXTURE_LETTERHEAD_ONLY = """
+教育局
+Education Bureau
+地址：香港灣仔皇后大道東213號胡忠大廈
+發出日期：2026年5月2日
+
+活動名稱：教師研討會報名
+內容：分享課程規劃經驗
+截止日期：2026年6月15日
+"""
+
+FIXTURE_EN_LETTERHEAD_ONLY = """
+Education Bureau
+Address: 213 Queen's Road East, Wan Chai, Wu Chung House
+Issue Date: 3 June 2026
+
+Activity Name: Coding workshop enrolment
+Closing Date: 30 July 2026
+"""
+
 
 def _deadlines(result):
     return [a.deadline_at for a in result.activities]
@@ -119,6 +162,10 @@ def _rejected_reasons(result):
     return {r.reason for r in result.rejected}
 
 
+def _rejected_location_values(result):
+    return {r.value for r in result.rejected_locations}
+
+
 def test_chinese_multi_activity_dates():
     result = extract_activities(FIXTURE_MULTI_ZH)
     assert len(result.activities) == 2
@@ -128,9 +175,13 @@ def test_chinese_multi_activity_dates():
     workshop = next(a for a in result.activities if a.name and "工作坊" in a.name)
     assert workshop.starts_at == date(2026, 9, 15)
     assert workshop.deadline_at == date(2026, 10, 31)
+    assert workshop.summary == "為中學教師提供 STEM 教學培訓"
+    assert workshop.location == "學校禮堂"
     lecture = next(a for a in result.activities if a.name and "家長" in a.name)
     assert lecture.starts_at == date(2026, 11, 1)
     assert lecture.deadline_at == date(2026, 11, 20)
+    assert lecture.summary == "介紹家校合作支援措施"
+    assert lecture.location == "社區會堂"
 
 
 def test_chinese_rejects_issue_update_school_year_and_reply():
@@ -150,8 +201,11 @@ def test_chinese_range_becomes_one_activity():
     result = extract_activities(FIXTURE_RANGE_ZH)
     assert len(result.activities) >= 1
     act = result.activities[0]
+    assert act.name == "姊妹學校交流計劃申請"
     assert act.starts_at == date(2025, 9, 1)
     assert act.deadline_at == date(2025, 9, 30)
+    assert act.summary == "供學校申請姊妹學校交流資助"
+    assert act.location == "各參與學校"
 
 
 def test_english_multi_activity():
@@ -160,8 +214,12 @@ def test_english_multi_activity():
     stem = next(a for a in result.activities if a.name and "STEM" in a.name)
     assert stem.starts_at == date(2026, 9, 1)
     assert stem.deadline_at == date(2026, 9, 30)
+    assert stem.summary == "Hands-on science booths for secondary students"
+    assert stem.location == "City Hall Exhibition Gallery"
     grant = next(a for a in result.activities if a.deadline_at == date(2026, 12, 15))
     assert grant.starts_at is None
+    assert grant.summary is None
+    assert grant.location is None
     assert date(2026, 2, 28) not in _deadlines(result)
     assert "reply_deadline" in _rejected_reasons(result)
     assert "issued" in _rejected_reasons(result)
@@ -173,6 +231,8 @@ def test_english_application_period():
     assert len(result.activities) == 1
     assert result.activities[0].starts_at == date(2026, 4, 1)
     assert result.activities[0].deadline_at == date(2026, 4, 30)
+    assert result.activities[0].summary is None
+    assert result.activities[0].location is None
 
 
 def test_deadline_only_and_start_only():
@@ -180,6 +240,8 @@ def test_deadline_only_and_start_only():
     assert len(only_end.activities) == 1
     assert only_end.activities[0].starts_at is None
     assert only_end.activities[0].deadline_at == date(2026, 6, 30)
+    assert only_end.activities[0].summary is None
+    assert only_end.activities[0].location is None
 
     only_start = extract_activities(FIXTURE_START_ONLY)
     assert len(only_start.activities) == 1
@@ -222,12 +284,51 @@ def test_generic_labels_ok_without_activity_name():
     assert act.deadline_at == date(2026, 9, 30)
     # Generic "開始日期/截止日期" should not invent a name
     assert act.name is None
+    assert act.summary is None
+    assert act.location is None
+
+
+def test_letterhead_with_real_venue_keeps_only_venue():
+    result = extract_activities(FIXTURE_LETTERHEAD_WITH_VENUE)
+    assert len(result.activities) == 1
+    act = result.activities[0]
+    assert act.name == "校內歌唱比賽"
+    assert act.summary == "中一至中三報名"
+    assert act.location == "學校禮堂"
+    assert act.location_sentence and "學校禮堂" in act.location_sentence
+    rejected = _rejected_location_values(result)
+    assert any("皇后大道東" in v for v in rejected)
+    assert "學校禮堂" not in rejected
+
+
+def test_letterhead_only_leaves_location_empty():
+    result = extract_activities(FIXTURE_LETTERHEAD_ONLY)
+    assert len(result.activities) == 1
+    act = result.activities[0]
+    assert act.name == "教師研討會報名"
+    assert act.summary == "分享課程規劃經驗"
+    assert act.location is None
+    rejected = _rejected_location_values(result)
+    assert any("皇后大道東" in v for v in rejected)
+    # Must not surface 「未有」 — empty string / None only
+    assert act.location in (None, "")
+
+
+def test_english_letterhead_only_leaves_location_empty():
+    result = extract_activities(FIXTURE_EN_LETTERHEAD_ONLY)
+    assert len(result.activities) == 1
+    act = result.activities[0]
+    assert act.name == "Coding workshop enrolment"
+    assert act.location is None
+    rejected = _rejected_location_values(result)
+    assert any("Queen" in v or "Wu Chung" in v for v in rejected)
 
 
 def test_empty_text_returns_empty():
     result = extract_activities("   ")
     assert result.activities == []
     assert result.rejected == []
+    assert result.rejected_locations == []
     assert extract_activities(None).activities == []
 
 
@@ -235,6 +336,26 @@ def test_apply_document_activities_sets_json():
     doc = SimpleNamespace(activities=[])
     assert apply_document_activities(doc, FIXTURE_DEADLINE_ONLY) is True
     assert doc.activities == [
-        {"name": "截止報名", "starts_at": None, "deadline_at": "2026-06-30"}
+        {
+            "name": "截止報名",
+            "starts_at": None,
+            "deadline_at": "2026-06-30",
+            "summary": None,
+            "location": None,
+        }
     ]
     assert apply_document_activities(doc, FIXTURE_DEADLINE_ONLY) is False
+
+
+def test_apply_document_activities_stores_summary_and_location():
+    doc = SimpleNamespace(activities=[])
+    assert apply_document_activities(doc, FIXTURE_LETTERHEAD_WITH_VENUE) is True
+    assert doc.activities == [
+        {
+            "name": "校內歌唱比賽",
+            "starts_at": "2026-10-12",
+            "deadline_at": "2026-10-20",
+            "summary": "中一至中三報名",
+            "location": "學校禮堂",
+        }
+    ]
