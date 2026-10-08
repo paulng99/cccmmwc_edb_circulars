@@ -78,6 +78,23 @@ def test_apply_patch_rejects_unknown():
         apply_patch({"temperature": 0.2}, {"not_a_key": 1})
 
 
+def test_apply_patch_rejects_blank_system_prompt():
+    with pytest.raises(ValueError, match="system_prompt must not be blank"):
+        apply_patch({"system_prompt": "keep"}, {"system_prompt": "   "})
+
+
+def test_build_settings_response_includes_default_system_prompt():
+    row = MagicMock()
+    row.updated_at = None
+    row.updated_by = None
+    payload = build_settings_response(
+        {"system_prompt": "custom", "temperature": 0.2},
+        row,
+    )
+    assert payload["defaults"]["system_prompt"] == DEFAULT_SYSTEM_PROMPT
+    assert payload["editable"]["system_prompt"] == "custom"
+
+
 @pytest.mark.parametrize("key", ["local_top_k", "dify_top_k"])
 @pytest.mark.parametrize("value", [12, 20, 1])
 def test_apply_patch_accepts_top_k_in_range(key, value):

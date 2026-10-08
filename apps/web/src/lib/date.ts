@@ -22,8 +22,8 @@ export function formatHkDateTime(iso: string | null | undefined): string {
 }
 
 /** Format date-only values as yyyy-mm-dd (Hong Kong calendar day when timezone matters). */
-export function formatHkDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
+export function formatHkDate(iso: string | null | undefined, missing = "—"): string {
+  if (!iso) return missing;
   if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;

@@ -4185,3 +4185,147 @@ input[type="checkbox"] {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ------------------------------------------------------------------
+   Home deadlines + calendar list + document activities
+   ------------------------------------------------------------------ */
+.deadline-list,
+.calendar-days ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.deadline-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.calendar-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.deadline-row:hover,
+.calendar-row:hover {
+  border-color: var(--primary-soft-border);
+  background: var(--primary-soft);
+}
+
+.deadline-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.deadline-row-meta time,
+.calendar-day > h2 {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.deadline-doc-title {
+  font-size: 0.875rem;
+  color: var(--text-2);
+  line-height: 1.35;
+}
+
+.calendar-days {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.calendar-day > h2 {
+  margin: 0 0 0.55rem;
+  font-size: 1.05rem;
+}
+
+.calendar-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.calendar-row-text strong {
+  font-size: 0.95rem;
+}
+
+.doc-activities {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.doc-activities h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.activity-blocks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.activity-blocks li {
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.activity-blocks li strong {
+  display: block;
+  margin-bottom: 0.4rem;
+}
+
+.activity-blocks li > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+  color: var(--text-2);
+}
+
+.activity-blocks li > div span:last-child {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.prompt-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.prompt-actions .btn[disabled] {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.meta-activities {
+  grid-column: 1 / -1;
+}

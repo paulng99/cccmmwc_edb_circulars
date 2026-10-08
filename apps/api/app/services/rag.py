@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.collectors.activity_dates import apply_document_activities
 from app.collectors.doc_dates import apply_document_dates
 from app.models.entities import Document, DocumentChunk
 from app.services.dify import get_dify_sync
@@ -55,7 +56,12 @@ async def index_document(session: AsyncSession, document_id: uuid.UUID) -> dict[
             text = raw.decode("utf-8", errors="ignore")
         if text and text.strip():
             apply_document_dates(doc, text)
-            doc.extra = {**(doc.extra or {}), "dates_parsed": "1"}
+            apply_document_activities(doc, text)
+            doc.extra = {
+                **(doc.extra or {}),
+                "dates_parsed": "1",
+                "activities_parsed": "1",
+            }
         chunks = chunk_text(text)
         if not chunks:
             doc.status = "ready"

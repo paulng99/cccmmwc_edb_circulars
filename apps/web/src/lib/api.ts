@@ -265,7 +265,46 @@ export type SettingsResponse = {
   readonly: Record<string, unknown>;
   meta: { updated_at: string | null; updated_by: string | null };
   warnings: string[];
+  defaults?: { system_prompt?: string };
 };
+
+export type DocumentActivity = {
+  name?: string | null;
+  starts_at?: string | null;
+  deadline_at?: string | null;
+};
+
+export type CalendarEvent = {
+  date: string;
+  kind: "start" | "deadline";
+  activity_name?: string | null;
+  document_id: string;
+  document_title: string;
+  circular_no?: string | null;
+};
+
+export async function getUpcomingDeadlines(token: string, days = 7) {
+  const res = await fetch(
+    `${apiBase()}/api/documents/calendar/upcoming-deadlines?days=${days}`,
+    { headers: authHeaders(token) },
+  );
+  if (!res.ok) throw new Error("calendar_failed");
+  return res.json() as Promise<{
+    from: string;
+    to: string;
+    items: CalendarEvent[];
+  }>;
+}
+
+export async function getCalendarEvents(token: string) {
+  const res = await fetch(`${apiBase()}/api/documents/calendar/events`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error("calendar_failed");
+  return res.json() as Promise<{
+    days: Array<{ date: string; events: CalendarEvent[] }>;
+  }>;
+}
 
 export async function getSettings(token: string) {
   const res = await fetch(`${apiBase()}/api/settings`, { headers: authHeaders(token) });
