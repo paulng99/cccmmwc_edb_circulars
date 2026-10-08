@@ -66,6 +66,7 @@ class ChatResponse(BaseModel):
     programme: str | None = None
     topic: str | None = None
     prompt_only: bool = False
+    web_fallback: bool = False
     attachments: list[ChatAttachmentOut] = Field(default_factory=list)
 
 

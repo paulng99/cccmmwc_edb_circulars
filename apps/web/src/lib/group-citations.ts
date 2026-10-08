@@ -1,4 +1,5 @@
 import type { Citation } from "@/lib/chat-snapshot";
+import { CITE_REF_SOURCE } from "@/lib/cite-markdown";
 
 export type SourceGroup = {
   key: string;
@@ -11,7 +12,7 @@ export type SourceGroup = {
   chunks: Citation[];
 };
 
-const REF_IN_TEXT = /\[((?:L|D)?\d+)\]/g;
+const REF_IN_TEXT = new RegExp(CITE_REF_SOURCE, "g");
 
 function firstRefOrder(content: string): Map<string, number> {
   const order = new Map<string, number>();
@@ -92,4 +93,16 @@ export function groupCitationsByDocument(
     if (aCited !== bCited) return aCited ? -1 : 1;
     return (originalIndex.get(a.key) ?? 0) - (originalIndex.get(b.key) ?? 0);
   });
+}
+
+export function citationIsWeb(citation: { backend?: string } | undefined): boolean {
+  return citation?.backend === "web";
+}
+
+export function citationsUseWeb(citations: { backend?: string }[] | undefined): boolean {
+  return Boolean(citations?.some((citation) => citation.backend === "web"));
+}
+
+export function groupIsWeb(group: SourceGroup): boolean {
+  return group.backend === "web" || group.chunks.some((chunk) => chunk.backend === "web");
 }

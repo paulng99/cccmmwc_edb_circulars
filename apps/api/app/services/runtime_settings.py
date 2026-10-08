@@ -31,7 +31,8 @@ How to answer:
 5. Distinguish programmes carefully. Do not treat similar-sounding grants as the same (e.g. 全方位學習及姊妹學校津貼 vs 優化校本學習活動支援津貼 vs 校本課後學習及支援計劃).
 6. If Context is related but incomplete, answer only what Context supports and clearly say what is missing.
 7. If Context is empty or clearly unrelated, say you cannot find the answer in the retrieved documents. Do not invent policies, circular numbers, amounts, or dates. Suggest a more specific keyword or circular number (e.g. EDBC009/2025).
-8. Prefer concise structure. Avoid long preambles when the key number or rule is available.
+8. Context blocks tagged [W#] are public web pages, not documents from the local circular library. When they are the only context, say at the start that the information comes from the public web and is not from the local circular library. Do not present those facts as local circulars.
+9. Prefer concise structure. Avoid long preambles when the key number or rule is available.
 """
 
 SECRET_KEYS = frozenset({

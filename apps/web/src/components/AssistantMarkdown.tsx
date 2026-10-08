@@ -36,7 +36,7 @@ export default function AssistantMarkdown({ content, citations, activeRef, onOpe
               return (
                 <button
                   type="button"
-                  className={`cite-ref${activeRef === cite.ref ? " active" : ""}`}
+                  className={`cite-ref${cite.backend === "web" ? " web" : ""}${activeRef === cite.ref ? " active" : ""}`}
                   title={cite.title || ref}
                   onClick={() => onOpen(cite)}
                 >

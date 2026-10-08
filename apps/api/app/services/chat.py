@@ -25,6 +25,7 @@ from app.services.rag import retrieve_document_chunks, retrieve_vector_only
 from app.services.rerank import rerank_hits
 from app.services.runtime_settings import build_system_prompt, get_merged
 from app.services.usage import usage_scope
+from app.services.web_search import search_web
 
 KnowledgeSource = Literal["local", "local_and_dify", "dify"]
 
@@ -35,6 +36,34 @@ PROMPT_ONLY_USER_MESSAGE = (
     "invite a specific question (e.g. a circular number or keyword)."
 )
 PROMPT_ONLY_STORED = "（僅系統提示）"
+
+EMPTY_LIBRARY_HINT = (
+    "The retrieval returned no documents from the local circular library. Tell the user clearly "
+    "that no matching circular was found, and suggest retrying with a circular number "
+    "(e.g. EDBCM048/2026) or a more specific keyword. Do not invent an answer from outside knowledge."
+)
+WEB_FALLBACK_HINT = (
+    "The local circular library returned no relevant documents. "
+    "The Context blocks below are PUBLIC WEB SEARCH results, not local circulars. "
+    "They are labelled [W1], [W2], and so on.\n"
+    "You MUST:\n"
+    "- Start the answer by stating clearly that this information comes from the public web "
+    "and is NOT from the local circular library.\n"
+    "- Ground claims only in these web blocks and cite them with [W#].\n"
+    "- Do not present web facts as local EDB circulars, and do not invent circular numbers.\n"
+    "- If the web results do not answer the question, say that neither the local library "
+    "nor the public web results contain the answer."
+)
+WEB_EMPTY_HINT = (
+    "The local circular library returned no relevant documents, and a public web search "
+    "also returned no usable results. Tell the user clearly that nothing relevant was found "
+    "in the local circulars or on the public web. Do not invent an answer. Suggest retrying "
+    "with a circular number (e.g. EDBCM048/2026) or a more specific keyword."
+)
+LOCAL_CONTEXT_HINT = (
+    "Retrieved {count} context block(s) from the local circular library (not the public web). "
+    "Use them to answer the question. If they only partially match, still summarise the useful parts."
+)
 
 ALLOWED_UPLOAD_SUFFIXES = {".pdf", ".txt", ".md", ".csv"}
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
@@ -123,6 +152,21 @@ def format_user_turn(content: str, attachments: list | None) -> str:
     return clip_text("\n\n".join(blocks), MAX_HISTORY_TURN_CHARS)
 
 
+def context_instruction(
+    *,
+    block_count: int,
+    web_fallback: bool = False,
+    web_searched_empty: bool = False,
+) -> str:
+    if web_fallback:
+        return WEB_FALLBACK_HINT
+    if web_searched_empty:
+        return WEB_EMPTY_HINT
+    if block_count <= 0:
+        return EMPTY_LIBRARY_HINT
+    return LOCAL_CONTEXT_HINT.format(count=block_count)
+
+
 def build_chat_messages(
     *,
     system: str,
@@ -131,6 +175,8 @@ def build_chat_messages(
     context_blocks: list[str],
     history: list[dict[str, str]] | None = None,
     attachments: list[dict] | None = None,
+    web_fallback: bool = False,
+    web_searched_empty: bool = False,
 ) -> list[dict[str, str]]:
     system_content = system + "\n" + lang_hint
     attachment_blocks: list[str] = []
@@ -146,17 +192,11 @@ def build_chat_messages(
         current = PROMPT_ONLY_USER_MESSAGE
     else:
         context = "\n\n---\n\n".join(context_blocks) if context_blocks else "(No matching documents found.)"
-        if not context_blocks:
-            empty_hint = (
-                "The retrieval returned no documents. Tell the user clearly that no matching circular "
-                "was found, and suggest retrying with a circular number (e.g. EDBCM048/2026) or a more "
-                "specific keyword."
-            )
-        else:
-            empty_hint = (
-                f"Retrieved {len(context_blocks)} context block(s). Use them to answer the question. "
-                "If they only partially match, still summarise the useful parts."
-            )
+        empty_hint = context_instruction(
+            block_count=len(context_blocks),
+            web_fallback=web_fallback,
+            web_searched_empty=web_searched_empty,
+        )
         if attached and is_prompt_only(question):
             question_line = (
                 "The user attached the files below and did not type a separate question. "
@@ -474,6 +514,8 @@ async def answer_question(
     retrieve_query = (
         build_retrieve_query(base_retrieve, history) if base_retrieve else ""
     )
+    # Web fallback uses the natural question, not the keyword rewrite.
+    web_query = retrieve_query
 
     rs = await get_merged(session)
 
@@ -565,6 +607,13 @@ async def answer_question(
                 top_k=min(max(int(rs["dify_top_k"]), 1), 20),
             )
 
+    web_hits: list[dict[str, str]] = []
+    web_attempted = False
+    if not local_hits and not dify_hits and web_query and not prompt_only:
+        outcome = await search_web(web_query)
+        web_hits = outcome.results
+        web_attempted = outcome.attempted
+
     context_blocks: list[str] = []
     citations: list[dict[str, Any]] = []
     for i, hit in enumerate(local_hits, start=1):
@@ -596,11 +645,28 @@ async def answer_question(
                 "backend": "dify",
             }
         )
+    for i, hit in enumerate(web_hits, start=1):
+        context_blocks.append(f"[W{i}] {hit['title']} | {hit['url']}\n{hit['content']}")
+        citations.append(
+            {
+                "ref": f"W{i}",
+                "title": hit["title"],
+                "source_url": hit["url"],
+                "backend": "web",
+            }
+        )
 
+    web_fallback = bool(web_hits)
     lang_hint = "Respond in Traditional Chinese (Hong Kong)." if locale.startswith("zh") else "Respond in English."
     focus_hint = focus_document_hint(focus_doc, locale)
     if focus_hint:
         lang_hint = f"{lang_hint}\n{focus_hint}"
+    if web_fallback:
+        lang_hint = (
+            f"{lang_hint}\nThis turn uses public web search because the local circular library "
+            "had no matching document. State at the start that the answer is online information "
+            "and is not from the local circular library."
+        )
     messages = build_chat_messages(
         system=build_system_prompt(rs, programme=programme, topic=topic),
         lang_hint=lang_hint,
@@ -608,6 +674,8 @@ async def answer_question(
         context_blocks=context_blocks,
         history=history,
         attachments=atts,
+        web_fallback=web_fallback,
+        web_searched_empty=web_attempted and not web_hits,
     )
 
     llm = get_llm_client()
@@ -656,6 +724,7 @@ async def answer_question(
         "programme": programme,
         "topic": topic,
         "prompt_only": prompt_only,
+        "web_fallback": web_fallback,
         "attachments": [
             {"filename": att["filename"], "char_count": att["char_count"]} for att in atts
         ],

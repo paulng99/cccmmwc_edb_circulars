@@ -4,12 +4,16 @@ import { useId, useMemo, type ChangeEvent } from "react";
 import { useTranslations } from "next-intl";
 import { Icon } from "@/components/Icon";
 import type { Citation } from "@/lib/chat-store";
-import { groupCitationsByDocument } from "@/lib/group-citations";
+import { groupCitationsByDocument, groupIsWeb, type SourceGroup } from "@/lib/group-citations";
 import {
   chunkOptionLabel,
   documentLabel,
   singleOptionLabel,
 } from "@/lib/source-option-labels";
+
+function withWebBadge(group: SourceGroup, text: string, badge: string) {
+  return groupIsWeb(group) ? `${badge} · ${text}` : text;
+}
 
 type Props = {
   citations: Citation[];
@@ -38,6 +42,7 @@ export default function GroupedSources({
     return map;
   }, [citations]);
 
+  const allWeb = groups.length > 0 && groups.every((group) => groupIsWeb(group));
   const selected = activeRef && byRef.has(activeRef) ? activeRef : "";
   const selectedTitle = useMemo(() => {
     if (!selected) return t("sourcesSelectPlaceholder");
@@ -45,12 +50,17 @@ export default function GroupedSources({
       const chunk = group.chunks.find((c) => c.ref === selected);
       if (!chunk) continue;
       const mergeable = Boolean(group.documentId) && group.chunks.length > 1;
+      const badge = t("webSourceBadge");
       if (mergeable) {
-        return `${documentLabel(group)} · ${chunkOptionLabel(chunk, (index, ref) =>
-          t("chunkLabel", { index, ref }),
-        )}`;
+        return withWebBadge(
+          group,
+          `${documentLabel(group)} · ${chunkOptionLabel(chunk, (index, ref) =>
+            t("chunkLabel", { index, ref }),
+          )}`,
+          badge,
+        );
       }
-      return singleOptionLabel(group, chunk);
+      return withWebBadge(group, singleOptionLabel(group, chunk), badge);
     }
     return selected;
   }, [groups, selected, t]);
@@ -65,11 +75,13 @@ export default function GroupedSources({
     if (cite) onOpen(cite);
   }
 
+  const webBadge = t("webSourceBadge");
+
   return (
-    <div className="sources">
+    <div className={`sources${allWeb ? " web" : ""}`}>
       <label className="sources-head" htmlFor={selectId}>
-        <Icon name="quote" />
-        {t("sourcesCount", { count: groups.length })}
+        <Icon name={allWeb ? "globe" : "quote"} />
+        {allWeb ? t("webSourcesCount", { count: groups.length }) : t("sourcesCount", { count: groups.length })}
       </label>
       <select
         id={selectId}
@@ -83,14 +95,14 @@ export default function GroupedSources({
           const mergeable = Boolean(group.documentId) && group.chunks.length > 1;
           if (!mergeable) {
             const primary = group.chunks[0];
-            const label = singleOptionLabel(group, primary);
+            const label = withWebBadge(group, singleOptionLabel(group, primary), webBadge);
             return (
               <option key={group.key} value={primary.ref} title={label}>
                 {label}
               </option>
             );
           }
-          const groupLabel = documentLabel(group);
+          const groupLabel = withWebBadge(group, documentLabel(group), webBadge);
           return (
             <optgroup key={group.key} label={groupLabel}>
               {group.chunks.map((chunk) => {

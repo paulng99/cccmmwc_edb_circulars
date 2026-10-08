@@ -2,7 +2,9 @@ import type { Citation } from "@/lib/chat-snapshot";
 
 export const CITE_PROTOCOL = "citation:";
 
-const CITE_TOKEN = /\[((?:L|D)?\d+)\]/g;
+export const CITE_REF_SOURCE = String.raw`\[((?:L|D|W)?\d+)\]`;
+
+const CITE_TOKEN = new RegExp(CITE_REF_SOURCE, "g");
 
 /** Turn known `[L1]` tokens into markdown links so react-markdown can render buttons. */
 export function linkifyCitationRefs(content: string, citations: Citation[] | undefined): string {
