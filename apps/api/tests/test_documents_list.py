@@ -12,6 +12,7 @@ def _doc(**kwargs):
         title="通告",
         circular_no="EDBCM001/2026",
         issued_at=date(2026, 1, 1),
+        revised_at=None,
         language="zh-HK",
         programme="circular",
         topics=[],

@@ -16,6 +16,7 @@ from app.collectors.circular_meta import (
     resolve_language,
     resolve_title,
 )
+from app.collectors.doc_dates import extract_document_dates, keep_later_revision
 from app.services.runtime_settings import resolved_settings
 
 
@@ -26,6 +27,7 @@ class DiscoveredItem:
     file_url: str
     circular_no: str | None = None
     issued_at: date | None = None
+    revised_at: date | None = None
     language: str = "zh-HK"
     mime_type: str = "application/pdf"
     meta: dict[str, Any] | None = None
@@ -140,6 +142,10 @@ class CircularAspNetCollector:
             dm = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", date_text or row_text)
             if dm:
                 issued = _parse_hk_date(dm.group(1))
+            labeled = extract_document_dates(f"{date_text}\n{subject_cell}\n{row_text}")
+            if issued is None:
+                issued = labeled.issued_at
+            revised = keep_later_revision(issued, labeled.revised_at)
 
             for a in pdf_links:
                 href = a.get("href") or ""
@@ -163,6 +169,7 @@ class CircularAspNetCollector:
                         file_url=file_url,
                         circular_no=circ,
                         issued_at=issued,
+                        revised_at=revised,
                         language=lang,
                         meta={
                             "row_text": (subject_cell or row_text)[:800],
@@ -255,12 +262,23 @@ class SiteAttachmentsCollector:
                             seen_files.add(href)
                             title = a.get_text(" ", strip=True) or p.path.split("/")[-1]
                             lang = "en" if "/en/" in p.path or "/attachment/en/" in p.path else "zh-HK"
+                            context_node = a.find_parent(["tr", "li", "p"])
+                            context = (
+                                context_node.get_text(" ", strip=True)
+                                if context_node is not None
+                                else title
+                            )
+                            labeled = extract_document_dates(context[:800])
                             items.append(
                                 DiscoveredItem(
                                     title=title[:1000],
                                     source_url=url,
                                     file_url=href,
                                     language=lang,
+                                    issued_at=labeled.issued_at,
+                                    revised_at=keep_later_revision(
+                                        labeled.issued_at, labeled.revised_at
+                                    ),
                                 )
                             )
                         elif p.netloc in allow_hosts and href not in seen_pages:

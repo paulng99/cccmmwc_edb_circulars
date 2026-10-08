@@ -17,6 +17,7 @@ type Doc = {
   title: string;
   circular_no?: string | null;
   issued_at?: string | null;
+  revised_at?: string | null;
   downloaded_at?: string | null;
   source_id: string;
   source_url: string;
@@ -195,8 +196,14 @@ export default function DocumentDetailPage() {
               ) : null}
               <span className="badge">
                 <Icon name="calendar" />
-                {doc.issued_at || "—"}
+                {formatHkDate(doc.issued_at)}
               </span>
+              {doc.revised_at ? (
+                <span className="badge">
+                  <Icon name="refresh-cw" />
+                  {formatHkDate(doc.revised_at)}
+                </span>
+              ) : null}
               <span className="badge">
                 <Icon name="download" />
                 {formatHkDate(doc.downloaded_at)}
@@ -329,7 +336,11 @@ export default function DocumentDetailPage() {
                   </div>
                   <div>
                     <dt>{t("issuedAt")}</dt>
-                    <dd>{doc.issued_at || "—"}</dd>
+                    <dd>{formatHkDate(doc.issued_at)}</dd>
+                  </div>
+                  <div>
+                    <dt>{t("revisedAt")}</dt>
+                    <dd>{formatHkDate(doc.revised_at)}</dd>
                   </div>
                   <div>
                     <dt>{t("downloadedAt")}</dt>

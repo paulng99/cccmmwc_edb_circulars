@@ -105,6 +105,8 @@ class Document(Base):
     title_zh: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     circular_no: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     issued_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
+    # Official content revision, only when it is later than issued_at.
+    revised_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
     language: Mapped[str] = mapped_column(String(16), default="zh-HK")
     source_url: Mapped[str] = mapped_column(String(2048))
     file_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)

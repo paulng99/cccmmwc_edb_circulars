@@ -1619,6 +1619,10 @@ code {
   color: var(--text-3);
 }
 
+.doc-date.is-revision {
+  color: var(--primary-text);
+}
+
 .doc-date.is-active {
   color: var(--primary-text);
   font-weight: 600;
