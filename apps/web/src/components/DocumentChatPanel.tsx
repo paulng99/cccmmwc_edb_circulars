@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useId, useRef, useState } from "reac
 import { useLocale, useTranslations } from "next-intl";
 import AssistantMarkdown from "@/components/AssistantMarkdown";
 import GroupedSources from "@/components/GroupedSources";
+import WebSourceNotice from "@/components/WebSourceNotice";
 import { Icon } from "@/components/Icon";
 import { useRouter } from "@/i18n/routing";
 import {
@@ -13,6 +14,7 @@ import {
   type ChatHistoryMessage,
 } from "@/lib/api";
 import type { Citation } from "@/lib/chat-store";
+import { citationsUseWeb } from "@/lib/group-citations";
 
 type PanelMsg = {
   id: string;
@@ -100,6 +102,10 @@ export default function DocumentChatPanel({
 
   const openCitation = useCallback(
     (c: Citation) => {
+      if (c.backend === "web" && c.source_url) {
+        window.open(c.source_url, "_blank", "noopener,noreferrer");
+        return;
+      }
       if (c.document_id && c.document_id !== documentId) {
         router.push(`/documents/${c.document_id}`);
       }
@@ -218,6 +224,7 @@ export default function DocumentChatPanel({
               {m.role === "assistant" ? <Icon name="sparkles" /> : <Icon name="user" />}
             </div>
             <div className="msg-body">
+              {m.role === "assistant" && !m.error && citationsUseWeb(m.citations) ? <WebSourceNotice /> : null}
               {m.content ? (
                 <div
                   className={`msg-bubble${m.error ? " error" : ""}${
@@ -242,6 +249,11 @@ export default function DocumentChatPanel({
                   onOpen={openCitation}
                   onClose={() => undefined}
                 />
+              ) : m.role === "assistant" && !m.error ? (
+                <p className="msg-note">
+                  <Icon name="info" />
+                  <span>{tChat("noCitations")}</span>
+                </p>
               ) : null}
             </div>
           </div>

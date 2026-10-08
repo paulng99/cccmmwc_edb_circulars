@@ -2253,6 +2253,19 @@ code {
   background: var(--primary-soft-hover);
 }
 
+.cite-ref.web {
+  background: var(--teal-soft);
+  color: var(--teal-text);
+  border-color: var(--teal-border);
+}
+
+.cite-ref.web:hover,
+.cite-ref.web.active {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal-text);
+}
+
 .sources {
   display: flex;
   flex-direction: column;
@@ -2312,6 +2325,31 @@ code {
   margin-top: 0.15rem;
   width: 14px;
   height: 14px;
+}
+
+.web-source-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  background: var(--teal-soft);
+  border: 1px solid var(--teal-border);
+  color: var(--teal-text);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.web-source-note .icon {
+  flex: none;
+  margin-top: 0.12rem;
+  width: 15px;
+  height: 15px;
+}
+
+.sources.web .sources-head {
+  color: var(--teal-text);
 }
 
 .typing {
@@ -2492,6 +2530,14 @@ code {
   width: 15px;
   height: 15px;
   color: var(--primary);
+}
+
+.chat-doc-kicker.web {
+  color: var(--teal-text);
+}
+
+.chat-doc-kicker.web .icon {
+  color: var(--teal);
 }
 
 .chat-history-close {

@@ -14,6 +14,7 @@ type Props = {
   sourceUrl?: string;
   circularNo?: string | null;
   issuedAt?: string | null;
+  webSource?: boolean;
   onClose: () => void;
 };
 
@@ -31,6 +32,7 @@ export default function ChatDocPanel({
   sourceUrl,
   circularNo,
   issuedAt,
+  webSource = false,
   onClose,
 }: Props) {
   const t = useTranslations("chat");
@@ -73,9 +75,9 @@ export default function ChatDocPanel({
     <aside className="chat-doc-panel" aria-label={t("previewTitle")}>
       <header className="chat-doc-head">
         <div className="chat-doc-heading">
-          <span className="chat-doc-kicker">
-            <Icon name="file-text" />
-            {t("previewTitle")}
+          <span className={`chat-doc-kicker${webSource ? " web" : ""}`}>
+            <Icon name={webSource ? "globe" : "file-text"} />
+            {webSource ? t("webSourceBadge") : t("previewTitle")}
           </span>
           <h2>{heading}</h2>
           <p className="chat-doc-meta">
@@ -98,7 +100,12 @@ export default function ChatDocPanel({
       <div className="chat-doc-scroll">
         {documentId && !failed ? <PdfPreview fileUrl={fileUrl(documentId)} token={token} /> : null}
         {documentId && failed ? <p className="msg-note">{t("previewFailed")}</p> : null}
-        {!documentId ? <p className="msg-note">{t("previewExternal")}</p> : null}
+        {!documentId ? (
+          <p className={webSource ? "web-source-note" : "msg-note"} role={webSource ? "note" : undefined}>
+            {webSource ? <Icon name="globe" /> : null}
+            <span>{webSource ? t("webSourcePreview") : t("previewExternal")}</span>
+          </p>
+        ) : null}
       </div>
       <footer className="chat-doc-foot">
         <button type="button" className="btn secondary sm" onClick={onClose}>

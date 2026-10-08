@@ -21,6 +21,16 @@ test("linkifyCitationRefs converts known refs to citation links", () => {
   assert.doesNotMatch(out, /citation:L9/);
 });
 
+test("linkifyCitationRefs links web refs separately from local ones", () => {
+  const mixed: Citation[] = [
+    { ref: "L1", title: "通告", document_id: "d1", backend: "local" },
+    { ref: "W1", title: "網頁", source_url: "https://www.edb.gov.hk/a", backend: "web" },
+  ];
+  const out = linkifyCitationRefs("本機 [L1]，網上 [W1]", mixed);
+  assert.match(out, /\[L1\]\(citation:L1\)/);
+  assert.match(out, /\[W1\]\(citation:W1\)/);
+});
+
 test("linkifyCitationRefs leaves content unchanged without citations", () => {
   assert.equal(linkifyCitationRefs("見 [L1]", undefined), "見 [L1]");
   assert.equal(linkifyCitationRefs("見 [L1]", []), "見 [L1]");

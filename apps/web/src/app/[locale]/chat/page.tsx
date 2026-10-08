@@ -6,9 +6,11 @@ import { useRouter } from "@/i18n/routing";
 import AssistantMarkdown from "@/components/AssistantMarkdown";
 import ChatDocPanel from "@/components/ChatDocPanel";
 import GroupedSources from "@/components/GroupedSources";
+import WebSourceNotice from "@/components/WebSourceNotice";
 import { useAuth } from "@/lib/auth";
 import { Icon } from "@/components/Icon";
 import { CHAT_MAX_FILES, type Citation, useChat } from "@/lib/chat-store";
+import { citationsUseWeb } from "@/lib/group-citations";
 import { PROGRAMME_OPTIONS, TOPIC_OPTIONS } from "@/lib/taxonomy";
 
 type Preview = {
@@ -18,6 +20,7 @@ type Preview = {
   sourceUrl?: string;
   circularNo?: string | null;
   issuedAt?: string | null;
+  web?: boolean;
 };
 
 const KNOWLEDGE_OPTIONS: { value: "local" | "local_and_dify" | "dify"; key: string }[] = [
@@ -117,6 +120,7 @@ export default function ChatPage() {
       sourceUrl: c.source_url,
       circularNo: c.circular_no,
       issuedAt: c.issued_at,
+      web: c.backend === "web",
     });
     setHistoryOpen(false);
   }
@@ -360,6 +364,7 @@ export default function ChatPage() {
                   {m.role === "assistant" ? <Icon name="sparkles" /> : <Icon name="user" />}
                 </div>
                 <div className="msg-body">
+                  {m.role === "assistant" && !m.error && citationsUseWeb(m.citations) ? <WebSourceNotice /> : null}
                   {m.content ? (
                     <div className={`msg-bubble${m.error ? " error" : ""}${m.role === "assistant" && !m.error ? " md" : ""}`}>
                       {m.role === "assistant" && !m.error ? (
@@ -538,6 +543,7 @@ export default function ChatPage() {
             sourceUrl={preview.sourceUrl}
             circularNo={preview.circularNo}
             issuedAt={preview.issuedAt}
+            webSource={preview.web}
             onClose={() => setPreview(null)}
           />
         ) : null}
