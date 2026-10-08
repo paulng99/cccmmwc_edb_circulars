@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,9 +20,12 @@ from app.models import (  # noqa: F401
     Source,
     User,
 )
+from app.services.doc_dates import backfill_document_dates
 from app.services.pipeline import sync_sources_table
 from app.services.runtime_settings import ensure_seeded
 from app.services.storage import ensure_bucket
+
+logger = logging.getLogger(__name__)
 
 
 async def init_db() -> None:
@@ -117,6 +122,15 @@ async def init_db() -> None:
                 ")"
             )
         )
+        await conn.execute(
+            text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS revised_at DATE")
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_documents_revised_at "
+                "ON documents (revised_at)"
+            )
+        )
 
 
 async def seed_admin(session: AsyncSession) -> None:
@@ -147,3 +161,8 @@ async def bootstrap() -> None:
         await seed_admin(session)
         await ensure_seeded(session)
         await sync_sources_table(session)
+        try:
+            await backfill_document_dates(session)
+        except Exception:
+            logger.exception("document date backfill failed")
+            await session.rollback()

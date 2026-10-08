@@ -32,6 +32,7 @@ type DocGroup = {
   title: string;
   circular_no?: string | null;
   issued_at?: string | null;
+  revised_at?: string | null;
   downloaded_at?: string | null;
   source_id: string;
   primary_id: string;
@@ -42,11 +43,12 @@ type DocGroup = {
 };
 
 type ListStatus = "idle" | "loading" | "success" | "empty" | "error";
-type SortBy = "issued_at" | "downloaded_at";
+type SortBy = "issued_at" | "revised_at" | "downloaded_at";
 type SortDir = "asc" | "desc";
 
-const SORT_FIELDS: { value: SortBy; key: "sortIssued" | "sortDownloaded" }[] = [
+const SORT_FIELDS: { value: SortBy; key: "sortIssued" | "sortRevised" | "sortDownloaded" }[] = [
   { value: "issued_at", key: "sortIssued" },
+  { value: "revised_at", key: "sortRevised" },
   { value: "downloaded_at", key: "sortDownloaded" },
 ];
 
@@ -395,6 +397,16 @@ export default function DocumentsPage() {
                       <span className="doc-date-label">{t("issuedAt")}</span>
                       {formatHkDate(group.issued_at)}
                     </time>
+                    {group.revised_at || sortBy === "revised_at" ? (
+                      <time
+                        className={`doc-date is-revision${sortBy === "revised_at" ? " is-active" : ""}`}
+                        dateTime={group.revised_at || undefined}
+                      >
+                        <Icon name="refresh-cw" />
+                        <span className="doc-date-label">{t("revisedAt")}</span>
+                        {formatHkDate(group.revised_at)}
+                      </time>
+                    ) : null}
                     <time
                       className={`doc-date${sortBy === "downloaded_at" ? " is-active" : ""}`}
                       dateTime={group.downloaded_at || undefined}

@@ -21,11 +21,13 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 _LANG_RANK = {"zh-HK": 0, "zh-CN": 1, "en": 2}
 SORT_ISSUED = "issued_at"
+SORT_REVISED = "revised_at"
 SORT_DOWNLOADED = "downloaded_at"
+_SORT_FIELDS = frozenset({SORT_ISSUED, SORT_REVISED, SORT_DOWNLOADED})
 
 
 def _normalize_sort(sort_by: str | None, sort_dir: str | None) -> tuple[str, bool]:
-    field = SORT_DOWNLOADED if sort_by == SORT_DOWNLOADED else SORT_ISSUED
+    field = sort_by if sort_by in _SORT_FIELDS else SORT_ISSUED
     descending = (sort_dir or "desc").lower() != "asc"
     return field, descending
 
@@ -44,10 +46,19 @@ def _group_downloaded_at(docs: list[Document]) -> str | None:
     return max(times).isoformat()
 
 
+def _group_revised_at(docs: list[Document]) -> str | None:
+    dates = [d.revised_at for d in docs if d.revised_at]
+    if not dates:
+        return None
+    return max(dates).isoformat()
+
+
 def _sort_groups(groups: list[DocumentGroupOut], sort_by: str, descending: bool) -> list[DocumentGroupOut]:
     def value(g: DocumentGroupOut) -> str:
         if sort_by == SORT_DOWNLOADED:
             return g.downloaded_at or ""
+        if sort_by == SORT_REVISED:
+            return g.revised_at or ""
         return g.issued_at or ""
 
     present = [g for g in groups if value(g)]
@@ -86,6 +97,7 @@ def _to_out(doc: Document, *, chunk_count: int = 0) -> DocumentOut:
         title=doc.title,
         circular_no=doc.circular_no,
         issued_at=doc.issued_at.isoformat() if doc.issued_at else None,
+        revised_at=doc.revised_at.isoformat() if doc.revised_at else None,
         downloaded_at=_iso_ts(doc.created_at),
         language=doc.language,
         source_url=doc.source_url,
@@ -160,6 +172,7 @@ def _to_groups(
                 title=_pick_title(members_sorted),
                 circular_no=circular,
                 issued_at=issued.isoformat() if issued else None,
+                revised_at=_group_revised_at(members_sorted),
                 downloaded_at=_group_downloaded_at(members_sorted),
                 source_id=primary.source_id,
                 primary_id=str(primary.id),
@@ -199,7 +212,7 @@ async def list_documents(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     grouped: bool = Query(True),
-    sort_by: Optional[str] = Query(None, description="issued_at | downloaded_at"),
+    sort_by: Optional[str] = Query(None, description="issued_at | revised_at | downloaded_at"),
     sort_dir: Optional[str] = Query(None, description="desc | asc"),
 ) -> dict:
     field, descending = _normalize_sort(sort_by, sort_dir)
@@ -226,7 +239,12 @@ async def list_documents(
     if topic_id in TOPICS:
         stmt = stmt.where(Document.topics.contains([topic_id]))
 
-    sort_col = Document.created_at if field == SORT_DOWNLOADED else Document.issued_at
+    if field == SORT_DOWNLOADED:
+        sort_col = Document.created_at
+    elif field == SORT_REVISED:
+        sort_col = Document.revised_at
+    else:
+        sort_col = Document.issued_at
     if descending:
         stmt = stmt.order_by(sort_col.desc().nullslast(), Document.created_at.desc())
     else:

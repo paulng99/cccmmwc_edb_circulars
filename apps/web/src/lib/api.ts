@@ -60,7 +60,7 @@ export async function listDocuments(
     category?: "all" | "circular" | "document";
     programme?: "all" | "circular" | "sister_school" | "lwlssg" | "other";
     topic?: "all" | string;
-    sort_by?: "issued_at" | "downloaded_at";
+    sort_by?: "issued_at" | "revised_at" | "downloaded_at";
     sort_dir?: "asc" | "desc";
   } = {},
 ) {

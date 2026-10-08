@@ -80,6 +80,11 @@ async def download_and_store(
         if item.issued_at and existing.issued_at != item.issued_at:
             existing.issued_at = item.issued_at
             changed = True
+        if item.revised_at and (
+            existing.revised_at is None or item.revised_at > existing.revised_at
+        ):
+            existing.revised_at = item.revised_at
+            changed = True
         if item.meta:
             extra = dict(existing.extra or {})
             extra.update(item.meta)
@@ -105,6 +110,7 @@ async def download_and_store(
         title=item.title,
         circular_no=item.circular_no,
         issued_at=item.issued_at,
+        revised_at=item.revised_at,
         language=item.language,
         source_url=item.source_url,
         file_url=item.file_url,
@@ -153,6 +159,9 @@ async def _refresh_metadata_only(
         changed = True
     if item.issued_at and doc.issued_at != item.issued_at:
         doc.issued_at = item.issued_at
+        changed = True
+    if item.revised_at and (doc.revised_at is None or item.revised_at > doc.revised_at):
+        doc.revised_at = item.revised_at
         changed = True
     if item.meta:
         extra = dict(doc.extra or {})
