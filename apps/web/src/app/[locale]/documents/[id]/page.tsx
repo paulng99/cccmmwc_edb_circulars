@@ -7,6 +7,7 @@ import { Link, useRouter } from "@/i18n/routing";
 import DocumentChatPanel from "@/components/DocumentChatPanel";
 import PdfPreview from "@/components/PdfPreview";
 import { apiBase, fileUrl, type DocumentActivity } from "@/lib/api";
+import { agendaTitleLines } from "@/lib/agenda-title";
 import { useAuth } from "@/lib/auth";
 import { formatHkDate } from "@/lib/date";
 import { Icon } from "@/components/Icon";
@@ -354,18 +355,13 @@ export default function DocumentDetailPage() {
                   <p className="muted">{t("activitiesEmpty")}</p>
                 ) : (
                   <ul className="activity-blocks">
-                    {(doc.activities || []).map((act, idx) => {
-                      const itemTitle =
-                        act.name?.trim() ||
-                        (act.deadline_at ? "交回文件" : doc.title);
-                      const showDocTitle =
-                        Boolean(doc.title?.trim()) && doc.title.trim() !== itemTitle;
-                      return (
+                    {(doc.activities || []).map((act, idx) => (
                       <li key={`${act.name || "a"}-${act.starts_at || ""}-${act.deadline_at || ""}-${idx}`}>
-                        <strong>{itemTitle}</strong>
-                        {showDocTitle ? (
-                          <p className="activity-doc-title">{doc.title}</p>
-                        ) : null}
+                        {agendaTitleLines(act.name, doc.title).map((line) => (
+                          <strong key={line} className="activity-title">
+                            {line}
+                          </strong>
+                        ))}
                         {act.summary?.trim() ? (
                           <p className="activity-summary">{act.summary.trim()}</p>
                         ) : null}
@@ -381,8 +377,7 @@ export default function DocumentDetailPage() {
                           <span>{formatHkDate(act.deadline_at, t("dateMissing"))}</span>
                         </div>
                       </li>
-                      );
-                    })}
+                    ))}
                   </ul>
                 )}
               </div>
@@ -443,18 +438,13 @@ export default function DocumentDetailPage() {
                           <span>{t("activitiesEmpty")}</span>
                         ) : (
                           <ul className="activity-blocks">
-                            {(doc.activities || []).map((act, idx) => {
-                              const itemTitle =
-                                act.name?.trim() ||
-                                (act.deadline_at ? "交回文件" : doc.title);
-                              const showDocTitle =
-                                Boolean(doc.title?.trim()) && doc.title.trim() !== itemTitle;
-                              return (
+                            {(doc.activities || []).map((act, idx) => (
                               <li key={`${act.name || "a"}-${act.starts_at || ""}-${act.deadline_at || ""}-${idx}`}>
-                                <strong>{itemTitle}</strong>
-                                {showDocTitle ? (
-                                  <p className="activity-doc-title">{doc.title}</p>
-                                ) : null}
+                                {agendaTitleLines(act.name, doc.title).map((line) => (
+                                  <strong key={line} className="activity-title">
+                                    {line}
+                                  </strong>
+                                ))}
                                 {act.summary?.trim() ? (
                                   <p className="activity-summary">{act.summary.trim()}</p>
                                 ) : null}
@@ -470,8 +460,7 @@ export default function DocumentDetailPage() {
                                   <span>{formatHkDate(act.deadline_at, t("dateMissing"))}</span>
                                 </div>
                               </li>
-                              );
-                            })}
+                            ))}
                           </ul>
                         )}
                       </dd>

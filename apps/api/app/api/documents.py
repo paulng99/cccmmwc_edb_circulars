@@ -142,22 +142,15 @@ def _parse_iso_date(value: object) -> date | None:
         return None
 
 
-_DEFAULT_SUBMIT_TITLE = "交回文件"
-
-
 def _activity_events_for_doc(doc: Document) -> list[CalendarEventOut]:
     """Expand each activity into separate start/deadline rows (deduped per activity+date+kind)."""
     events: list[CalendarEventOut] = []
     seen: set[tuple[str, str, str | None, str]] = set()
     for act in _normalize_activities(doc.activities):
+        name = act.name
         for kind, raw in (("start", act.starts_at), ("deadline", act.deadline_at)):
             if not raw:
                 continue
-            # Deadlines without a title use 「交回文件」 — never the circular title.
-            if kind == "deadline":
-                name = act.name or _DEFAULT_SUBMIT_TITLE
-            else:
-                name = act.name
             key = (raw, kind, name, str(doc.id))
             if key in seen:
                 continue

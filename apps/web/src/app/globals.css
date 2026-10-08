@@ -4228,15 +4228,15 @@ input[type="checkbox"] {
 }
 
 .agenda-title {
+  display: block;
   font-size: 0.95rem;
   font-weight: 650;
   line-height: 1.35;
-}
-
-.agenda-doc-title {
-  font-size: 0.8rem;
-  color: var(--text-2);
-  line-height: 1.35;
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  text-overflow: clip;
 }
 
 .agenda-summary,
@@ -4291,16 +4291,18 @@ input[type="checkbox"] {
   background: var(--surface-2);
 }
 
-.activity-blocks li strong {
+.activity-blocks li strong,
+.activity-title {
   display: block;
-  margin-bottom: 0.25rem;
-}
-
-.activity-doc-title {
-  margin: 0 0 0.35rem;
-  font-size: 0.8rem;
-  color: var(--text-2);
+  margin-bottom: 0.15rem;
+  font-size: 0.95rem;
+  font-weight: 650;
   line-height: 1.35;
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  text-overflow: clip;
 }
 
 .activity-summary,

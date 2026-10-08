@@ -1,5 +1,6 @@
 import { Link } from "@/i18n/routing";
 import type { CalendarEvent } from "@/lib/api";
+import { agendaTitleLines } from "@/lib/agenda-title";
 
 type Props = {
   event: CalendarEvent;
@@ -7,16 +8,12 @@ type Props = {
 };
 
 /**
- * Google Calendar–style agenda row: kind on the left; title, optional circular
- * title (smaller), optional summary, optional location on the right.
+ * Google Calendar–style agenda row: kind on the left; two-line title (item then
+ * notice, same size), optional summary, optional location on the right.
  * Missing summary/location omit those lines (no blank placeholders).
  */
 export function AgendaEventRow({ event, kindLabel }: Props) {
-  const itemTitle =
-    event.activity_name?.trim() ||
-    (event.kind === "deadline" ? "交回文件" : event.document_title);
-  const docTitle = event.document_title?.trim() || "";
-  const showDocTitle = Boolean(docTitle) && docTitle !== itemTitle;
+  const titleLines = agendaTitleLines(event.activity_name, event.document_title);
   const summary = event.summary?.trim() || "";
   const location = event.location?.trim() || "";
 
@@ -26,8 +23,11 @@ export function AgendaEventRow({ event, kindLabel }: Props) {
         {kindLabel}
       </span>
       <span className="agenda-body">
-        <strong className="agenda-title">{itemTitle}</strong>
-        {showDocTitle ? <span className="agenda-doc-title">{docTitle}</span> : null}
+        {titleLines.map((line) => (
+          <strong key={line} className="agenda-title">
+            {line}
+          </strong>
+        ))}
         {summary ? <span className="agenda-summary">{summary}</span> : null}
         {location ? <span className="agenda-location">{location}</span> : null}
       </span>
