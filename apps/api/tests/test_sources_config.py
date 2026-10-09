@@ -34,7 +34,16 @@ def test_validate_site_attachments_ok():
     out = validate_source(_site())
     assert out["id"] == "edb_example"
     assert out["enabled"] is False
+    assert out["auto_ai_analyze"] is False
     assert out["file_extensions"] == [".pdf"]
+
+
+def test_auto_ai_analyze_defaults_off_and_accepts_bool():
+    assert validate_source(_site())["auto_ai_analyze"] is False
+    assert validate_source(_circular())["auto_ai_analyze"] is False
+    assert validate_source(_site(auto_ai_analyze=True))["auto_ai_analyze"] is True
+    with pytest.raises(SourceConfigError, match="auto_ai_analyze must be boolean"):
+        validate_source(_site(auto_ai_analyze="yes"))
 
 
 def test_reject_bad_id_unknown_type_and_empty_hosts():

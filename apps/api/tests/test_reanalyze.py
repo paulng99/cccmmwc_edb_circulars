@@ -23,6 +23,7 @@ from app.services.reanalyze import (
     reanalyze_documents,
     reanalyze_one,
     school_action_from_extra,
+    source_auto_ai_enabled,
     with_unverified_prefix,
 )
 
@@ -392,8 +393,7 @@ async def test_reanalyze_api_dedupes_ids(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_maybe_auto_ai_analyze_skips_when_off(monkeypatch):
-    monkeypatch.setattr(reanalyze_mod, "resolved_settings", lambda: {"auto_ai_analyze": False})
+async def test_maybe_auto_ai_analyze_skips_when_source_off(monkeypatch):
     called = False
 
     async def boom(db, doc_id):
@@ -402,14 +402,13 @@ async def test_maybe_auto_ai_analyze_skips_when_off(monkeypatch):
         return {}
 
     monkeypatch.setattr(reanalyze_mod, "reanalyze_one", boom)
-    ran = await maybe_auto_ai_analyze(AsyncMock(), uuid.uuid4(), has_text=True)
+    ran = await maybe_auto_ai_analyze(AsyncMock(), uuid.uuid4(), has_text=True, enabled=False)
     assert ran is False
     assert called is False
 
 
 @pytest.mark.asyncio
 async def test_maybe_auto_ai_analyze_skips_without_text(monkeypatch):
-    monkeypatch.setattr(reanalyze_mod, "resolved_settings", lambda: {"auto_ai_analyze": True})
     called = False
 
     async def boom(db, doc_id):
@@ -418,7 +417,7 @@ async def test_maybe_auto_ai_analyze_skips_without_text(monkeypatch):
         return {}
 
     monkeypatch.setattr(reanalyze_mod, "reanalyze_one", boom)
-    ran = await maybe_auto_ai_analyze(AsyncMock(), uuid.uuid4(), has_text=False)
+    ran = await maybe_auto_ai_analyze(AsyncMock(), uuid.uuid4(), has_text=False, enabled=True)
     assert ran is False
     assert called is False
 
@@ -434,7 +433,6 @@ def _session_with_savepoint() -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_maybe_auto_ai_analyze_runs_when_on(monkeypatch):
-    monkeypatch.setattr(reanalyze_mod, "resolved_settings", lambda: {"auto_ai_analyze": True})
     doc_id = uuid.uuid4()
     seen: dict = {}
 
@@ -444,7 +442,7 @@ async def test_maybe_auto_ai_analyze_runs_when_on(monkeypatch):
 
     monkeypatch.setattr(reanalyze_mod, "reanalyze_one", fake)
     session = _session_with_savepoint()
-    ran = await maybe_auto_ai_analyze(session, doc_id, has_text=True)
+    ran = await maybe_auto_ai_analyze(session, doc_id, has_text=True, enabled=True)
     assert ran is True
     assert seen["id"] == doc_id
     session.begin_nested.assert_called_once()
@@ -452,14 +450,42 @@ async def test_maybe_auto_ai_analyze_runs_when_on(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_maybe_auto_ai_analyze_keeps_index_going_on_error(monkeypatch):
-    monkeypatch.setattr(reanalyze_mod, "resolved_settings", lambda: {"auto_ai_analyze": True})
-
     async def boom(db, doc_id):
         raise RuntimeError("llm down")
 
     monkeypatch.setattr(reanalyze_mod, "reanalyze_one", boom)
-    ran = await maybe_auto_ai_analyze(_session_with_savepoint(), uuid.uuid4(), has_text=True)
+    ran = await maybe_auto_ai_analyze(
+        _session_with_savepoint(),
+        uuid.uuid4(),
+        has_text=True,
+        enabled=True,
+    )
     assert ran is True
+
+
+def test_source_auto_ai_enabled_reads_matching_source(monkeypatch):
+    monkeypatch.setattr(
+        reanalyze_mod,
+        "load_sources_config",
+        lambda: [
+            {"id": "edb_circulars", "auto_ai_analyze": True},
+            {"id": "edb_www"},
+            {"id": "sss_sister", "auto_ai_analyze": False},
+        ],
+    )
+    assert source_auto_ai_enabled("edb_circulars") is True
+    assert source_auto_ai_enabled("edb_www") is False
+    assert source_auto_ai_enabled("sss_sister") is False
+    assert source_auto_ai_enabled(None) is False
+    assert source_auto_ai_enabled("missing") is False
+
+
+def test_source_auto_ai_enabled_false_when_config_unreadable(monkeypatch):
+    def boom():
+        raise OSError("missing")
+
+    monkeypatch.setattr(reanalyze_mod, "load_sources_config", boom)
+    assert source_auto_ai_enabled("edb_circulars") is False
 
 
 @pytest.mark.asyncio
@@ -469,6 +495,7 @@ async def test_index_document_calls_auto_ai_when_text_indexed(monkeypatch):
     doc_id = uuid.uuid4()
     doc = SimpleNamespace(
         id=doc_id,
+        source_id="edb_circulars",
         storage_key="k",
         mime_type="text/plain",
         extra={},
@@ -506,15 +533,17 @@ async def test_index_document_calls_auto_ai_when_text_indexed(monkeypatch):
 
     seen: dict = {}
 
-    async def fake_auto(db, incoming, *, has_text):
+    async def fake_auto(db, incoming, *, has_text, enabled):
         seen["id"] = incoming
         seen["has_text"] = has_text
+        seen["enabled"] = enabled
         return True
 
     monkeypatch.setattr("app.services.rag.maybe_auto_ai_analyze", fake_auto)
+    monkeypatch.setattr("app.services.rag.source_auto_ai_enabled", lambda source_id: source_id == "edb_circulars")
 
     result = await index_document(session, doc_id)
     assert result["ok"] is True
     assert result["chunks"] == 1
-    assert seen == {"id": doc_id, "has_text": True}
+    assert seen == {"id": doc_id, "has_text": True, "enabled": True}
     session.flush.assert_awaited()

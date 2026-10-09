@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.collectors.activity_dates import apply_document_activities
+from app.collectors.registry import load_sources_config
 from app.models.entities import Document, DocumentChunk
 from app.services.ingest import extract_text_from_pdf, sanitize_text
 from app.services.llm import get_llm_client
@@ -342,9 +343,19 @@ async def reanalyze_one(db: AsyncSession, document_id: uuid.UUID) -> dict[str, A
     }
 
 
-def auto_ai_analyze_enabled() -> bool:
-    """True when indexing should ask the LLM for school actions and activity dates."""
-    return bool(resolved_settings().get("auto_ai_analyze"))
+def source_auto_ai_enabled(source_id: str | None) -> bool:
+    """True when this knowledge source asks indexing to use the LLM."""
+    if not source_id:
+        return False
+    try:
+        sources = load_sources_config()
+    except Exception:
+        logger.exception("Could not read sources while checking auto AI analysis")
+        return False
+    for src in sources:
+        if isinstance(src, dict) and src.get("id") == source_id:
+            return src.get("auto_ai_analyze") is True
+    return False
 
 
 async def maybe_auto_ai_analyze(
@@ -352,13 +363,15 @@ async def maybe_auto_ai_analyze(
     document_id: uuid.UUID,
     *,
     has_text: bool,
+    enabled: bool,
 ) -> bool:
     """Run school-action and activity-date analysis after a document is indexed.
 
-    Returns True when analysis was attempted. Failures stay inside this call so
-    indexing can still finish with the local date rules already stored.
+    ``enabled`` comes from that document's knowledge source. Returns True when
+    analysis was attempted. Failures stay inside this call so indexing can still
+    finish with the local date rules already stored.
     """
-    if not has_text or not auto_ai_analyze_enabled():
+    if not has_text or not enabled:
         return False
     try:
         # Savepoint: a failed analysis must not abort the index transaction.

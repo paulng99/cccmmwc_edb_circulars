@@ -20,6 +20,7 @@ type FormState = {
   nameEn: string;
   nameZh: string;
   enabled: boolean;
+  autoAi: boolean;
   priority: string;
   type: CrawlSource["type"];
   baseUrl: string;
@@ -65,6 +66,7 @@ function emptyForm(type: CrawlSource["type"] = "site_attachments"): FormState {
     nameEn: "",
     nameZh: "",
     enabled: false,
+    autoAi: false,
     priority: "1",
     type,
     baseUrl: "",
@@ -87,6 +89,7 @@ function sourceToForm(s: CrawlSource): FormState {
     nameEn: s.name.en,
     nameZh: s.name["zh-HK"],
     enabled: s.enabled,
+    autoAi: s.auto_ai_analyze === true,
     priority: String(s.priority),
     type: s.type,
     baseUrl: s.base_url,
@@ -125,6 +128,7 @@ function formToSource(form: FormState): CrawlSource {
     id: form.id.trim(),
     name: { en: form.nameEn.trim(), "zh-HK": form.nameZh.trim() },
     enabled: form.enabled,
+    auto_ai_analyze: form.autoAi,
     priority: parseInt(form.priority, 10) || 0,
     type: form.type,
     base_url: form.baseUrl.trim(),
@@ -258,6 +262,14 @@ export default function SourcesSection({ token }: Props) {
 
   function onToggleEnabled(id: string, enabled: boolean) {
     setSources((prev) => prev.map((s) => (s.id === id ? { ...s, enabled } : s)));
+    setSuccess("");
+  }
+
+  function onToggleAutoAi(id: string, enabled: boolean) {
+    setSources((prev) => prev.map((s) => (s.id === id ? { ...s, auto_ai_analyze: enabled } : s)));
+    if (editingOriginalId === id) {
+      setForm((prev) => ({ ...prev, autoAi: enabled }));
+    }
     setSuccess("");
   }
 
@@ -469,6 +481,16 @@ export default function SourcesSection({ token }: Props) {
                   </div>
                 </div>
                 <div className="row-actions">
+                  <button
+                    className={`btn sm icon-only${s.auto_ai_analyze ? " soft" : " ghost"}`}
+                    type="button"
+                    aria-pressed={s.auto_ai_analyze === true}
+                    aria-label={`${t("sourcesAutoAi")}: ${s.name["zh-HK"] || s.name.en}`}
+                    title={s.auto_ai_analyze ? t("sourcesAutoAiOn") : t("sourcesAutoAiOff")}
+                    onClick={() => onToggleAutoAi(s.id, s.auto_ai_analyze !== true)}
+                  >
+                    <Icon name="sparkles" />
+                  </button>
                   {pendingDelete === s.id ? (
                     <>
                       <span className="muted" style={{ fontSize: "0.8rem" }}>
@@ -566,6 +588,16 @@ export default function SourcesSection({ token }: Props) {
                 <Switch checked={form.enabled} onChange={(v) => updateForm("enabled", v)} label={t("sourcesEnabled")} />
               </div>
             ) : null}
+            <div className="switch-row">
+              <div className="switch-row-text">
+                <strong style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                  <Icon name="sparkles" size={16} />
+                  {t("sourcesAutoAi")}
+                </strong>
+                <span>{t("sourcesAutoAiHint")}</span>
+              </div>
+              <Switch checked={form.autoAi} onChange={(v) => updateForm("autoAi", v)} label={t("sourcesAutoAi")} />
+            </div>
 
             <div className="drawer-section">{t("sectionSchedule")}</div>
             <div className="field-grid">

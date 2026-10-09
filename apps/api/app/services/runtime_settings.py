@@ -54,7 +54,6 @@ EDITABLE_KEYS = frozenset({
     "jina_api_key", "jina_embedding_model", "jina_embedding_dim", "jina_reranker_model",
     "dify_enabled", "dify_api_url", "dify_dataset_api_key", "dify_app_api_key", "dify_dataset_id",
     "crawl_enabled", "crawl_user_agent", "crawl_rate_limit_seconds",
-    "auto_ai_analyze",
     "storage_backend", "local_storage_path",
     "minio_endpoint", "minio_access_key", "minio_secret_key", "minio_bucket",
     "minio_public_url", "minio_secure",
@@ -191,8 +190,6 @@ def defaults_from_env(settings: Settings) -> dict[str, Any]:
         "dify_app_api_key": settings.dify_app_api_key,
         "dify_dataset_id": settings.dify_dataset_id,
         "crawl_enabled": settings.crawl_enabled,
-        # Off by default: indexing uses local date rules; school actions stay manual.
-        "auto_ai_analyze": False,
         "crawl_user_agent": settings.crawl_user_agent,
         "crawl_rate_limit_seconds": settings.crawl_rate_limit_seconds,
         "storage_backend": settings.storage_backend,
@@ -255,8 +252,6 @@ def apply_patch(current: dict[str, Any], patch: dict[str, Any]) -> tuple[dict[st
         if k in ("max_tokens", "jina_embedding_dim"):
             if not isinstance(v, int) or v < 1:
                 raise ValueError(f"{k} must be int >= 1")
-        if k == "auto_ai_analyze" and not isinstance(v, bool):
-            raise ValueError("auto_ai_analyze must be a boolean")
         if k == "llm_provider" and v not in ("openrouter", "ollama"):
             raise ValueError("llm_provider must be openrouter or ollama")
         if k == "storage_backend" and v not in ("local", "minio"):
