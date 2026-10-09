@@ -18,6 +18,7 @@ from app.services.reanalyze import (
     FAIL_KEEP_MESSAGE,
     UNVERIFIED_PREFIX,
     answer_model_configured,
+    maybe_auto_ai_analyze,
     parse_llm_activities,
     reanalyze_documents,
     reanalyze_one,
@@ -388,3 +389,132 @@ async def test_reanalyze_api_dedupes_ids(monkeypatch):
     body = ReanalyzeBody(document_ids=[doc_id, doc_id])
     await reanalyze_selected(body, db=db, user=MagicMock())
     assert seen == [doc_id]
+
+
+@pytest.mark.asyncio
+async def test_maybe_auto_ai_analyze_skips_when_off(monkeypatch):
+    monkeypatch.setattr(reanalyze_mod, "resolved_settings", lambda: {"auto_ai_analyze": False})
+    called = False
+
+    async def boom(db, doc_id):
+        nonlocal called
+        called = True
+        return {}
+
+    monkeypatch.setattr(reanalyze_mod, "reanalyze_one", boom)
+    ran = await maybe_auto_ai_analyze(AsyncMock(), uuid.uuid4(), has_text=True)
+    assert ran is False
+    assert called is False
+
+
+@pytest.mark.asyncio
+async def test_maybe_auto_ai_analyze_skips_without_text(monkeypatch):
+    monkeypatch.setattr(reanalyze_mod, "resolved_settings", lambda: {"auto_ai_analyze": True})
+    called = False
+
+    async def boom(db, doc_id):
+        nonlocal called
+        called = True
+        return {}
+
+    monkeypatch.setattr(reanalyze_mod, "reanalyze_one", boom)
+    ran = await maybe_auto_ai_analyze(AsyncMock(), uuid.uuid4(), has_text=False)
+    assert ran is False
+    assert called is False
+
+
+def _session_with_savepoint() -> MagicMock:
+    nested = MagicMock()
+    nested.__aenter__ = AsyncMock(return_value=None)
+    nested.__aexit__ = AsyncMock(return_value=False)
+    session = MagicMock()
+    session.begin_nested = MagicMock(return_value=nested)
+    return session
+
+
+@pytest.mark.asyncio
+async def test_maybe_auto_ai_analyze_runs_when_on(monkeypatch):
+    monkeypatch.setattr(reanalyze_mod, "resolved_settings", lambda: {"auto_ai_analyze": True})
+    doc_id = uuid.uuid4()
+    seen: dict = {}
+
+    async def fake(db, incoming):
+        seen["id"] = incoming
+        return {"ok": True}
+
+    monkeypatch.setattr(reanalyze_mod, "reanalyze_one", fake)
+    session = _session_with_savepoint()
+    ran = await maybe_auto_ai_analyze(session, doc_id, has_text=True)
+    assert ran is True
+    assert seen["id"] == doc_id
+    session.begin_nested.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_maybe_auto_ai_analyze_keeps_index_going_on_error(monkeypatch):
+    monkeypatch.setattr(reanalyze_mod, "resolved_settings", lambda: {"auto_ai_analyze": True})
+
+    async def boom(db, doc_id):
+        raise RuntimeError("llm down")
+
+    monkeypatch.setattr(reanalyze_mod, "reanalyze_one", boom)
+    ran = await maybe_auto_ai_analyze(_session_with_savepoint(), uuid.uuid4(), has_text=True)
+    assert ran is True
+
+
+@pytest.mark.asyncio
+async def test_index_document_calls_auto_ai_when_text_indexed(monkeypatch):
+    from app.services.rag import index_document
+
+    doc_id = uuid.uuid4()
+    doc = SimpleNamespace(
+        id=doc_id,
+        storage_key="k",
+        mime_type="text/plain",
+        extra={},
+        status="stored",
+    )
+    session = MagicMock()
+    session.get = AsyncMock(return_value=doc)
+    session.commit = AsyncMock()
+    session.flush = AsyncMock()
+    session.execute = AsyncMock()
+    session.rollback = AsyncMock()
+    session.add = MagicMock()
+
+    monkeypatch.setattr("app.services.rag.get_object_bytes", lambda key: b"school must reply")
+    monkeypatch.setattr("app.services.rag.apply_document_dates", lambda *a, **k: None)
+    monkeypatch.setattr("app.services.rag.apply_document_activities", lambda *a, **k: None)
+    monkeypatch.setattr("app.services.rag.chunk_text", lambda text: ["school must reply"])
+
+    class Embedder:
+        async def embed(self, batch):
+            return [[0.1] for _ in batch]
+
+    monkeypatch.setattr("app.services.rag.get_embedding_backend", lambda: Embedder())
+
+    async def classify(*_a, **_k):
+        return None
+
+    monkeypatch.setattr("app.services.classify.apply_classification", classify)
+
+    class Sync:
+        async def sync_document(self, *_a, **_k):
+            return None
+
+    monkeypatch.setattr("app.services.rag.get_dify_sync", lambda: Sync())
+
+    seen: dict = {}
+
+    async def fake_auto(db, incoming, *, has_text):
+        seen["id"] = incoming
+        seen["has_text"] = has_text
+        return True
+
+    monkeypatch.setattr("app.services.rag.maybe_auto_ai_analyze", fake_auto)
+
+    result = await index_document(session, doc_id)
+    assert result["ok"] is True
+    assert result["chunks"] == 1
+    assert seen == {"id": doc_id, "has_text": True}
+    session.flush.assert_awaited()

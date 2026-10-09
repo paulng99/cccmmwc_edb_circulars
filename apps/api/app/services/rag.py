@@ -16,6 +16,7 @@ from app.models.entities import Document, DocumentChunk
 from app.services.dify import get_dify_sync
 from app.services.embeddings import get_embedding_backend
 from app.services.ingest import chunk_text, extract_text_from_pdf
+from app.services.reanalyze import maybe_auto_ai_analyze
 from app.services.storage import get_object_bytes
 from app.services.usage import usage_scope
 
@@ -101,6 +102,9 @@ async def index_document(session: AsyncSession, document_id: uuid.UUID) -> dict[
             await apply_classification(doc, use_llm=True, force_topics=False)
         except Exception:
             logger.exception("Classification failed for %s", document_id)
+        # Chunks must be visible so analysis can read them without a second PDF pass.
+        await session.flush()
+        await maybe_auto_ai_analyze(session, doc.id, has_text=bool(text and text.strip()))
         await session.commit()
 
         sync = get_dify_sync()

@@ -45,6 +45,7 @@ def test_defaults_include_new_keys():
     assert d["local_top_k"] == 10
     assert d["dify_top_k"] == 5
     assert d["cite_inline_refs"] is True
+    assert d["auto_ai_analyze"] is False
     assert d["system_prompt"] == DEFAULT_SYSTEM_PROMPT
     assert d["openrouter_api_key"] == "secret-key"
     assert d["llm_provider"] == "openrouter"
@@ -71,6 +72,22 @@ def test_apply_patch_dim_warns():
     new, warnings = apply_patch(current, {"jina_embedding_dim": 768})
     assert new["jina_embedding_dim"] == 768
     assert "reindex_required" in warnings
+
+
+def test_apply_patch_auto_ai_analyze_bool():
+    current = {"auto_ai_analyze": False}
+    new, warnings = apply_patch(current, {"auto_ai_analyze": True})
+    assert new["auto_ai_analyze"] is True
+    assert warnings == []
+    new, warnings = apply_patch(new, {"auto_ai_analyze": False})
+    assert new["auto_ai_analyze"] is False
+    assert warnings == []
+
+
+@pytest.mark.parametrize("value", [1, 0, "true", "false", None, "yes"])
+def test_apply_patch_rejects_auto_ai_analyze_non_bool(value):
+    with pytest.raises(ValueError, match="auto_ai_analyze must be a boolean"):
+        apply_patch({"auto_ai_analyze": False}, {"auto_ai_analyze": value})
 
 
 def test_apply_patch_rejects_unknown():
