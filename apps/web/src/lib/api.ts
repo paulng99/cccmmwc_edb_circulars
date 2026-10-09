@@ -280,6 +280,7 @@ export type ReanalyzeResult = {
   document_id: string;
   ok: boolean;
   school_action?: string | null;
+  activities?: DocumentActivity[];
   error?: string | null;
   message?: string | null;
 };

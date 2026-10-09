@@ -6,10 +6,11 @@ import { useParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/routing";
 import DocumentChatPanel from "@/components/DocumentChatPanel";
 import PdfPreview from "@/components/PdfPreview";
-import { apiBase, fileUrl, type DocumentActivity } from "@/lib/api";
+import { apiBase, fileUrl, reanalyzeDocuments, type DocumentActivity } from "@/lib/api";
 import { agendaTitleLines } from "@/lib/agenda-title";
 import { useAuth } from "@/lib/auth";
 import { formatHkDate } from "@/lib/date";
+import { displaySchoolAction } from "@/lib/school-action";
 import { Icon } from "@/components/Icon";
 import { langLabel, statusTone } from "@/lib/taxonomy";
 
@@ -62,6 +63,9 @@ export default function DocumentDetailPage() {
   const [blobDownloadUrl, setBlobDownloadUrl] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [reanalyzeConfirmOpen, setReanalyzeConfirmOpen] = useState(false);
+  const [reanalyzeNotice, setReanalyzeNotice] = useState<string | null>(null);
 
   const pdfApiUrl = useMemo(() => (params?.id ? fileUrl(params.id) : ""), [params?.id]);
 
@@ -76,13 +80,15 @@ export default function DocumentDetailPage() {
   }, [blobDownloadUrl]);
 
   useEffect(() => {
-    if (!detailsOpen) return;
+    if (!detailsOpen && !reanalyzeConfirmOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setDetailsOpen(false);
+      if (e.key !== "Escape") return;
+      if (reanalyzeConfirmOpen) setReanalyzeConfirmOpen(false);
+      else setDetailsOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [detailsOpen]);
+  }, [detailsOpen, reanalyzeConfirmOpen]);
 
   useEffect(() => {
     if (!token || !params?.id) return;
@@ -165,7 +171,41 @@ export default function DocumentDetailPage() {
     }
   }, [doc, downloadViaBlob]);
 
+  const runAiReanalyze = useCallback(async () => {
+    if (!token || !doc || reanalyzing) return;
+    setReanalyzeConfirmOpen(false);
+    setReanalyzing(true);
+    setReanalyzeNotice(null);
+    try {
+      const data = await reanalyzeDocuments(token, [doc.id]);
+      const hit = data.results[0];
+      if (!hit) {
+        setReanalyzeNotice(t("reanalyzeRequestFail"));
+        return;
+      }
+      setDoc((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          school_action: hit.ok && hit.school_action ? hit.school_action : prev.school_action,
+          activities: hit.activities ?? prev.activities,
+        };
+      });
+      if (hit.ok) {
+        setReanalyzeNotice(t("reanalyzeDone", { ok: 1, fail: 0 }));
+      } else {
+        setReanalyzeNotice(hit.message || t("reanalyzeFailKeep"));
+      }
+    } catch {
+      setReanalyzeNotice(t("reanalyzeRequestFail"));
+    } finally {
+      setReanalyzing(false);
+    }
+  }, [token, doc, reanalyzing, t]);
+
   if (!token) return null;
+
+  const schoolActionDisplay = displaySchoolAction(doc?.school_action);
 
   const statusLabelKey: Record<string, string> = {
     ready: "statusReady",
@@ -350,12 +390,30 @@ export default function DocumentDetailPage() {
                 <PdfPreview fileUrl={pdfApiUrl} token={token} />
               </div>
               <div className="doc-school-action-block">
-                <h3>
-                  <Icon name="file-text" />
-                  {t("schoolAction")}
-                </h3>
-                {doc.school_action?.trim() ? (
-                  <p className="school-action-text">{doc.school_action.trim()}</p>
+                <div className="doc-school-action-head">
+                  <h3>
+                    <Icon name="file-text" />
+                    {t("schoolAction")}
+                  </h3>
+                  <button
+                    type="button"
+                    className={`btn ghost sm icon-only school-action-ai${reanalyzing ? " is-loading" : ""}`}
+                    onClick={() => setReanalyzeConfirmOpen(true)}
+                    disabled={reanalyzing}
+                    aria-label={reanalyzing ? t("reanalyzeAnalyzing") : t("reanalyzeAi")}
+                    title={reanalyzing ? t("reanalyzeAnalyzing") : t("reanalyzeAi")}
+                  >
+                    {reanalyzing ? <span className="spinner" /> : <Icon name="sparkles" />}
+                  </button>
+                </div>
+                {reanalyzeNotice ? (
+                  <div className="alert info reanalyze-notice" role="status" style={{ marginBottom: "0.75rem" }}>
+                    <Icon name="info" />
+                    <span>{reanalyzeNotice}</span>
+                  </div>
+                ) : null}
+                {schoolActionDisplay ? (
+                  <p className="school-action-text">{schoolActionDisplay}</p>
                 ) : (
                   <p className="muted">{t("schoolActionEmpty")}</p>
                 )}
@@ -405,6 +463,51 @@ export default function DocumentDetailPage() {
               token={token}
               onClose={() => setChatOpen(false)}
             />
+          ) : null}
+
+          {reanalyzeConfirmOpen ? (
+            <>
+              <div className="drawer-backdrop" onClick={() => setReanalyzeConfirmOpen(false)} />
+              <div
+                className="detail-meta-dialog reanalyze-confirm-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="reanalyze-confirm-title"
+              >
+                <div className="drawer-head">
+                  <h3 id="reanalyze-confirm-title">{t("reanalyzeConfirmTitle")}</h3>
+                  <button
+                    type="button"
+                    className="btn ghost sm icon-only"
+                    onClick={() => setReanalyzeConfirmOpen(false)}
+                    aria-label={t("reanalyzeCancel")}
+                  >
+                    <Icon name="x" />
+                  </button>
+                </div>
+                <div className="detail-meta-dialog-body">
+                  <p className="reanalyze-confirm-text">{t("reanalyzeConfirm")}</p>
+                </div>
+                <div className="drawer-foot reanalyze-confirm-actions">
+                  <button
+                    type="button"
+                    className="btn secondary sm"
+                    onClick={() => setReanalyzeConfirmOpen(false)}
+                  >
+                    {t("reanalyzeCancel")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn sm"
+                    onClick={() => void runAiReanalyze()}
+                    disabled={reanalyzing}
+                  >
+                    <Icon name="sparkles" />
+                    {t("reanalyzeConfirmAction")}
+                  </button>
+                </div>
+              </div>
+            </>
           ) : null}
 
           {detailsOpen ? (

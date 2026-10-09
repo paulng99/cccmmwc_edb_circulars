@@ -21,18 +21,60 @@ export function toggleIdInSet(selected: ReadonlySet<string>, id: string): Set<st
   return next;
 }
 
-export function applyReanalyzeResults<T extends { id: string; school_action?: string | null }>(
-  items: T[],
-  results: Array<{ document_id: string; ok: boolean; school_action?: string | null }>,
-): T[] {
+/** Expand selected group primary ids to every language variant id. */
+export function expandSelectedDocumentIds<T extends { primary_id: string; variants: Array<{ id: string }> }>(
+  groups: T[],
+  selectedPrimaryIds: ReadonlySet<string>,
+): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const group of groups) {
+    if (!selectedPrimaryIds.has(group.primary_id)) continue;
+    for (const variant of group.variants) {
+      if (seen.has(variant.id)) continue;
+      seen.add(variant.id);
+      ids.push(variant.id);
+    }
+    if (!seen.has(group.primary_id)) {
+      seen.add(group.primary_id);
+      ids.push(group.primary_id);
+    }
+  }
+  return ids;
+}
+
+type ReanalyzeHit = {
+  document_id: string;
+  ok: boolean;
+  school_action?: string | null;
+  activities?: unknown;
+};
+
+export function applyReanalyzeResults<
+  T extends {
+    id?: string;
+    primary_id?: string;
+    variants?: Array<{ id: string }>;
+    school_action?: string | null;
+    activities?: unknown;
+  },
+>(items: T[], results: ReanalyzeHit[]): T[] {
   const byId = new Map(results.map((r) => [r.document_id, r]));
   return items.map((item) => {
-    const hit = byId.get(item.id);
+    const candidateIds = [
+      item.primary_id,
+      item.id,
+      ...(item.variants || []).map((v) => v.id),
+    ].filter((id): id is string => Boolean(id));
+    const hit = candidateIds.map((id) => byId.get(id)).find(Boolean);
     if (!hit) return item;
+    const next: T = { ...item };
     if (hit.ok && hit.school_action) {
-      return { ...item, school_action: hit.school_action };
+      next.school_action = hit.school_action;
     }
-    // Failure: keep previous school_action (do not blank it).
-    return item;
+    if (Array.isArray(hit.activities)) {
+      next.activities = hit.activities;
+    }
+    return next;
   });
 }

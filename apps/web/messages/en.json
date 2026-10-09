@@ -167,6 +167,11 @@
     "reanalyzeFailKeep": "Could not re-analyze; the previous result is unchanged",
     "reanalyzeDone": "Re-analyze finished: {ok} succeeded, {fail} failed",
     "reanalyzeRequestFail": "Could not start re-analyze. Please try again.",
+    "reanalyzeConfirm": "Re-analyze what the school should do for this circular, and re-extract all activity start/deadline dates?",
+    "reanalyzeConfirmTitle": "Confirm re-analyze",
+    "reanalyzeConfirmAction": "Start analysis",
+    "reanalyzeCancel": "Cancel",
+    "reanalyzeAi": "AI re-analyze",
     "schoolAction": "What the school should do",
     "schoolActionEmpty": "Not re-analyzed yet",
     "originalText": "Original circular"

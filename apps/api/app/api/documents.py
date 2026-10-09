@@ -277,6 +277,7 @@ def _to_groups(
                     for d in members_sorted
                 ],
                 school_action=school_action_from_extra(getattr(primary, "extra", None)),
+                activities=_normalize_activities(getattr(primary, "activities", None)),
             )
         )
 
@@ -434,8 +435,9 @@ async def reanalyze_selected(
 ) -> ReanalyzeResponse:
     """Re-analyze only the selected documents with the answer-model provider.
 
-    Sends each selected circular body to the existing Q&A LLM client. Does not
-    re-embed, change calendar activities, or touch unselected documents.
+    Sends each selected circular body to the existing Q&A LLM client and
+    refreshes local activity start/deadline extraction. Does not re-embed or
+    touch unselected documents.
     """
     del user  # auth gate only
     # Deduplicate while preserving order — never widen beyond the client's selection.
@@ -449,7 +451,12 @@ async def reanalyze_selected(
 
     raw_results = await reanalyze_documents(db, ordered)
     await db.commit()
-    return ReanalyzeResponse(results=[ReanalyzeItemOut(**item) for item in raw_results])
+    results: list[ReanalyzeItemOut] = []
+    for item in raw_results:
+        payload = dict(item)
+        payload["activities"] = _normalize_activities(payload.get("activities"))
+        results.append(ReanalyzeItemOut(**payload))
+    return ReanalyzeResponse(results=results)
 
 
 @router.get("/{document_id}")

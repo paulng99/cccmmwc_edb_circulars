@@ -120,10 +120,11 @@ class _FakeDb:
 
 
 @pytest.mark.asyncio
-async def test_reanalyze_one_success_prefixes_and_keeps_activities(monkeypatch):
+async def test_reanalyze_one_success_prefixes_and_refreshes_activities(monkeypatch):
     doc = _fake_doc()
     db = _FakeDb(doc)
     seen: dict = {}
+    old_activities = list(doc.activities)
 
     class FakeLlm:
         async def chat(self, messages, stream=False, reasoning=True, *, apply_top_p=False):
@@ -141,8 +142,10 @@ async def test_reanalyze_one_success_prefixes_and_keeps_activities(monkeypatch):
     assert result["school_action"] == f"{UNVERIFIED_PREFIX}\n{FIXTURE_NEW_RAW}"
     assert doc.extra["school_action"] == result["school_action"]
     assert db.flushed is True
-    # Calendar / local activity extraction must stay untouched.
-    assert doc.activities[0]["summary"] == "本地抽取內容"
+    # Local activity extraction is refreshed from the circular body.
+    assert result["activities"] == doc.activities
+    assert doc.activities != old_activities
+    assert any(a.get("deadline_at") == "2026-10-31" for a in doc.activities)
     assert seen["stream"] is False
     assert seen["reasoning"] is False
     assert seen["apply_top_p"] is True
@@ -150,9 +153,10 @@ async def test_reanalyze_one_success_prefixes_and_keeps_activities(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_reanalyze_one_failure_keeps_old_action(monkeypatch):
+async def test_reanalyze_one_failure_keeps_old_action_but_refreshes_activities(monkeypatch):
     doc = _fake_doc()
     db = _FakeDb(doc)
+    old_activities = list(doc.activities)
 
     class EmptyLlm:
         async def chat(self, *args, **kwargs):
@@ -167,7 +171,9 @@ async def test_reanalyze_one_failure_keeps_old_action(monkeypatch):
     assert result["message"] == FAIL_KEEP_MESSAGE
     assert result["school_action"] == FIXTURE_OLD_ACTION
     assert doc.extra["school_action"] == FIXTURE_OLD_ACTION
-    assert db.flushed is False
+    assert doc.activities != old_activities
+    assert result["activities"] == doc.activities
+    assert db.flushed is True
 
 
 @pytest.mark.asyncio

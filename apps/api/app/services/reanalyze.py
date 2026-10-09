@@ -1,7 +1,7 @@
-"""Re-analyze selected circulars: one school-action paragraph via the answer LLM.
+"""Re-analyze selected circulars: school-action paragraph via the answer LLM.
 
-Does not re-embed, reclassify, or change calendar activity dates.
-Only the selected document body text is sent to the existing answer-model client.
+Also re-extracts calendar activity start/deadline dates with the local regex
+collector (not the LLM). Does not re-embed or reclassify.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.collectors.activity_dates import apply_document_activities
 from app.models.entities import Document, DocumentChunk
 from app.services.ingest import extract_text_from_pdf, sanitize_text
 from app.services.llm import get_llm_client
@@ -64,6 +65,28 @@ def with_unverified_prefix(text: str) -> str:
     return f"{UNVERIFIED_PREFIX}\n{cleaned}"
 
 
+def activities_payload(doc: object) -> list[dict[str, Any]]:
+    raw = getattr(doc, "activities", None) or []
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
+
+
+def _flag_json_if_orm(doc: object, field: str) -> None:
+    if hasattr(doc, "_sa_instance_state"):
+        flag_modified(doc, field)
+
+
+def refresh_document_activities(doc: object, body: str) -> bool:
+    """Re-extract activities from body text. Returns True if stored list changed."""
+    if not (body or "").strip():
+        return False
+    changed = apply_document_activities(doc, body)
+    if changed:
+        _flag_json_if_orm(doc, "activities")
+    return changed
+
+
 def _is_demo_answer(text: str) -> bool:
     return text.lstrip().startswith("[Demo mode:")
 
@@ -109,55 +132,67 @@ async def _call_answer_model(body: str) -> str:
 
 
 async def reanalyze_one(db: AsyncSession, document_id: uuid.UUID) -> dict[str, Any]:
-    """Re-analyze one document. On failure, keep the previous school_action."""
+    """Re-analyze one document. On LLM failure, keep the previous school_action.
+
+    When body text is available, always refresh local activity date extraction.
+    """
     doc = await db.get(Document, document_id)
     if doc is None:
         return {
             "document_id": str(document_id),
             "ok": False,
             "school_action": None,
+            "activities": [],
             "error": "not_found",
             "message": FAIL_KEEP_MESSAGE,
         }
 
     previous = school_action_from_extra(doc.extra)
-    base = {
-        "document_id": str(doc.id),
-        "school_action": previous,
-        "message": FAIL_KEEP_MESSAGE,
-    }
+    body = await load_document_body(db, doc)
+    activities_changed = refresh_document_activities(doc, body)
+
+    async def _fail(error: str) -> dict[str, Any]:
+        if activities_changed:
+            await db.flush()
+        return {
+            "document_id": str(doc.id),
+            "ok": False,
+            "school_action": previous,
+            "activities": activities_payload(doc),
+            "error": error,
+            "message": FAIL_KEEP_MESSAGE,
+        }
 
     if not answer_model_configured():
-        return {**base, "ok": False, "error": "model_unset"}
+        return await _fail("model_unset")
 
-    body = await load_document_body(db, doc)
     if not body.strip():
-        return {**base, "ok": False, "error": "no_text"}
+        return await _fail("no_text")
 
     try:
         raw = await asyncio.wait_for(_call_answer_model(body), timeout=LLM_TIMEOUT_SECONDS)
     except asyncio.TimeoutError:
-        return {**base, "ok": False, "error": "timeout"}
+        return await _fail("timeout")
     except Exception:
-        return {**base, "ok": False, "error": "error"}
+        return await _fail("error")
 
     if not raw or _is_demo_answer(raw):
         error = "model_unset" if _is_demo_answer(raw) else "empty"
-        return {**base, "ok": False, "error": error}
+        return await _fail(error)
 
     stored = with_unverified_prefix(raw)
     extra = dict(doc.extra or {})
     extra[SCHOOL_ACTION_KEY] = stored
     doc.extra = extra
     # JSONB in-place mutation needs an explicit dirty flag on real ORM instances.
-    if hasattr(doc, "_sa_instance_state"):
-        flag_modified(doc, "extra")
+    _flag_json_if_orm(doc, "extra")
     await db.flush()
 
     return {
         "document_id": str(doc.id),
         "ok": True,
         "school_action": stored,
+        "activities": activities_payload(doc),
         "error": None,
         "message": None,
     }

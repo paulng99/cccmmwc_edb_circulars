@@ -223,6 +223,43 @@ FIXTURE_EDBCM_136_READING = """
 總負責教師須於截止日期2027年6月11日（星期五）（香港時間23:59）或之前，透過指定教城平台提交「排行榜」，以作評選奬項之用。
 """
 
+# Abbreviated end date in period range (EDBCM 151/2026 nomination period style).
+FIXTURE_ABBREV_RANGE_ZH = """
+教育局通函第 151/2026 號
+發出日期：2026年9月24日
+
+5. 直接錄取計劃的提名期為 2026年10月7日至12月2日。每間本地中學可推薦兩名學生。
+(Nomination deadline: 2 December 2026)
+"""
+
+FIXTURE_ABBREV_RANGE_EN = """
+Education Bureau Circular Memorandum No. 151/2026
+Issue Date: 24 September 2026
+
+5. The SNDAS nomination period will run from 7 October to 2 December 2026.
+Each local secondary school has a quota of two nominations.
+(Nomination deadline: 2 December 2026)
+"""
+
+# PDF extract style: spaced YMD + mid-word soft wraps (EDBCM 185/2026 pattern).
+FIXTURE_PDF_SOFTWRAP_REPLY = """
+教育局 通函第 185 /202 6 號
+語文教育及研究常務委員會 （語常會 ）
+學生語文大使計劃
+適用學年：2026/27
+
+參加辦法
+7. 有意參加的學校，請填妥隨本通函附上的「學生語文大使計劃參加意向書」（附
+錄一），並於 2026 年 10 月 9 日或以前，以電郵（電郵地址：omvpc@edb.gov.hk）方
+式交回語文教育及語常會事 務組。計劃詳情及推薦學生的具體安排將稍後另行公
+布。
+
+請於 2026 年 10 月 9 日（星期五）或之前將已填妥之參加意向書電郵（電郵地址：omvpc@edb.gov.hk）至教育局語
+文教育及語常會事務組。
+Please return the completed Letter of Intent to the Language Education and SCOLAR Section of the Education Bureau on or
+before 9 October 2026 (Friday) by email (email address: omvpc@edb.gov.hk).
+"""
+
 
 def _deadlines(result):
     return [a.deadline_at for a in result.activities]
@@ -570,3 +607,98 @@ def test_edbcm_136_no_anonymous_merge_end_date_and_signup():
     assert "issued" in reasons
     assert "revised" in reasons
     assert "school_year" in reasons
+
+
+def test_pdf_softwrap_reply_deadline_included():
+    """Spaced YMD + mid-word wraps must still yield the reply/submit deadline."""
+    result = extract_activities(FIXTURE_PDF_SOFTWRAP_REPLY)
+    deadlines = _deadlines(result)
+    assert date(2026, 10, 9) in deadlines
+    # Same calendar day from zh/en forms — keep at least one activity row.
+    assert any(a.deadline_at == date(2026, 10, 9) for a in result.activities)
+    assert "school_year" in _rejected_reasons(result)
+
+
+def test_abbrev_zh_range_keeps_start_and_deadline():
+    """「2026年10月7日至12月2日」must yield start 10-07 and deadline 12-02."""
+    result = extract_activities(FIXTURE_ABBREV_RANGE_ZH)
+    starts = _starts(result)
+    deadlines = _deadlines(result)
+    assert date(2026, 10, 7) in starts
+    assert date(2026, 12, 2) in deadlines
+    period = next(
+        a
+        for a in result.activities
+        if a.starts_at == date(2026, 10, 7) and a.deadline_at == date(2026, 12, 2)
+    )
+    assert period.name is None or "提名" in (period.name or "")
+    # Same-day English nomination deadline must not duplicate the period row.
+    assert sum(1 for a in result.activities if a.deadline_at == date(2026, 12, 2)) == 1
+    # Issue stamp must stay off the calendar.
+    assert date(2026, 9, 24) not in starts
+    assert date(2026, 9, 24) not in deadlines
+
+
+def test_abbrev_en_range_keeps_start_and_deadline():
+    """「from 7 October to 2 December 2026」must yield start 10-07 and deadline 12-02."""
+    result = extract_activities(FIXTURE_ABBREV_RANGE_EN)
+    starts = _starts(result)
+    deadlines = _deadlines(result)
+    assert date(2026, 10, 7) in starts
+    assert date(2026, 12, 2) in deadlines
+    assert any(
+        a.starts_at == date(2026, 10, 7) and a.deadline_at == date(2026, 12, 2)
+        for a in result.activities
+    )
+    assert sum(1 for a in result.activities if a.deadline_at == date(2026, 12, 2)) == 1
+
+
+# OCR-spaced year digits (EDBCM 119/2026 PDF extract style).
+FIXTURE_OCR_SPACED_YEAR_DEADLINE = """
+教育局通函第 119/2026 號
+發出日期：2026年9月1日
+
+◼ 提名及提交教學計劃的截止日期為 202 6 年 11 月 30 日（星期 一）。
+⚫ 提名截止 日期 為 202 6 年 11 月 30 日（星期 一）。提名表格的提交時間以本局伺服器為準。
+"""
+
+
+def test_ocr_spaced_year_deadline_included():
+    """「202 6 年 11 月 30 日」and spaced「截止 日期」must yield 2026-11-30."""
+    result = extract_activities(FIXTURE_OCR_SPACED_YEAR_DEADLINE)
+    deadlines = _deadlines(result)
+    assert date(2026, 11, 30) in deadlines
+    assert any(a.deadline_at == date(2026, 11, 30) for a in result.activities)
+
+
+def test_school_email_submit_deadline_phrase():
+    """Paraphrase used in school-action text must also extract."""
+    text = (
+        "學校須於2026年11月30日或之前經學校電郵提交已填妥及簽署的提名表格及網上檔案資料夾，"
+    )
+    result = extract_activities(text)
+    assert date(2026, 11, 30) in _deadlines(result)
+
+
+# Weekday parenthesis between range ends (EDBCM 184/2026 PDF extract style).
+FIXTURE_RANGE_WITH_WEEKDAY = """
+教育局通函第 184/2026 號
+發出日期：2026年9月18日
+
+⚫ 第一階段：負責教師須於 202 6 年 10 月 12 日（星期 一）至 11 月 30 日（星期一）期間透過香港教育城網站完成報名。
+⚫ 第二階段：負責教師須於 202 6 年 12 月 1 日（星期二） 至 202 7 年 2 月
+26 日（星期 五）期間透過香港教育城網站提交作品。
+截止日期： 2026 -11 -30
+截止日期： 2027 -02 -26
+"""
+
+
+def test_range_with_weekday_and_spaced_iso():
+    """「日（星期一）至…」ranges and spaced ISO deadlines must extract."""
+    result = extract_activities(FIXTURE_RANGE_WITH_WEEKDAY)
+    starts = _starts(result)
+    deadlines = _deadlines(result)
+    assert date(2026, 10, 12) in starts
+    assert date(2026, 11, 30) in deadlines
+    assert date(2026, 12, 1) in starts
+    assert date(2027, 2, 26) in deadlines

@@ -13,7 +13,7 @@ from app.models.entities import Document, DocumentChunk
 logger = logging.getLogger(__name__)
 
 # Bump when stored activity shape changes so existing rows are re-extracted on boot.
-_PARSED_FLAG = "5"
+_PARSED_FLAG = "12"
 _CHUNK_LIMIT = 12
 
 

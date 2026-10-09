@@ -47,6 +47,8 @@ _MONTHS = {
 
 # Horizontal whitespace only — never cross newlines inside labels.
 _S = r"[^\S\n]*"
+# Optional weekday note between dates: 「2026年10月12日（星期一）至…」
+_WEEKDAY_PAREN = r"(?:[（(][^)）\n]{0,16}[)）])?"
 
 _SCHOOL_YEAR = re.compile(r"(?<!\d)(\d{4})\s*/\s*(\d{2})(?!\d)(?:\s*學年)?")
 
@@ -80,17 +82,25 @@ _REVISE_STAMP = re.compile(
 )
 # HK circulars often shorten 回覆 to 覆. These are calendar deadlines (included).
 # Allow words between 於 and 或之前 / 前 (dates, weekdays), and between that and the verb.
+# DOTALL: PDF extracts often wrap mid-phrase (e.g. 方\n式交回).
 _REPLY_BY_ZH = re.compile(
-    r"(?:請|須|應)?於.{0,80}(?:或之前|以前|前).{0,40}?"
-    r"(?:交回|遞交|提交|呈交|傳真|完成報名|回覆|覆本局|作出回覆|回覆確認|確認回覆|回覆有關|覆有關)"
+    r"(?:請|須|應|並)?於.{0,120}?(?:或之前|以前|前).{0,120}?"
+    r"(?:交回|遞交|提交|呈交|傳真|完成報名|電郵|寄回|送交|交至|"
+    r"回覆|覆本局|作出回覆|回覆確認|確認回覆|回覆有關|覆有關)",
+    re.DOTALL,
 )
 _REPLY_BY_EN = re.compile(
+    # please reply/return by DATE
     r"(?:please\s+)?(?:reply|respond|return(?:\s+the\s+reply)?|submit|hand\s+in|fax)\s+"
     r"(?:to\s+(?:this|the)\s+(?:circular|letter)\s+)?"
     r"(?:by|before|on\s+or\s+before)\b|"
-    r"(?:on\s+or\s+before|by|before)\b.{0,60}?"
+    # please return/submit … on or before DATE (common Letter of Intent wording)
+    r"(?:please\s+)?(?:return|submit|hand\s+in|reply|respond|fax)\b.{0,220}?"
+    r"(?:on\s+or\s+before|by|before)\b|"
+    # on or before DATE … submit/return
+    r"(?:on\s+or\s+before|by|before)\b.{0,80}?"
     r"(?:submit|hand\s+in|return|reply|fax|complete\s+(?:the\s+)?enrol+ment)",
-    re.IGNORECASE,
+    re.IGNORECASE | re.DOTALL,
 )
 
 # 「活動日期：即日起至某日」 — end date is a deadline, not a start.
@@ -140,15 +150,15 @@ _EN_DATE_MDY = re.compile(
 
 _START_LABEL = re.compile(
     r"(?P<label>"
-    r"活動開始日期|報名開始日期|申請開始日期|開始報名日期|開始日期|"
-    r"活動日期|舉行日期|開課日期|"
+    r"活動開始日期|報名開始日期|申請開始日期|開始報名日期|開始\s*日期|"
+    r"活動\s*日期|舉行\s*日期|開課\s*日期|"
     r"Start[^\S\n]+Date|Commencement[^\S\n]+Date|Starting[^\S\n]+Date|"
     r"Application[^\S\n]+Start[^\S\n]+Date|"
     r"Enrolment[^\S\n]+Start[^\S\n]+Date|Enrollment[^\S\n]+Start[^\S\n]+Date|"
     r"Event[^\S\n]+Date|Activity[^\S\n]+Date"
     r")"
     + _S
-    + r"[:：]?"
+    + r"[:：為]?"
     + _S,
     re.IGNORECASE,
 )
@@ -157,7 +167,7 @@ _DEADLINE_LABEL = re.compile(
     r"(?P<label>"
     r"截止報名日期|報名截止日期|申請截止日期|遞交截止日期|提交截止日期|"
     r"交回截止日期|回覆截止日期|最後提交日期|最後遞交日期|活動截止日期|"
-    r"結束日期|截止日期|"
+    r"提名截止\s*日期|結束\s*日期|截止\s*日期|"
     r"Closing[^\S\n]+Date(?:[^\S\n]+for[^\S\n]+Applications?)?|"
     r"Application[^\S\n]+Deadline|Submission[^\S\n]+Deadline|"
     r"Enrolment[^\S\n]+Deadline|Enrollment[^\S\n]+Deadline|"
@@ -166,41 +176,48 @@ _DEADLINE_LABEL = re.compile(
     r"Deadline(?:[^\S\n]+for[^\S\n]+Applications?)?"
     r")"
     + _S
-    + r"[:：]?"
+    + r"[:：為]?"
     + _S,
     re.IGNORECASE,
 )
 
 _RANGE_ZH = re.compile(
-    r"(?P<label>申請期|報名期|活動期|推行期|進行期間|活動期間|有效期|實施期|"
+    r"(?P<label>申請期|報名期|提名期|活動期|推行期|進行期間|活動期間|有效期|實施期|"
     r"申請日期|報名日期)?"
     + _S
-    + r"[:：]?"
+    + r"(?:[:：]|為)?"
     + _S
     + r"(?:由"
     + _S
     + r")?"
     r"(?P<start>\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日)"
     + _S
+    + _WEEKDAY_PAREN
+    + _S
     + r"(?:至|到|－|-|—|–)"
     + _S
-    + r"(?P<end>\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日)"
+    # End may omit the year: 「2026年10月7日至12月2日」
+    + r"(?P<end>(?:\d{4}\s*年\s*)?\d{1,2}\s*月\s*\d{1,2}\s*日)"
 )
+
+_MD_ZH = re.compile(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日")
 
 _RANGE_EN = re.compile(
     r"(?P<label>Application[^\S\n]+period|Enrolment[^\S\n]+period|"
     r"Enrollment[^\S\n]+period|Activity[^\S\n]+period|Event[^\S\n]+period|"
-    r"Period|Valid[^\S\n]+period)?"
+    r"Nomination[^\S\n]+period|Period|Valid[^\S\n]+period)?"
     + _S
     + r"[:：]?"
     + _S
-    + r"(?:from[^\S\n]+)?"
+    + r"(?:(?:will[^\S\n]+)?run[^\S\n]+)?(?:from[^\S\n]+)?"
     r"(?P<start>"
-    r"\d{1,2}(?:st|nd|rd|th)?[^\S\n]+[A-Za-z]+[^\S\n]+\d{4}"
-    r"|[A-Za-z]+[^\S\n]+\d{1,2}(?:st|nd|rd|th)?(?:,)?[^\S\n]+\d{4}"
+    # Year optional on start: 「from 7 October to 2 December 2026」
+    r"\d{1,2}(?:st|nd|rd|th)?[^\S\n]+[A-Za-z]+(?:[^\S\n]+\d{4})?"
+    r"|[A-Za-z]+[^\S\n]+\d{1,2}(?:st|nd|rd|th)?(?:,)?(?:[^\S\n]+\d{4})?"
     r"|\d{4}-\d{2}-\d{2}"
     r"|\d{1,2}[/-]\d{1,2}[/-]\d{4}"
     r")"
+    r"(?:[^\S\n]*\([^)]{0,16}\))?"
     r"[^\S\n]+(?:to|until|through|-|–|—)[^\S\n]+"
     r"(?P<end>"
     r"\d{1,2}(?:st|nd|rd|th)?[^\S\n]+[A-Za-z]+[^\S\n]+\d{4}"
@@ -336,6 +353,14 @@ class ActivityExtractionResult:
 def _norm(text: str) -> str:
     cleaned = text.replace("\u3000", " ").replace("\xa0", " ").replace("\r\n", "\n")
     cleaned = re.sub(r"[^\S\n]+", " ", cleaned)
+    # PDF/OCR often splits years/digits: 「202 6 年」/「2 0 2 6 年」→「2026年」
+    cleaned = re.sub(r"(?<=\d)\s+(?=\d)", "", cleaned)
+    # Spaced ISO dates in forms: 「2026 -11 -30」→「2026-11-30」
+    cleaned = re.sub(
+        r"(\d{4})\s*[-–—]\s*(\d{1,2})\s*[-–—]\s*(\d{1,2})\b",
+        lambda m: f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}",
+        cleaned,
+    )
     return cleaned[:_SCAN_CHARS]
 
 
@@ -351,6 +376,55 @@ def _parse_zh_ymd(token: str) -> date | None:
     if not m:
         return None
     return _ymd(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+
+def _parse_zh_range_end(token: str, *, start: date | None) -> date | None:
+    """Parse range end; inherit year from start when end is 「12月2日」 only."""
+    full = _parse_zh_ymd(token)
+    if full:
+        return full
+    if start is None:
+        return None
+    m = _MD_ZH.search(token)
+    if not m:
+        return None
+    end = _ymd(start.year, int(m.group(1)), int(m.group(2)))
+    if end is None:
+        return None
+    # Cross-year periods: 2026年11月1日至2月28日 → end in 2027.
+    if end < start:
+        return _ymd(start.year + 1, end.month, end.day)
+    return end
+
+
+def _parse_en_range_start(token: str, *, end: date | None) -> date | None:
+    """Parse range start; inherit year from end when start is 「7 October」 only."""
+    full = _parse_date_token(token)
+    if full:
+        return full
+    if end is None:
+        return None
+    text = token.strip()
+    m = re.search(r"(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\b", text, re.IGNORECASE)
+    day: int | None = None
+    month: int | None = None
+    if m:
+        month = _MONTHS.get(m.group(2).strip().lower())
+        day = int(m.group(1))
+    else:
+        m = re.search(r"([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?\b", text, re.IGNORECASE)
+        if m:
+            month = _MONTHS.get(m.group(1).strip().lower())
+            day = int(m.group(2))
+    if month is None or day is None:
+        return None
+    start = _ymd(end.year, month, day)
+    if start is None:
+        return None
+    # If start lands after end (e.g. from Nov to Feb 2027), use previous year.
+    if start > end:
+        return _ymd(end.year - 1, month, day)
+    return start
 
 
 def _parse_date_token(token: str) -> date | None:
@@ -744,8 +818,12 @@ def _merge_activities(items: list[ActivityDates]) -> list[ActivityDates]:
 
     merged: list[ActivityDates] = list(both)
     used_ends: set[int] = set()
+    covered_starts = {a.starts_at for a in both if a.starts_at}
 
     for s in starts:
+        # Nameless start already covered by a full period range.
+        if s.name is None and s.starts_at in covered_starts:
+            continue
         partner_idx = None
         if s.name:
             for i, e in enumerate(ends):
@@ -759,10 +837,19 @@ def _merge_activities(items: list[ActivityDates]) -> list[ActivityDates]:
             merged.append(_merge_pair(s, ends[partner_idx]))
         else:
             merged.append(s)
+            if s.starts_at:
+                covered_starts.add(s.starts_at)
 
+    covered_deadlines = {a.deadline_at for a in merged if a.deadline_at}
     for i, e in enumerate(ends):
-        if i not in used_ends:
-            merged.append(e)
+        if i in used_ends:
+            continue
+        # Drop nameless deadline-only rows already covered by a period/label row.
+        if e.name is None and e.deadline_at in covered_deadlines:
+            continue
+        merged.append(e)
+        if e.deadline_at:
+            covered_deadlines.add(e.deadline_at)
 
     out: list[ActivityDates] = []
     seen: set[tuple] = set()
@@ -860,7 +947,7 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
     for m in _RANGE_ZH.finditer(sample):
         sentence = _sentence_around(sample, m.start(), m.end())
         start_d = _parse_zh_ymd(m.group("start"))
-        end_d = _parse_zh_ymd(m.group("end"))
+        end_d = _parse_zh_range_end(m.group("end"), start=start_d)
         if not start_d and not end_d:
             continue
         name = _resolve_name(sample, m.start(), m.group("label"), sentence=sentence)
@@ -882,8 +969,8 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
 
     for m in _RANGE_EN.finditer(sample):
         sentence = _sentence_around(sample, m.start(), m.end())
-        start_d = _parse_date_token(m.group("start"))
         end_d = _parse_date_token(m.group("end"))
+        start_d = _parse_en_range_start(m.group("start"), end=end_d)
         if not start_d and not end_d:
             continue
         name = _resolve_name(sample, m.start(), m.group("label"), sentence=sentence)

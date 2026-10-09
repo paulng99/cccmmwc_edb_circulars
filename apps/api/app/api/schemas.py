@@ -111,6 +111,7 @@ class ReanalyzeItemOut(BaseModel):
     document_id: str
     ok: bool
     school_action: str | None = None
+    activities: list[DocumentActivityOut] = Field(default_factory=list)
     error: str | None = None
     message: str | None = None
 
@@ -159,6 +160,7 @@ class DocumentGroupOut(BaseModel):
     topics: list[str] = []
     variants: list[DocumentVariantOut]
     school_action: str | None = None
+    activities: list[DocumentActivityOut] = Field(default_factory=list)
 
 
 class SecretFieldOut(BaseModel):

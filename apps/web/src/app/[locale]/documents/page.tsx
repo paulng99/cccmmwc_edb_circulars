@@ -3,14 +3,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link, useRouter } from "@/i18n/routing";
-import { listDocuments, reanalyzeDocuments } from "@/lib/api";
+import {
+  listDocuments,
+  reanalyzeDocuments,
+  type DocumentActivity,
+  type ReanalyzeResult,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDate } from "@/lib/date";
 import {
+  applyReanalyzeResults,
   canSubmitReanalyze,
+  expandSelectedDocumentIds,
   reanalyzeButtonLabel,
   toggleIdInSet,
 } from "@/lib/reanalyze-ui";
+import { displaySchoolAction } from "@/lib/school-action";
 import { Icon } from "@/components/Icon";
 import {
   PROGRAMME_OPTIONS,
@@ -46,6 +54,7 @@ type DocGroup = {
   topics?: string[];
   variants: Variant[];
   school_action?: string | null;
+  activities?: DocumentActivity[];
 };
 
 type ListStatus = "idle" | "loading" | "success" | "empty" | "error";
@@ -209,26 +218,21 @@ export default function DocumentsPage() {
 
   async function runReanalyze() {
     if (!token || !reanalyzeEnabled) return;
-    const ids = [...selected];
+    // Refresh every language variant in selected groups so EN/zh activities stay in sync.
+    const ids = expandSelectedDocumentIds(items, selected);
+    if (ids.length === 0) return;
     setAnalyzing(true);
     setReanalyzeNotice(null);
     try {
-      const data = await reanalyzeDocuments(token, ids);
-      const results = data.results || [];
+      const results: ReanalyzeResult[] = [];
+      for (let i = 0; i < ids.length; i += 50) {
+        const chunk = ids.slice(i, i + 50);
+        const data = await reanalyzeDocuments(token, chunk);
+        results.push(...(data.results || []));
+      }
       const ok = results.filter((r) => r.ok).length;
       const fail = results.length - ok;
-      const byId = new Map(results.map((r) => [r.document_id, r]));
-      setItems((prev) =>
-        prev.map((g) => {
-          const hit = byId.get(g.primary_id);
-          if (!hit) return g;
-          if (hit.ok && hit.school_action) {
-            return { ...g, school_action: hit.school_action };
-          }
-          // Failure: keep existing school_action; surface keep message.
-          return g;
-        }),
-      );
+      setItems((prev) => applyReanalyzeResults(prev, results));
       const failMsgs = results
         .filter((r) => !r.ok)
         .map((r) => r.message || t("reanalyzeFailKeep"));
@@ -471,8 +475,29 @@ export default function DocumentsPage() {
                     </span>
                     <div className="doc-body">
                       <h3>{group.title}</h3>
-                      {group.school_action?.trim() ? (
-                        <p className="doc-school-action">{group.school_action.trim()}</p>
+                      {(() => {
+                        const actionText = displaySchoolAction(group.school_action);
+                        return actionText ? <p className="doc-school-action">{actionText}</p> : null;
+                      })()}
+                      {(group.activities || []).length > 0 ? (
+                        <ul className="doc-activity-dates">
+                          {(group.activities || []).slice(0, 3).map((act, idx) => (
+                            <li
+                              key={`${act.name || "a"}-${act.starts_at || ""}-${act.deadline_at || ""}-${idx}`}
+                            >
+                              <Icon name="calendar" />
+                              <span>
+                                {act.starts_at
+                                  ? `${t("activityStartsAt")} ${formatHkDate(act.starts_at)}`
+                                  : null}
+                                {act.starts_at && act.deadline_at ? " · " : null}
+                                {act.deadline_at
+                                  ? `${t("activityDeadlineAt")} ${formatHkDate(act.deadline_at)}`
+                                  : null}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
                       ) : null}
                       <div className="doc-meta">
                         <span className={`badge ${PROGRAMME_TONE[prog || ""] || "slate"}`}>
