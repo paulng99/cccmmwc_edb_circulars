@@ -79,14 +79,27 @@ _REVISE_STAMP = re.compile(
     re.IGNORECASE,
 )
 # HK circulars often shorten 回覆 to 覆. These are calendar deadlines (included).
+# Allow words between 於 and 或之前 / 前 (dates, weekdays), and between that and the verb.
 _REPLY_BY_ZH = re.compile(
-    r"請於.{0,40}前(?:交回|遞交|提交|呈交|回覆|覆本局|作出回覆|回覆確認|確認回覆|回覆有關|覆有關)"
+    r"(?:請|須|應)?於.{0,80}(?:或之前|以前|前).{0,40}?"
+    r"(?:交回|遞交|提交|呈交|傳真|完成報名|回覆|覆本局|作出回覆|回覆確認|確認回覆|回覆有關|覆有關)"
 )
 _REPLY_BY_EN = re.compile(
-    r"(?:please\s+)?(?:reply|respond|return(?:\s+the\s+reply)?|submit|hand\s+in)\s+"
+    r"(?:please\s+)?(?:reply|respond|return(?:\s+the\s+reply)?|submit|hand\s+in|fax)\s+"
     r"(?:to\s+(?:this|the)\s+(?:circular|letter)\s+)?"
-    r"(?:by|before|on\s+or\s+before)\b",
+    r"(?:by|before|on\s+or\s+before)\b|"
+    r"(?:on\s+or\s+before|by|before)\b.{0,60}?"
+    r"(?:submit|hand\s+in|return|reply|fax|complete\s+(?:the\s+)?enrol+ment)",
     re.IGNORECASE,
+)
+
+# 「活動日期：即日起至某日」 — end date is a deadline, not a start.
+_FROM_NOW_UNTIL_ZH = re.compile(
+    r"即日起"
+    + _S
+    + r"至"
+    + _S
+    + r"(?P<end>\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日)"
 )
 
 # What is being submitted — used for titles like 「交回問卷」.
@@ -143,11 +156,13 @@ _START_LABEL = re.compile(
 _DEADLINE_LABEL = re.compile(
     r"(?P<label>"
     r"截止報名日期|報名截止日期|申請截止日期|遞交截止日期|提交截止日期|"
-    r"交回截止日期|回覆截止日期|最後提交日期|最後遞交日期|活動截止日期|截止日期|"
+    r"交回截止日期|回覆截止日期|最後提交日期|最後遞交日期|活動截止日期|"
+    r"結束日期|截止日期|"
     r"Closing[^\S\n]+Date(?:[^\S\n]+for[^\S\n]+Applications?)?|"
     r"Application[^\S\n]+Deadline|Submission[^\S\n]+Deadline|"
     r"Enrolment[^\S\n]+Deadline|Enrollment[^\S\n]+Deadline|"
     r"Reply[^\S\n]+Deadline|"
+    r"End(?:ing)?[^\S\n]+Date|"
     r"Deadline(?:[^\S\n]+for[^\S\n]+Applications?)?"
     r")"
     + _S
@@ -256,6 +271,7 @@ _GENERIC_LABELS = frozenset(
     {
         "開始日期",
         "截止日期",
+        "結束日期",
         "活動日期",
         "舉行日期",
         "start date",
@@ -264,6 +280,8 @@ _GENERIC_LABELS = frozenset(
         "event date",
         "activity date",
         "closing date",
+        "end date",
+        "ending date",
         "deadline",
         "period",
         "valid period",
@@ -273,6 +291,11 @@ _GENERIC_LABELS = frozenset(
         "activity period",
         "event period",
     }
+)
+
+# 「提交時間以本局…」 / 「遞交至香港藝術學院」 etc. are not activity titles.
+_BAD_SUBMIT_OBJECT = re.compile(
+    r"^(?:時間|日期|方法|方式|程序|辦法|至|予|到)|以本局|伺服器|為準|不得|逾期|恕不"
 )
 
 
@@ -443,6 +466,9 @@ def _title_from_submit_sentence(sentence: str) -> str | None:
         obj,
     ).strip(" ：:.-–—、，,的")
     if not obj or len(obj) > 36:
+        return None
+    # Reject boilerplate fragments (e.g. 「提交時間以本局電腦伺服器…」).
+    if _BAD_SUBMIT_OBJECT.search(obj):
         return None
     if obj.startswith("交回") or obj.startswith("遞交") or obj.startswith("提交"):
         return obj[:40]
@@ -705,7 +731,12 @@ def _merge_pair(start: ActivityDates, end: ActivityDates) -> ActivityDates:
 
 
 def _merge_activities(items: list[ActivityDates]) -> list[ActivityDates]:
-    """Dedupe and pair start-only + deadline-only rows that share a name (or both nameless)."""
+    """Dedupe and pair start-only + deadline-only rows that share the same name.
+
+    Nameless starts must not merge with nameless (or differently named) deadlines —
+    that caused cross-item pairing (e.g. plan start + unrelated submit deadline).
+    Identical full keys still dedupe.
+    """
     usable = [a for a in items if a.starts_at or a.deadline_at]
     both = [a for a in usable if a.starts_at and a.deadline_at]
     starts = [a for a in usable if a.starts_at and not a.deadline_at]
@@ -716,23 +747,11 @@ def _merge_activities(items: list[ActivityDates]) -> list[ActivityDates]:
 
     for s in starts:
         partner_idx = None
-        for i, e in enumerate(ends):
-            if i in used_ends:
-                continue
-            if s.name and e.name and s.name != e.name:
-                continue
-            if (s.name or e.name) or (s.name is None and e.name is None):
-                # Prefer pairing when names match or both anonymous (adjacent labels).
-                if s.name is None and e.name is None:
-                    partner_idx = i
-                    break
-                if s.name and e.name and s.name == e.name:
-                    partner_idx = i
-                    break
-                if s.name and not e.name:
-                    partner_idx = i
-                    break
-                if e.name and not s.name:
+        if s.name:
+            for i, e in enumerate(ends):
+                if i in used_ends:
+                    continue
+                if e.name and e.name == s.name:
                     partner_idx = i
                     break
         if partner_idx is not None:
@@ -798,6 +817,9 @@ def _collect_reply_deadlines(
     """
     for rx in (_REPLY_BY_ZH, _REPLY_BY_EN):
         for m in rx.finditer(text):
+            # Parse date from a short look-ahead, but unique-span only the match
+            # itself — padding past m.end() was colliding with later labels and
+            # dropping real 於…或之前…傳真／完成報名 deadlines.
             window_end = min(len(text), m.end() + 50)
             window = text[m.start() : window_end]
             parsed = _parse_date_token(window)
@@ -818,7 +840,7 @@ def _collect_reply_deadlines(
                     start_sentence=None,
                     deadline_sentence=sentence,
                 ),
-                span=(m.start(), window_end),
+                span=(m.start(), m.end()),
             )
 
 
@@ -882,6 +904,35 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
         )
 
     for m in _START_LABEL.finditer(sample):
+        # 「活動日期：即日起至某日」 — treat end as deadline, never as start.
+        after = sample[m.end() : m.end() + 80]
+        lead = len(after) - len(after.lstrip())
+        from_now = _FROM_NOW_UNTIL_ZH.match(after.lstrip())
+        if from_now:
+            end_d = _parse_zh_ymd(from_now.group("end"))
+            span_end = m.end() + lead + from_now.end()
+            sentence = _sentence_around(sample, m.start(), span_end)
+            if end_d is not None:
+                name = _resolve_name(
+                    sample, m.start(), m.group("label"), sentence=sentence
+                )
+                _append_unique(
+                    found,
+                    used_spans,
+                    _attach_details(
+                        sample,
+                        m.start(),
+                        rejected_locations,
+                        name=name,
+                        starts_at=None,
+                        deadline_at=end_d,
+                        start_sentence=None,
+                        deadline_sentence=sentence,
+                    ),
+                    span=(m.start(), span_end),
+                )
+            continue
+
         parsed, sentence = _take_date_after_label(sample, m, rejected)
         if parsed is None:
             continue
