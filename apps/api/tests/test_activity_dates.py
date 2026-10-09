@@ -193,6 +193,36 @@ FIXTURE_BACKGROUND_SUPERSEDE = """
 申請截止日期：2026年5月30日
 """
 
+# Realistic excerpts patterned on public EDBCM 140/2026 (multi-competition)
+# and 136/2026 (悦讀計劃). Short fixtures only — not full PDFs.
+FIXTURE_EDBCM_140_MULTI = """
+教育局通函第 140/2026 號
+發出日期：2026年9月1日
+適用學年：2026/27
+
+請列印本問卷並填妥，於2026年12月4日（星期五）或之前傳真至3426 9265。
+
+活動名稱：心意卡設計比賽
+活動日期：即日起至2026年12月18日（星期五）
+活動截止日期為2026年12月18日（星期五），作品的提交時間以本局電腦伺服器所顯示的日期及時間為準。
+
+有興趣參加戲劇節的學校，請填妥申請表格，於2026年10月9日（星期五）或之前以郵寄方式遞交至香港藝術學院。
+"""
+
+FIXTURE_EDBCM_136_READING = """
+教育局通函第 136/2026 號
+發出日期：2026年9月7日
+（2026年9月10日更新）
+本通告適用於2026/27學年。
+
+學校須於2026年9月28日（星期一）或之前完成報名，並必須依照以下兩個步驟方為有效。
+
+開始日期：2026年10月12日（星期一）
+結束日期：2027年5月30日（星期日）
+
+總負責教師須於截止日期2027年6月11日（星期五）（香港時間23:59）或之前，透過指定教城平台提交「排行榜」，以作評選奬項之用。
+"""
+
 
 def _deadlines(result):
     return [a.deadline_at for a in result.activities]
@@ -330,14 +360,13 @@ def test_same_deadline_different_activities_stay_separate():
 
 def test_generic_deadline_leaves_name_unset():
     result = extract_activities(FIXTURE_GENERIC_LABELS)
-    assert len(result.activities) == 1
-    act = result.activities[0]
-    assert act.starts_at == date(2026, 9, 1)
-    assert act.deadline_at == date(2026, 9, 30)
-    # No activity name → leave unset; UI shows notice title only.
-    assert act.name is None
-    assert act.summary is None
-    assert act.location is None
+    # Nameless start + nameless deadline must stay separate (no anonymous merge).
+    assert len(result.activities) == 2
+    starts = [a for a in result.activities if a.starts_at == date(2026, 9, 1)]
+    ends = [a for a in result.activities if a.deadline_at == date(2026, 9, 30)]
+    assert len(starts) == 1 and starts[0].deadline_at is None and starts[0].name is None
+    assert len(ends) == 1 and ends[0].starts_at is None and ends[0].name is None
+    assert all(a.summary is None and a.location is None for a in result.activities)
 
 
 def test_submit_questionnaire_title():
@@ -484,3 +513,60 @@ def test_agenda_title_lines_three_cases():
         "及《補充文件》（2025年更新）"
     )
     assert agenda_title_lines("交回問卷", long_title) == ["交回問卷", long_title]
+
+
+def test_edbcm_140_no_cross_merge_and_missed_deadlines():
+    """UR patterns from EDBCM 140/2026-style multi-competition text."""
+    result = extract_activities(FIXTURE_EDBCM_140_MULTI)
+    deadlines = _deadlines(result)
+    starts = _starts(result)
+
+    # Missed reply/submit phrases when present.
+    assert date(2026, 12, 4) in deadlines  # 或之前傳真
+    assert date(2026, 10, 9) in deadlines  # 或之前…遞交 (drama application)
+
+    # 「活動日期：即日起至某日」 end is a deadline, never a start.
+    assert date(2026, 12, 18) in deadlines
+    assert date(2026, 12, 18) not in starts
+
+    # Fax / drama deadlines must not absorb the 即日起至 end as their start.
+    fax = next(a for a in result.activities if a.deadline_at == date(2026, 12, 4))
+    drama = next(a for a in result.activities if a.deadline_at == date(2026, 10, 9))
+    assert fax.starts_at is None
+    assert drama.starts_at is None
+
+    # Boilerplate 「提交時間以本局…」 must not become the activity name.
+    for act in result.activities:
+        assert act.name is None or "以本局" not in act.name
+        assert act.name is None or "伺服器" not in act.name
+        assert act.name is None or not (act.name.startswith("交回時間"))
+
+    reasons = _rejected_reasons(result)
+    assert "issued" in reasons
+    assert "school_year" in reasons
+
+
+def test_edbcm_136_no_anonymous_merge_end_date_and_signup():
+    """UR patterns from EDBCM 136/2026-style 悦讀計劃 text."""
+    result = extract_activities(FIXTURE_EDBCM_136_READING)
+    deadlines = _deadlines(result)
+    starts = _starts(result)
+
+    assert date(2026, 9, 28) in deadlines  # 或之前完成報名
+    assert date(2026, 10, 12) in starts  # 開始日期
+    assert date(2027, 5, 30) in deadlines  # 結束日期 → deadline
+    assert date(2027, 6, 11) in deadlines  # 交排行榜
+
+    plan_start = next(a for a in result.activities if a.starts_at == date(2026, 10, 12))
+    plan_end = next(a for a in result.activities if a.deadline_at == date(2027, 5, 30))
+    ranking = next(a for a in result.activities if a.deadline_at == date(2027, 6, 11))
+
+    # Nameless plan start must NOT merge with 交排行榜 / 結束日期 deadlines.
+    assert plan_start.deadline_at is None
+    assert plan_end.starts_at is None
+    assert ranking.starts_at is None
+
+    reasons = _rejected_reasons(result)
+    assert "issued" in reasons
+    assert "revised" in reasons
+    assert "school_year" in reasons
