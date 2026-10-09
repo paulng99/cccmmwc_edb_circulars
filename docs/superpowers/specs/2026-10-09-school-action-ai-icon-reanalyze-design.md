@@ -10,14 +10,13 @@
 ## Goals
 
 - 詳情頁以 AI（sparkles）icon 取代「未核對」字樣顯示。
-- 按 icon → 確認 → 重新分析 school action，並用現有本地 regex 重抽 `activities`。
+- 按 icon → 確認 → 以 LLM 重新分析 school action，並以 LLM 重抽 `activities`。
 - 回應與 UI 同步更新行動段落與活動日期列表。
 - i18n：`zh-HK` / `en`；日期 `yyyy-mm-dd`。
 
 ## Non-goals
 
 - 用人機核對流程把「未核對」改成「已核對」狀態機。
-- 用 AI 抽取活動日期。
 - 改動月曆頁版面。
 - 遷移／移除 DB 內既有「未核對\n」前綴（顯示層剝除即可）。
 
@@ -26,11 +25,11 @@
 | Topic | Choice |
 |-------|--------|
 | Approach | 擴充現有 `POST /api/documents/reanalyze` |
-| Activity extract | `apply_document_activities`（本地 regex） |
-| LLM 失敗時 | 保留舊 school_action；若有正文仍重抽 activities |
+| Activity extract | LLM JSON（失敗時 fallback 本地 regex） |
+| LLM 失敗時 | 保留舊 school_action；activities 仍可經 LLM／regex 更新 |
 | Storage | 繼續寫入「未核對」前綴（相容）；UI 剝除後顯示 |
 | Icon | 現有 `sparkles` |
-| Confirm | `window.confirm` + i18n 文案 |
+| Confirm | dialog + i18n 文案 |
 
 ## UI
 
@@ -42,9 +41,9 @@
 ## API
 
 `ReanalyzeItemOut` 增加 `activities: list[DocumentActivityOut]`。  
-`reanalyze_one`：載入正文後先（或成功／失敗皆）重抽 activities；LLM 成功則更新 school_action。
+`reanalyze_one`：載入正文後以 LLM 抽 activities（regex fallback）；另一次 LLM 更新 school_action。
 
 ## Tests
 
-- API：成功時 activities 被重抽；LLM 失敗時 school_action 不變且 activities 仍可更新。
+- API：成功時 activities 來自 LLM；school_action 失敗時仍可更新 activities；activities LLM 失敗則 regex fallback。
 - Web helper：剝除「未核對」前綴。

@@ -435,9 +435,9 @@ async def reanalyze_selected(
 ) -> ReanalyzeResponse:
     """Re-analyze only the selected documents with the answer-model provider.
 
-    Sends each selected circular body to the existing Q&A LLM client and
-    refreshes local activity start/deadline extraction. Does not re-embed or
-    touch unselected documents.
+    Sends each selected circular body to the existing Q&A LLM client for
+    school-action text and activity dates (regex fallback). Does not re-embed
+    or touch unselected documents.
     """
     del user  # auth gate only
     # Deduplicate while preserving order — never widen beyond the client's selection.
