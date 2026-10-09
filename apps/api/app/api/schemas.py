@@ -211,6 +211,7 @@ class SettingsUpdate(BaseModel):
     dify_app_api_key: str | None = None
     dify_dataset_id: str | None = None
     crawl_enabled: bool | None = None
+    auto_ai_analyze: bool | None = None
     crawl_user_agent: str | None = None
     crawl_rate_limit_seconds: float | None = None
     storage_backend: str | None = None

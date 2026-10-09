@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import uuid
 from datetime import date
@@ -24,6 +25,8 @@ from app.services.llm import get_llm_client
 from app.services.runtime_settings import resolved_settings
 from app.services.storage import get_object_bytes
 from app.services.usage import usage_scope
+
+logger = logging.getLogger(__name__)
 
 SCHOOL_ACTION_KEY = "school_action"
 UNVERIFIED_PREFIX = "未核對"
@@ -337,6 +340,33 @@ async def reanalyze_one(db: AsyncSession, document_id: uuid.UUID) -> dict[str, A
         "error": None,
         "message": None,
     }
+
+
+def auto_ai_analyze_enabled() -> bool:
+    """True when indexing should ask the LLM for school actions and activity dates."""
+    return bool(resolved_settings().get("auto_ai_analyze"))
+
+
+async def maybe_auto_ai_analyze(
+    db: AsyncSession,
+    document_id: uuid.UUID,
+    *,
+    has_text: bool,
+) -> bool:
+    """Run school-action and activity-date analysis after a document is indexed.
+
+    Returns True when analysis was attempted. Failures stay inside this call so
+    indexing can still finish with the local date rules already stored.
+    """
+    if not has_text or not auto_ai_analyze_enabled():
+        return False
+    try:
+        # Savepoint: a failed analysis must not abort the index transaction.
+        async with db.begin_nested():
+            await reanalyze_one(db, document_id)
+    except Exception:
+        logger.exception("Auto AI analysis failed for %s", document_id)
+    return True
 
 
 async def reanalyze_documents(db: AsyncSession, document_ids: list[uuid.UUID]) -> list[dict[str, Any]]:
