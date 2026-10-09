@@ -94,8 +94,6 @@ _SUBMIT_OBJECT_ZH = re.compile(
     r"(?:交回|遞交|提交|呈交)(?P<object>[^\n，。；;：:]{1,40})"
 )
 
-_DEFAULT_SUBMIT_TITLE = "交回文件"
-
 # Effective-from dates — easy to over-extract; keep off the calendar.
 _EFFECTIVE_LABEL = re.compile(
     r"(?:生效日期|Effective\s+Date)\s*[:：]?",
@@ -466,9 +464,18 @@ def _resolve_name(
     )
 
 
-def _deadline_title(name: str | None) -> str:
-    """Deadlines without an extracted title default to 「交回文件」 (not circular title)."""
-    return name or _DEFAULT_SUBMIT_TITLE
+def agenda_title_lines(
+    activity_name: str | None,
+    document_title: str | None,
+) -> list[str]:
+    """Display title lines (same size): item then notice; notice only if item missing."""
+    item = (activity_name or "").strip()
+    doc = (document_title or "").strip()
+    if not item:
+        return [doc] if doc else []
+    if not doc or item == doc:
+        return [item]
+    return [item, doc]
 
 
 def _activity_detail_window(text: str, pos: int) -> tuple[int, int]:
@@ -787,7 +794,7 @@ def _collect_reply_deadlines(
     """Include 請於…前覆 / please reply by as deadline rows (no longer excluded).
 
     Do not borrow a nearby 活動名稱 — reply/submit titles come from the sentence
-    object (交回問卷) or default to 交回文件.
+    object (交回問卷) when present; otherwise name stays unset (UI shows notice title).
     """
     for rx in (_REPLY_BY_ZH, _REPLY_BY_EN):
         for m in rx.finditer(text):
@@ -797,7 +804,7 @@ def _collect_reply_deadlines(
             sentence = _sentence_around(text, m.start(), window_end)
             if parsed is None:
                 continue
-            name = _deadline_title(_title_from_submit_sentence(sentence))
+            name = _title_from_submit_sentence(sentence)
             _append_unique(
                 found,
                 used_spans,
@@ -900,9 +907,6 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
         if parsed is None:
             continue
         name = _resolve_name(sample, m.start(), m.group("label"), sentence=sentence)
-        # Deadline rows without a title use 「交回文件」 — never the circular title.
-        if not name:
-            name = _DEFAULT_SUBMIT_TITLE
         _append_unique(
             found,
             used_spans,
@@ -922,23 +926,6 @@ def extract_activities(text: str | None) -> ActivityExtractionResult:
     _collect_reply_deadlines(sample, found, used_spans, rejected_locations)
 
     activities = _merge_activities(found)
-    # After merge, deadline-bearing items still need a display title.
-    activities = [
-        ActivityDates(
-            name=_deadline_title(a.name) if a.deadline_at and not a.name else a.name,
-            starts_at=a.starts_at,
-            deadline_at=a.deadline_at,
-            summary=a.summary,
-            location=a.location,
-            start_sentence=a.start_sentence,
-            deadline_sentence=a.deadline_sentence,
-            summary_sentence=a.summary_sentence,
-            location_sentence=a.location_sentence,
-        )
-        if a.deadline_at and not a.name
-        else a
-        for a in activities
-    ]
     return ActivityExtractionResult(
         activities=activities,
         rejected=rejected,
@@ -950,12 +937,9 @@ def activities_to_stored(result: ActivityExtractionResult) -> list[dict]:
     """Serialize activities for Document.activities JSONB (no sentence fields)."""
     out: list[dict] = []
     for act in result.activities:
-        name = act.name
-        if act.deadline_at and not name:
-            name = _DEFAULT_SUBMIT_TITLE
         out.append(
             {
-                "name": name,
+                "name": act.name,
                 "starts_at": act.starts_at.isoformat() if act.starts_at else None,
                 "deadline_at": act.deadline_at.isoformat() if act.deadline_at else None,
                 "summary": act.summary,

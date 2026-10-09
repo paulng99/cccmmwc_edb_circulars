@@ -4,6 +4,7 @@ from datetime import date
 from types import SimpleNamespace
 
 from app.collectors.activity_dates import (
+    agenda_title_lines,
     apply_document_activities,
     extract_activities,
 )
@@ -237,7 +238,7 @@ def test_reply_deadline_is_listed_not_excluded():
     # Reply-by date is now a calendar deadline
     assert date(2026, 12, 15) in _deadlines(result)
     reply = next(a for a in result.activities if a.deadline_at == date(2026, 12, 15))
-    assert reply.name == "交回文件"
+    assert reply.name is None
     assert reply.starts_at is None
     assert date(2026, 3, 1) not in _starts(result)
     assert date(2026, 5, 10) not in _starts(result) + _deadlines(result)
@@ -267,7 +268,7 @@ def test_english_multi_activity():
     assert grant.summary is None
     assert grant.location is None
     reply = next(a for a in result.activities if a.deadline_at == date(2026, 2, 28))
-    assert reply.name == "交回文件"
+    assert reply.name is None
     assert "reply_deadline" not in _rejected_reasons(result)
     assert "issued" in _rejected_reasons(result)
     assert "school_year" in _rejected_reasons(result)
@@ -301,7 +302,8 @@ def test_reply_only_becomes_submit_deadline():
     assert len(result.activities) == 1
     act = result.activities[0]
     assert act.deadline_at == date(2026, 3, 31)
-    assert act.name == "交回文件"
+    # No extractable item name — UI shows notice title only (not 「交回文件」).
+    assert act.name is None
     reasons = _rejected_reasons(result)
     assert "issued" in reasons
     assert "revised" in reasons
@@ -326,14 +328,14 @@ def test_same_deadline_different_activities_stay_separate():
     assert len(names) == 2
 
 
-def test_generic_deadline_title_is_submit_document():
+def test_generic_deadline_leaves_name_unset():
     result = extract_activities(FIXTURE_GENERIC_LABELS)
     assert len(result.activities) == 1
     act = result.activities[0]
     assert act.starts_at == date(2026, 9, 1)
     assert act.deadline_at == date(2026, 9, 30)
-    # No activity name → deadline title defaults to 交回文件 (not circular title)
-    assert act.name == "交回文件"
+    # No activity name → leave unset; UI shows notice title only.
+    assert act.name is None
     assert act.summary is None
     assert act.location is None
 
@@ -348,12 +350,12 @@ def test_submit_questionnaire_title():
     assert act.location is None
 
 
-def test_submit_fallback_title_not_circular_title():
+def test_submit_fallback_leaves_name_unset():
     result = extract_activities(FIXTURE_SUBMIT_FALLBACK)
     assert len(result.activities) == 1
     act = result.activities[0]
     assert act.deadline_at == date(2026, 9, 1)
-    assert act.name == "交回文件"
+    assert act.name is None
 
 
 def test_same_sentence_listed_once():
@@ -453,15 +455,32 @@ def test_apply_document_activities_stores_summary_and_location():
     ]
 
 
-def test_apply_stores_reply_as_submit_document():
+def test_apply_stores_reply_without_default_submit_title():
     doc = SimpleNamespace(activities=[])
     assert apply_document_activities(doc, FIXTURE_REPLY_ONLY) is True
     assert doc.activities == [
         {
-            "name": "交回文件",
+            "name": None,
             "starts_at": None,
             "deadline_at": "2026-03-31",
             "summary": None,
             "location": None,
         }
     ]
+
+
+def test_agenda_title_lines_three_cases():
+    # Synthetic fixtures for display titles (not live circular text).
+    assert agenda_title_lines("交回問卷", "小學數學科評估安排") == [
+        "交回問卷",
+        "小學數學科評估安排",
+    ]
+    assert agenda_title_lines(None, "小學數學科評估安排") == ["小學數學科評估安排"]
+    assert agenda_title_lines("校本教師專業發展工作坊", "校本教師專業發展工作坊") == [
+        "校本教師專業發展工作坊"
+    ]
+    long_title = (
+        "優化高中經濟科及公布《經濟課程及評估指引（中四至中六）》（2025年更新）"
+        "及《補充文件》（2025年更新）"
+    )
+    assert agenda_title_lines("交回問卷", long_title) == ["交回問卷", long_title]
