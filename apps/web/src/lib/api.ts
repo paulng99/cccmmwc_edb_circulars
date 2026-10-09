@@ -365,6 +365,7 @@ export type CrawlSource = {
   id: string;
   name: { en: string; "zh-HK": string };
   enabled: boolean;
+  auto_ai_analyze?: boolean;
   priority: number;
   type: "site_attachments" | "circular_aspnet";
   base_url: string;

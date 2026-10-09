@@ -46,7 +46,6 @@ const BOOLEAN_KEYS = new Set([
   "cite_inline_refs",
   "dify_enabled",
   "crawl_enabled",
-  "auto_ai_analyze",
   "minio_secure",
 ]);
 
@@ -538,7 +537,6 @@ export default function SettingsPage() {
       : []),
   ];
   const systemKeys = [
-    "auto_ai_analyze",
     "app_name",
     "cors_origins",
     "crawl_enabled",

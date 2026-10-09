@@ -47,6 +47,7 @@ def validate_source(raw: dict) -> dict:
         "id", "name", "enabled", "priority", "type", "base_url",
         "rate_limit_seconds", "schedule", "allow_hosts", "file_extensions",
         "seed_urls", "path_prefixes", "max_pages", "langs", "year_from", "year_to",
+        "auto_ai_analyze",
     }
     unknown = set(raw) - allowed
     if unknown:
@@ -64,6 +65,9 @@ def validate_source(raw: dict) -> dict:
         raise SourceConfigError("name.en and name.zh-HK are required")
     if not isinstance(raw.get("enabled"), bool):
         raise SourceConfigError("enabled must be boolean")
+    auto_ai = raw.get("auto_ai_analyze", False)
+    if not isinstance(auto_ai, bool):
+        raise SourceConfigError("auto_ai_analyze must be boolean")
     priority = raw.get("priority")
     if not isinstance(priority, int) or isinstance(priority, bool) or not 0 <= priority <= 9:
         raise SourceConfigError("priority must be 0-9")
@@ -82,6 +86,7 @@ def validate_source(raw: dict) -> dict:
         "id": sid,
         "name": {"en": en, "zh-HK": zh},
         "enabled": raw["enabled"],
+        "auto_ai_analyze": auto_ai,
         "priority": priority,
         "type": stype,
         "base_url": base_url,
