@@ -276,6 +276,30 @@ export type DocumentActivity = {
   location?: string | null;
 };
 
+export type ReanalyzeResult = {
+  document_id: string;
+  ok: boolean;
+  school_action?: string | null;
+  error?: string | null;
+  message?: string | null;
+};
+
+export async function reanalyzeDocuments(token: string, documentIds: string[]) {
+  if (documentIds.length === 0) {
+    throw new Error("reanalyze_empty");
+  }
+  const res = await fetch(`${apiBase()}/api/documents/reanalyze`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ document_ids: documentIds }),
+  });
+  if (!res.ok) {
+    if (res.status === 422) throw new Error("reanalyze_empty");
+    throw new Error("reanalyze_failed");
+  }
+  return res.json() as Promise<{ results: ReanalyzeResult[] }>;
+}
+
 export type CalendarEvent = {
   date: string;
   kind: "start" | "deadline";

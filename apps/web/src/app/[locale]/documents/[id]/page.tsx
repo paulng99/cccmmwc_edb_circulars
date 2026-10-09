@@ -30,6 +30,7 @@ type Doc = {
   chunk_count?: number;
   index_error?: string | null;
   warning?: string | null;
+  school_action?: string | null;
 };
 
 type DetailStatus = "loading" | "success" | "not_found" | "error";
@@ -345,7 +346,20 @@ export default function DocumentDetailPage() {
                   </button>
                 </div>
               ) : null}
-              <PdfPreview fileUrl={pdfApiUrl} token={token} />
+              <div className="doc-original" aria-label={t("originalText")}>
+                <PdfPreview fileUrl={pdfApiUrl} token={token} />
+              </div>
+              <div className="doc-school-action-block">
+                <h3>
+                  <Icon name="file-text" />
+                  {t("schoolAction")}
+                </h3>
+                {doc.school_action?.trim() ? (
+                  <p className="school-action-text">{doc.school_action.trim()}</p>
+                ) : (
+                  <p className="muted">{t("schoolActionEmpty")}</p>
+                )}
+              </div>
               <div className="doc-activities">
                 <h3>
                   <Icon name="calendar" />

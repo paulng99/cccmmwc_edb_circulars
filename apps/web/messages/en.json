@@ -159,7 +159,17 @@
     "chatRestoring": "Loading conversation…",
     "chatRestoreFail": "Could not restore the previous conversation for this document.",
     "chatFail": "Something went wrong. Please try again.",
-    "chatTimeout": "The reply took too long. Please try again."
+    "chatTimeout": "The reply took too long. Please try again.",
+    "reanalyze": "Re-analyze",
+    "reanalyzeWithCount": "Re-analyze ({count})",
+    "reanalyzeAnalyzing": "Analyzing…",
+    "reanalyzeSelect": "Select circulars to re-analyze",
+    "reanalyzeFailKeep": "Could not re-analyze; the previous result is unchanged",
+    "reanalyzeDone": "Re-analyze finished: {ok} succeeded, {fail} failed",
+    "reanalyzeRequestFail": "Could not start re-analyze. Please try again.",
+    "schoolAction": "What the school should do",
+    "schoolActionEmpty": "Not re-analyzed yet",
+    "originalText": "Original circular"
   },
   "chat": {
     "title": "Ask about EDB materials",
@@ -550,6 +560,8 @@
     "featureSourceSuggestHint": "AI drafts of crawl sources",
     "featureSettingsImprove": "Settings improve",
     "featureSettingsImproveHint": "AI rewrite of the system prompt",
+    "featureReanalyze": "Re-analyze",
+    "featureReanalyzeHint": "School-action summary for selected circulars",
     "featureEmbedIndex": "Index embeddings",
     "featureEmbedIndexHint": "Writing new documents into the vector store; usually the largest share",
     "featureEmbedQuery": "Search embeddings",

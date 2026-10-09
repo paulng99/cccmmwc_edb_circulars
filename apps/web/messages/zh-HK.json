@@ -159,7 +159,17 @@
     "chatRestoring": "正在載入對話…",
     "chatRestoreFail": "無法還原此文件的先前對話。",
     "chatFail": "發生錯誤，請再試一次。",
-    "chatTimeout": "回應逾時，請再試一次。"
+    "chatTimeout": "回應逾時，請再試一次。",
+    "reanalyze": "重新分析",
+    "reanalyzeWithCount": "重新分析（{count}）",
+    "reanalyzeAnalyzing": "正在分析",
+    "reanalyzeSelect": "選取通告以重新分析",
+    "reanalyzeFailKeep": "未能重新分析，原來結果保持不變",
+    "reanalyzeDone": "已完成重新分析：成功 {ok}，失敗 {fail}",
+    "reanalyzeRequestFail": "無法送出重新分析，請稍後再試。",
+    "schoolAction": "這份要學校做什麼",
+    "schoolActionEmpty": "尚未重新分析",
+    "originalText": "通告原文"
   },
   "chat": {
     "title": "通告問答",
@@ -550,6 +560,8 @@
     "featureSourceSuggestHint": "用 AI 草擬爬取來源",
     "featureSettingsImprove": "設定改善",
     "featureSettingsImproveHint": "用 AI 改寫系統提示詞",
+    "featureReanalyze": "重新分析",
+    "featureReanalyzeHint": "為所選通告產生「要學校做什麼」撮要",
     "featureEmbedIndex": "索引嵌入",
     "featureEmbedIndexHint": "把新文件寫入向量庫，通常是最大宗",
     "featureEmbedQuery": "檢索嵌入",

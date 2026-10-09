@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link, useRouter } from "@/i18n/routing";
-import { listDocuments } from "@/lib/api";
+import { listDocuments, reanalyzeDocuments } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDate } from "@/lib/date";
+import {
+  canSubmitReanalyze,
+  reanalyzeButtonLabel,
+  toggleIdInSet,
+} from "@/lib/reanalyze-ui";
 import { Icon } from "@/components/Icon";
 import {
   PROGRAMME_OPTIONS,
@@ -40,6 +45,7 @@ type DocGroup = {
   category?: string;
   topics?: string[];
   variants: Variant[];
+  school_action?: string | null;
 };
 
 type ListStatus = "idle" | "loading" | "success" | "empty" | "error";
@@ -78,10 +84,23 @@ export default function DocumentsPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [sortBy, setSortBy] = useState<SortBy>("issued_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [analyzing, setAnalyzing] = useState(false);
+  const [reanalyzeNotice, setReanalyzeNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (ready && !token) router.replace("/login");
   }, [ready, token, router]);
+
+  useEffect(() => {
+    // Drop selections that are not on the current page after filters/reload.
+    setSelected((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(items.map((g) => g.primary_id));
+      const next = new Set([...prev].filter((id) => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [items]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -123,6 +142,18 @@ export default function DocumentsPage() {
       cancelled = true;
     };
   }, [token, debouncedQ, page, programme, topic, sortBy, sortDir, reloadKey]);
+
+  const selectedCount = selected.size;
+  const reanalyzeEnabled = canSubmitReanalyze(selectedCount, analyzing);
+  const reanalyzeLabel = useMemo(
+    () =>
+      reanalyzeButtonLabel(selectedCount, analyzing, {
+        idle: t("reanalyze"),
+        withCount: (n) => t("reanalyzeWithCount", { count: n }),
+        analyzing: t("reanalyzeAnalyzing"),
+      }),
+    [selectedCount, analyzing, t],
+  );
 
   if (!token) return null;
 
@@ -175,6 +206,43 @@ export default function DocumentsPage() {
     programme === "circular"
       ? t("resultCountCirculars", { count: total })
       : t("resultCountProgramme", { count: total });
+
+  async function runReanalyze() {
+    if (!token || !reanalyzeEnabled) return;
+    const ids = [...selected];
+    setAnalyzing(true);
+    setReanalyzeNotice(null);
+    try {
+      const data = await reanalyzeDocuments(token, ids);
+      const results = data.results || [];
+      const ok = results.filter((r) => r.ok).length;
+      const fail = results.length - ok;
+      const byId = new Map(results.map((r) => [r.document_id, r]));
+      setItems((prev) =>
+        prev.map((g) => {
+          const hit = byId.get(g.primary_id);
+          if (!hit) return g;
+          if (hit.ok && hit.school_action) {
+            return { ...g, school_action: hit.school_action };
+          }
+          // Failure: keep existing school_action; surface keep message.
+          return g;
+        }),
+      );
+      const failMsgs = results
+        .filter((r) => !r.ok)
+        .map((r) => r.message || t("reanalyzeFailKeep"));
+      if (failMsgs.length && ok === 0) {
+        setReanalyzeNotice(failMsgs[0]);
+      } else {
+        setReanalyzeNotice(t("reanalyzeDone", { ok, fail }));
+      }
+    } catch {
+      setReanalyzeNotice(t("reanalyzeRequestFail"));
+    } finally {
+      setAnalyzing(false);
+    }
+  }
 
   return (
     <div className="page">
@@ -282,12 +350,33 @@ export default function DocumentsPage() {
               <span className="result-count-sub"> · {t("fileCount", { count: fileCount })}</span>
             ) : null}
           </p>
-          {hasFilters ? (
-            <button type="button" className="btn ghost sm" onClick={clearAll}>
-              <Icon name="x" />
-              {t("clearFilters")}
-            </button>
-          ) : null}
+          <div className="list-head-actions">
+            {status === "success" ? (
+              <button
+                type="button"
+                className={`btn sm${analyzing ? " is-loading" : ""}`}
+                disabled={!reanalyzeEnabled}
+                onClick={() => void runReanalyze()}
+                aria-label={reanalyzeLabel}
+              >
+                {analyzing ? <span className="spinner" /> : <Icon name="refresh-cw" />}
+                {reanalyzeLabel}
+              </button>
+            ) : null}
+            {hasFilters ? (
+              <button type="button" className="btn ghost sm" onClick={clearAll}>
+                <Icon name="x" />
+                {t("clearFilters")}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {reanalyzeNotice ? (
+        <div className="alert info reanalyze-notice" role="status">
+          <Icon name="info" />
+          <span>{reanalyzeNotice}</span>
         </div>
       ) : null}
 
@@ -363,60 +452,75 @@ export default function DocumentsPage() {
         <div className="card doc-list">
           {items.map((group) => {
             const prog = group.programme || group.category;
+            const checked = selected.has(group.primary_id);
             return (
-              <article key={group.key} className="doc-item">
-                <Link href={`/documents/${group.primary_id}`} className="doc-main">
-                  <span className={docIconClass(prog)} aria-hidden>
-                    <Icon name="file-text" />
-                  </span>
-                  <div className="doc-body">
-                    <h3>{group.title}</h3>
-                    <div className="doc-meta">
-                      <span className={`badge ${PROGRAMME_TONE[prog || ""] || "slate"}`}>
-                        {programmeLabel(prog, t)}
-                      </span>
-                      {(group.topics || []).slice(0, 3).map((tp) => (
-                        <span key={tp} className={`badge outline ${TOPIC_TONE[tp] || "slate"}`}>
-                          {topicLabel(tp, t)}
-                        </span>
-                      ))}
-                      {group.circular_no ? (
-                        <span className="circ">
-                          <Icon name="hash" style={{ width: 12, height: 12 }} />
-                          {group.circular_no}
-                        </span>
+              <article key={group.key} className={`doc-item${checked ? " is-selected" : ""}`}>
+                <div className="doc-main">
+                  <label className="doc-select">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={analyzing}
+                      aria-label={t("reanalyzeSelect")}
+                      onChange={() => setSelected((prev) => toggleIdInSet(prev, group.primary_id))}
+                    />
+                  </label>
+                  <Link href={`/documents/${group.primary_id}`} className="doc-main-link">
+                    <span className={docIconClass(prog)} aria-hidden>
+                      <Icon name="file-text" />
+                    </span>
+                    <div className="doc-body">
+                      <h3>{group.title}</h3>
+                      {group.school_action?.trim() ? (
+                        <p className="doc-school-action">{group.school_action.trim()}</p>
                       ) : null}
+                      <div className="doc-meta">
+                        <span className={`badge ${PROGRAMME_TONE[prog || ""] || "slate"}`}>
+                          {programmeLabel(prog, t)}
+                        </span>
+                        {(group.topics || []).slice(0, 3).map((tp) => (
+                          <span key={tp} className={`badge outline ${TOPIC_TONE[tp] || "slate"}`}>
+                            {topicLabel(tp, t)}
+                          </span>
+                        ))}
+                        {group.circular_no ? (
+                          <span className="circ">
+                            <Icon name="hash" style={{ width: 12, height: 12 }} />
+                            {group.circular_no}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                  <div className="doc-dates">
-                    <time
-                      className={`doc-date${sortBy === "issued_at" ? " is-active" : ""}`}
-                      dateTime={group.issued_at || undefined}
-                    >
-                      <Icon name="calendar" />
-                      <span className="doc-date-label">{t("issuedAt")}</span>
-                      {formatHkDate(group.issued_at)}
-                    </time>
-                    {group.revised_at || sortBy === "revised_at" ? (
+                    <div className="doc-dates">
                       <time
-                        className={`doc-date is-revision${sortBy === "revised_at" ? " is-active" : ""}`}
-                        dateTime={group.revised_at || undefined}
+                        className={`doc-date${sortBy === "issued_at" ? " is-active" : ""}`}
+                        dateTime={group.issued_at || undefined}
                       >
-                        <Icon name="refresh-cw" />
-                        <span className="doc-date-label">{t("revisedAt")}</span>
-                        {formatHkDate(group.revised_at)}
+                        <Icon name="calendar" />
+                        <span className="doc-date-label">{t("issuedAt")}</span>
+                        {formatHkDate(group.issued_at)}
                       </time>
-                    ) : null}
-                    <time
-                      className={`doc-date${sortBy === "downloaded_at" ? " is-active" : ""}`}
-                      dateTime={group.downloaded_at || undefined}
-                    >
-                      <Icon name="download" />
-                      <span className="doc-date-label">{t("downloadedAt")}</span>
-                      {formatHkDate(group.downloaded_at)}
-                    </time>
-                  </div>
-                </Link>
+                      {group.revised_at || sortBy === "revised_at" ? (
+                        <time
+                          className={`doc-date is-revision${sortBy === "revised_at" ? " is-active" : ""}`}
+                          dateTime={group.revised_at || undefined}
+                        >
+                          <Icon name="refresh-cw" />
+                          <span className="doc-date-label">{t("revisedAt")}</span>
+                          {formatHkDate(group.revised_at)}
+                        </time>
+                      ) : null}
+                      <time
+                        className={`doc-date${sortBy === "downloaded_at" ? " is-active" : ""}`}
+                        dateTime={group.downloaded_at || undefined}
+                      >
+                        <Icon name="download" />
+                        <span className="doc-date-label">{t("downloadedAt")}</span>
+                        {formatHkDate(group.downloaded_at)}
+                      </time>
+                    </div>
+                  </Link>
+                </div>
                 <div className="doc-langs" role="group" aria-label={t("languages")}>
                   <span className="label">{t("languages")}</span>
                   {group.variants.map((v) => (

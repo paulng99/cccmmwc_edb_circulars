@@ -20,6 +20,7 @@ const FEATURES = [
   { id: "classify", label: "featureClassify", hint: "featureClassifyHint", tone: "violet" },
   { id: "source_suggest", label: "featureSourceSuggest", hint: "featureSourceSuggestHint", tone: "sky" },
   { id: "settings_improve", label: "featureSettingsImprove", hint: "featureSettingsImproveHint", tone: "blue" },
+  { id: "reanalyze", label: "featureReanalyze", hint: "featureReanalyzeHint", tone: "sky" },
   { id: "embed_index", label: "featureEmbedIndex", hint: "featureEmbedIndexHint", tone: "teal" },
   { id: "embed_query", label: "featureEmbedQuery", hint: "featureEmbedQueryHint", tone: "orange" },
   { id: "web_search", label: "featureWebSearch", hint: "featureWebSearchHint", tone: "amber" },

@@ -97,6 +97,26 @@ class DocumentOut(BaseModel):
     topics: list[str] = []
     index_error: str | None = None
     warning: str | None = None
+    # LLM "what the school should do" paragraph; not calendar activity summary.
+    school_action: str | None = None
+
+
+class ReanalyzeBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
+
+
+class ReanalyzeItemOut(BaseModel):
+    document_id: str
+    ok: bool
+    school_action: str | None = None
+    error: str | None = None
+    message: str | None = None
+
+
+class ReanalyzeResponse(BaseModel):
+    results: list[ReanalyzeItemOut]
 
 
 class CalendarEventOut(BaseModel):
@@ -138,6 +158,7 @@ class DocumentGroupOut(BaseModel):
     category: str = "document"  # legacy: circular | document
     topics: list[str] = []
     variants: list[DocumentVariantOut]
+    school_action: str | None = None
 
 
 class SecretFieldOut(BaseModel):
