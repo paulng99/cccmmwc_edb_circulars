@@ -19,7 +19,11 @@ from app.api.schemas import (
     DocumentGroupOut,
     DocumentOut,
     DocumentVariantOut,
+    ReanalyzeBody,
+    ReanalyzeItemOut,
+    ReanalyzeResponse,
 )
+from app.services.reanalyze import reanalyze_documents, school_action_from_extra
 from app.collectors.circular_meta import is_language_label
 from app.core.db import get_db
 from app.models.entities import Document, DocumentChunk, User
@@ -191,6 +195,7 @@ def _to_out(doc: Document, *, chunk_count: int = 0) -> DocumentOut:
         topics=_doc_topics(doc),
         index_error=(extra.get("index_error") or None),
         warning=(extra.get("warning") or None),
+        school_action=school_action_from_extra(extra),
     )
 
 
@@ -271,6 +276,7 @@ def _to_groups(
                     )
                     for d in members_sorted
                 ],
+                school_action=school_action_from_extra(getattr(primary, "extra", None)),
             )
         )
 
@@ -418,6 +424,32 @@ async def calendar_events(
         )
         days.append(CalendarDayOut(date=day, events=day_events))
     return {"days": [d.model_dump() for d in days]}
+
+
+@router.post("/reanalyze")
+async def reanalyze_selected(
+    body: ReanalyzeBody,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> ReanalyzeResponse:
+    """Re-analyze only the selected documents with the answer-model provider.
+
+    Sends each selected circular body to the existing Q&A LLM client. Does not
+    re-embed, change calendar activities, or touch unselected documents.
+    """
+    del user  # auth gate only
+    # Deduplicate while preserving order — never widen beyond the client's selection.
+    seen: set[uuid.UUID] = set()
+    ordered: list[uuid.UUID] = []
+    for doc_id in body.document_ids:
+        if doc_id in seen:
+            continue
+        seen.add(doc_id)
+        ordered.append(doc_id)
+
+    raw_results = await reanalyze_documents(db, ordered)
+    await db.commit()
+    return ReanalyzeResponse(results=[ReanalyzeItemOut(**item) for item in raw_results])
 
 
 @router.get("/{document_id}")

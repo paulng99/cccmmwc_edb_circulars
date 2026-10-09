@@ -35,6 +35,7 @@ FEATURES = (
     "classify",
     "source_suggest",
     "settings_improve",
+    "reanalyze",
     "embed_index",
     "embed_query",
     "web_search",
