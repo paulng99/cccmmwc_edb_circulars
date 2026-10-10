@@ -59,23 +59,6 @@ npm install
 npm run dev   # http://localhost:4000
 ```
 
-## Capacitor（Android / iOS）
-
-Web 為主；行動版用 Capacitor 包同一 UI（開發時可指向已啟動的 Web）。
-
-```bash
-cd apps/web
-# capacitor.config.json 的 server.url 預設 http://localhost:4000
-npx cap add android
-npx cap add ios
-npx cap sync
-npm run cap:android   # 或 cap:ios（需 macOS）
-```
-
-- Android：Android Studio 開啟 `android/`
-- iOS：需 macOS + Xcode 開啟 `ios/`
-- 實機請將 Capacitor `server.url` 設為可連線的網站位址（勿用 localhost）。瀏覽器經由網站轉送 `/api`，不必另開 API 埠
-
 ## 環境變數重點
 
 | 變數 | 說明 |

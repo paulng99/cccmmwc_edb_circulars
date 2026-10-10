@@ -35,7 +35,7 @@
     "subtitle": "Start and deadline dates for activities in circulars, grouped by day",
     "loading": "Loading calendar…",
     "loadError": "Could not load the calendar. Please try again.",
-    "empty": "No activity dates extracted yet",
+    "empty": "No start or deadline dates yet",
     "datesUpdating": "Updating dates",
     "kindStart": "Start",
     "kindDeadline": "Deadline"

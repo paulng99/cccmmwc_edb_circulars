@@ -6,6 +6,7 @@ in progress, calendar APIs expose dates_updating so the UI can show「日期更�
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -25,6 +26,7 @@ from app.services.llm_activities import (
 # Re-export status helpers for API/tests.
 __all__ = [
     "ACTIVITIES_PARSED_FLAG",
+    "BACKFILL_INTER_DOC_DELAY_SECONDS",
     "BACKFILL_STATUS_DONE",
     "BACKFILL_STATUS_IN_PROGRESS",
     "BACKFILL_STATUS_KEY",
@@ -37,6 +39,9 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 _CHUNK_LIMIT = 12
+# Sequential backfill only; pause between documents so full-library boot/ingest
+# does not hammer the answer-model LLM.
+BACKFILL_INTER_DOC_DELAY_SECONDS = 1.0
 
 
 def dates_updating_from_values(values: dict[str, Any] | None) -> bool:
@@ -138,11 +143,13 @@ async def backfill_document_activities(session: AsyncSession) -> dict[str, int]:
     await session.commit()
 
     updated = 0
-    for doc in docs:
+    for index, doc in enumerate(docs):
         text = await _body_for_doc(session, doc)
         if await refresh_activities_llm_only(doc, text):
             updated += 1
         await session.commit()
+        if index + 1 < len(docs) and BACKFILL_INTER_DOC_DELAY_SECONDS > 0:
+            await asyncio.sleep(BACKFILL_INTER_DOC_DELAY_SECONDS)
 
     # Re-check in case new docs arrived mid-run.
     remaining = await _docs_needing_llm_activities(session)
