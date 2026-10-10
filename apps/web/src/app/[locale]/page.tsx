@@ -1,16 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useTranslations } from "next-intl";
 import { Link, useRouter } from "@/i18n/routing";
 import { getUpcomingDeadlines, type CalendarEvent } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDate } from "@/lib/date";
+import { useRefreshingQuery } from "@/lib/useRefreshingQuery";
 import { AgendaEventRow } from "@/components/AgendaEventRow";
+import { DatesUpdatingCard } from "@/components/DatesUpdatingCard";
 import { Icon } from "@/components/Icon";
 
-type LoadState = "loading" | "success" | "error";
 type DayGroup = { date: string; events: CalendarEvent[] };
+
+function loadHomeDeadlines(token: string) {
+  return getUpcomingDeadlines(token, 7);
+}
 
 function groupByDate(items: CalendarEvent[]): DayGroup[] {
   const map = new Map<string, CalendarEvent[]>();
@@ -28,34 +33,12 @@ export default function HomePage() {
   const t = useTranslations("home");
   const { token, ready } = useAuth();
   const router = useRouter();
-  const [status, setStatus] = useState<LoadState>("loading");
-  const [items, setItems] = useState<CalendarEvent[]>([]);
-  const [datesUpdating, setDatesUpdating] = useState(false);
+  const { status, data } = useRefreshingQuery(token, ready, loadHomeDeadlines);
+  const datesUpdating = Boolean(data?.dates_updating);
+  const items = datesUpdating ? [] : data?.items || [];
 
   useEffect(() => {
-    if (!ready) return;
-    if (!token) {
-      router.replace("/login");
-      return;
-    }
-    let cancelled = false;
-    setStatus("loading");
-    getUpcomingDeadlines(token, 7)
-      .then((res) => {
-        if (cancelled) return;
-        setDatesUpdating(Boolean(res.dates_updating));
-        setItems(res.dates_updating ? [] : res.items || []);
-        setStatus("success");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setItems([]);
-        setDatesUpdating(false);
-        setStatus("error");
-      });
-    return () => {
-      cancelled = true;
-    };
+    if (ready && !token) router.replace("/login");
   }, [ready, token, router]);
 
   const days = useMemo(() => groupByDate(items), [items]);
@@ -90,12 +73,7 @@ export default function HomePage() {
       ) : null}
 
       {status === "success" && datesUpdating ? (
-        <div className="card empty" role="status">
-          <div className="empty-icon">
-            <Icon name="calendar" />
-          </div>
-          <h3>{t("datesUpdating")}</h3>
-        </div>
+        <DatesUpdatingCard title={t("datesUpdating")} progress={data?.dates_progress} />
       ) : null}
 
       {status === "success" && !datesUpdating && days.length === 0 ? (

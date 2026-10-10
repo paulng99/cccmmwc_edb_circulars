@@ -12,9 +12,12 @@ from app.services import activity_dates as activity_dates_mod
 from app.services import llm_activities as llm_act
 from app.services.llm_activities import (
     ACTIVITIES_PARSED_FLAG,
+    BACKFILL_CURRENT_KEY,
+    BACKFILL_DONE_KEY,
     BACKFILL_STATUS_DONE,
     BACKFILL_STATUS_IN_PROGRESS,
     BACKFILL_STATUS_KEY,
+    BACKFILL_TOTAL_KEY,
     extract_activities_via_llm,
     parse_llm_activities,
     refresh_activities_llm_only,
@@ -172,6 +175,8 @@ async def test_prepare_backfill_clears_stale_and_sets_in_progress(monkeypatch):
     assert result["cleared"] == 1
     assert doc.activities == []
     assert settings_row.values[BACKFILL_STATUS_KEY] == BACKFILL_STATUS_IN_PROGRESS
+    assert settings_row.values[BACKFILL_DONE_KEY] == 0
+    assert settings_row.values[BACKFILL_TOTAL_KEY] == 1
     assert session.committed is True
 
 
@@ -234,6 +239,73 @@ async def test_run_backfill_marks_done_and_uses_llm(monkeypatch):
     assert out["updated"] == 1
     assert doc.activities[0]["deadline_at"] == "2026-12-02"
     assert settings_row.values[BACKFILL_STATUS_KEY] == BACKFILL_STATUS_DONE
+    assert settings_row.values[BACKFILL_DONE_KEY] == 1
+    assert settings_row.values[BACKFILL_TOTAL_KEY] == 1
+    assert BACKFILL_CURRENT_KEY not in settings_row.values
+
+
+@pytest.mark.asyncio
+async def test_backfill_reports_live_progress(monkeypatch):
+    docs = [
+        SimpleNamespace(
+            id=uuid.uuid4(),
+            activities=[],
+            extra={"activities_parsed": "12"},
+            circular_no="140/2026",
+            title="工作坊",
+        ),
+        SimpleNamespace(
+            id=uuid.uuid4(),
+            activities=[],
+            extra={"activities_parsed": "12"},
+            circular_no="136/2026",
+            title="研習",
+        ),
+    ]
+    settings_row = SimpleNamespace(values={})
+    seen: list[dict] = []
+
+    async def docs_needing(_session):
+        return [
+            d
+            for d in docs
+            if (d.extra or {}).get("activities_parsed") != ACTIVITIES_PARSED_FLAG
+        ]
+
+    async def fake_refresh(d, _body):
+        seen.append(dict(settings_row.values))
+        d.extra = {**(d.extra or {}), "activities_parsed": ACTIVITIES_PARSED_FLAG}
+        return True
+
+    async def fake_sleep(_seconds: float):
+        return None
+
+    monkeypatch.setattr(activity_dates_mod, "_docs_needing_llm_activities", docs_needing)
+    monkeypatch.setattr(
+        activity_dates_mod,
+        "_load_settings_row",
+        AsyncMock(return_value=settings_row),
+    )
+    monkeypatch.setattr(
+        activity_dates_mod,
+        "_body_for_doc",
+        AsyncMock(return_value=FIXTURE_EDBCM_136_STYLE),
+    )
+    monkeypatch.setattr(activity_dates_mod, "refresh_activities_llm_only", fake_refresh)
+    monkeypatch.setattr(activity_dates_mod.asyncio, "sleep", fake_sleep)
+
+    class FakeSession:
+        async def commit(self):
+            return None
+
+    await activity_dates_mod.backfill_document_activities(FakeSession())
+    assert seen[0][BACKFILL_DONE_KEY] == 0
+    assert seen[0][BACKFILL_TOTAL_KEY] == 2
+    assert seen[0][BACKFILL_CURRENT_KEY] == "140/2026 · 工作坊"
+    assert seen[1][BACKFILL_DONE_KEY] == 1
+    assert seen[1][BACKFILL_CURRENT_KEY] == "136/2026 · 研習"
+    assert settings_row.values[BACKFILL_STATUS_KEY] == BACKFILL_STATUS_DONE
+    assert activity_dates_mod.dates_progress_from_values(settings_row.values) is None
 
 
 @pytest.mark.asyncio
@@ -293,3 +365,25 @@ def test_dates_updating_helper():
         {BACKFILL_STATUS_KEY: BACKFILL_STATUS_DONE}
     )
     assert not activity_dates_mod.dates_updating_from_values({})
+
+
+def test_dates_progress_while_updating():
+    progress = activity_dates_mod.dates_progress_from_values(
+        {
+            BACKFILL_STATUS_KEY: BACKFILL_STATUS_IN_PROGRESS,
+            BACKFILL_DONE_KEY: 2,
+            BACKFILL_TOTAL_KEY: 5,
+            BACKFILL_CURRENT_KEY: "140/2026 · 工作坊",
+        }
+    )
+    assert progress == {"done": 2, "total": 5, "current": "140/2026 · 工作坊"}
+    assert (
+        activity_dates_mod.dates_progress_from_values(
+            {
+                BACKFILL_STATUS_KEY: BACKFILL_STATUS_DONE,
+                BACKFILL_DONE_KEY: 5,
+                BACKFILL_TOTAL_KEY: 5,
+            }
+        )
+        is None
+    )

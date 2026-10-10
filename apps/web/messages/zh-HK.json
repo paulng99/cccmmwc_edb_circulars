@@ -40,6 +40,9 @@
     "kindStart": "開始",
     "kindDeadline": "截止"
   },
+  "datesBackfill": {
+    "count": "已處理 {done} / {total}"
+  },
   "login": {
     "title": "歡迎回來",
     "subtitle": "登入以管理通告庫與問答服務",

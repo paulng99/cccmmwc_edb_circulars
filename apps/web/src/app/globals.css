@@ -2950,6 +2950,45 @@ button.kpi:disabled {
   animation: shimmer 1.6s linear infinite;
 }
 
+.dates-backfill {
+  width: min(100%, 22rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+}
+
+.dates-backfill .progress-track {
+  width: 100%;
+}
+
+.dates-backfill-count {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.dates-backfill-current {
+  margin: 0;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-fill.indeterminate {
+  width: 35%;
+  animation: dates-indeterminate 1.1s ease-in-out infinite;
+}
+
+@keyframes dates-indeterminate {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
 .live-card {
   border-color: var(--primary-soft-border);
   box-shadow: 0 0 0 3px var(--primary-soft), var(--shadow-sm);

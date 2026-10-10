@@ -40,6 +40,9 @@
     "kindStart": "Start",
     "kindDeadline": "Deadline"
   },
+  "datesBackfill": {
+    "count": "{done} / {total}"
+  },
   "login": {
     "title": "Welcome back",
     "subtitle": "Sign in to manage the circular library and Q&A service",

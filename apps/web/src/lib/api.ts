@@ -301,6 +301,12 @@ export async function reanalyzeDocuments(token: string, documentIds: string[]) {
   return res.json() as Promise<{ results: ReanalyzeResult[] }>;
 }
 
+export type DatesProgress = {
+  done: number;
+  total: number;
+  current?: string | null;
+};
+
 export type CalendarEvent = {
   date: string;
   kind: "start" | "deadline";
@@ -322,6 +328,7 @@ export async function getUpcomingDeadlines(token: string, days = 7) {
     from: string;
     to: string;
     dates_updating?: boolean;
+    dates_progress?: DatesProgress | null;
     items: CalendarEvent[];
   }>;
 }
@@ -333,6 +340,7 @@ export async function getCalendarEvents(token: string) {
   if (!res.ok) throw new Error("calendar_failed");
   return res.json() as Promise<{
     dates_updating?: boolean;
+    dates_progress?: DatesProgress | null;
     days: Array<{ date: string; events: CalendarEvent[] }>;
   }>;
 }

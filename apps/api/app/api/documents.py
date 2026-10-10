@@ -27,7 +27,7 @@ from app.services.reanalyze import reanalyze_documents, school_action_from_extra
 from app.collectors.circular_meta import is_language_label
 from app.core.db import get_db
 from app.models.entities import Document, DocumentChunk, User
-from app.services.activity_dates import get_dates_updating
+from app.services.activity_dates import get_dates_status
 from app.services.classify import PROGRAMMES, TOPICS, programme_for
 from app.services.storage import get_object_bytes
 
@@ -383,14 +383,15 @@ async def upcoming_deadlines(
 ) -> dict:
     """Deadlines from today through today+days (Asia/Hong_Kong), one row per activity."""
     del user  # auth gate only
-    updating = await get_dates_updating(db)
+    status = await get_dates_status(db)
     today = datetime.now(_HK).date()
     end = today + timedelta(days=days)
-    if updating:
+    if status["dates_updating"]:
         return {
             "from": today.isoformat(),
             "to": end.isoformat(),
             "dates_updating": True,
+            "dates_progress": status["dates_progress"],
             "items": [],
         }
     rows = list((await db.scalars(select(Document))).all())
@@ -408,6 +409,7 @@ async def upcoming_deadlines(
         "from": today.isoformat(),
         "to": end.isoformat(),
         "dates_updating": False,
+        "dates_progress": None,
         "items": [e.model_dump() for e in events],
     }
 
@@ -419,8 +421,13 @@ async def calendar_events(
 ) -> dict:
     """All activity start/deadline events grouped by date."""
     del user  # auth gate only
-    if await get_dates_updating(db):
-        return {"dates_updating": True, "days": []}
+    status = await get_dates_status(db)
+    if status["dates_updating"]:
+        return {
+            "dates_updating": True,
+            "dates_progress": status["dates_progress"],
+            "days": [],
+        }
     rows = list((await db.scalars(select(Document))).all())
     by_day: dict[str, list[CalendarEventOut]] = {}
     for doc in rows:
@@ -438,7 +445,11 @@ async def calendar_events(
             )
         )
         days.append(CalendarDayOut(date=day, events=day_events))
-    return {"dates_updating": False, "days": [d.model_dump() for d in days]}
+    return {
+        "dates_updating": False,
+        "dates_progress": None,
+        "days": [d.model_dump() for d in days],
+    }
 
 
 @router.post("/reanalyze")

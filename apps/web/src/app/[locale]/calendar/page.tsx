@@ -1,49 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
 import { getCalendarEvents, type CalendarEvent } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDate } from "@/lib/date";
+import { useRefreshingQuery } from "@/lib/useRefreshingQuery";
 import { AgendaEventRow } from "@/components/AgendaEventRow";
+import { DatesUpdatingCard } from "@/components/DatesUpdatingCard";
 import { Icon } from "@/components/Icon";
 
-type LoadState = "loading" | "success" | "error";
 type DayGroup = { date: string; events: CalendarEvent[] };
+
+function loadCalendar(token: string) {
+  return getCalendarEvents(token);
+}
 
 export default function CalendarPage() {
   const t = useTranslations("calendar");
   const { token, ready } = useAuth();
   const router = useRouter();
-  const [status, setStatus] = useState<LoadState>("loading");
-  const [days, setDays] = useState<DayGroup[]>([]);
-  const [datesUpdating, setDatesUpdating] = useState(false);
+  const { status, data } = useRefreshingQuery(token, ready, loadCalendar);
+  const datesUpdating = Boolean(data?.dates_updating);
+  const days: DayGroup[] = datesUpdating ? [] : data?.days || [];
 
   useEffect(() => {
-    if (!ready) return;
-    if (!token) {
-      router.replace("/login");
-      return;
-    }
-    let cancelled = false;
-    setStatus("loading");
-    getCalendarEvents(token)
-      .then((res) => {
-        if (cancelled) return;
-        setDatesUpdating(Boolean(res.dates_updating));
-        setDays(res.dates_updating ? [] : res.days || []);
-        setStatus("success");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setDays([]);
-        setDatesUpdating(false);
-        setStatus("error");
-      });
-    return () => {
-      cancelled = true;
-    };
+    if (ready && !token) router.replace("/login");
   }, [ready, token, router]);
 
   return (
@@ -72,12 +55,7 @@ export default function CalendarPage() {
       ) : null}
 
       {status === "success" && datesUpdating ? (
-        <div className="card empty" role="status">
-          <div className="empty-icon">
-            <Icon name="calendar" />
-          </div>
-          <h3>{t("datesUpdating")}</h3>
-        </div>
+        <DatesUpdatingCard title={t("datesUpdating")} progress={data?.dates_progress} />
       ) : null}
 
       {status === "success" && !datesUpdating && days.length === 0 ? (
