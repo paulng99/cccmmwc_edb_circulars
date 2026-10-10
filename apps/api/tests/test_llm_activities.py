@@ -236,6 +236,55 @@ async def test_run_backfill_marks_done_and_uses_llm(monkeypatch):
     assert settings_row.values[BACKFILL_STATUS_KEY] == BACKFILL_STATUS_DONE
 
 
+@pytest.mark.asyncio
+async def test_backfill_throttles_between_documents(monkeypatch):
+    docs = [
+        SimpleNamespace(id=uuid.uuid4(), activities=[], extra={"activities_parsed": "12"}),
+        SimpleNamespace(id=uuid.uuid4(), activities=[], extra={"activities_parsed": "12"}),
+    ]
+    settings_row = SimpleNamespace(
+        values={BACKFILL_STATUS_KEY: BACKFILL_STATUS_IN_PROGRESS}
+    )
+    sleep_calls: list[float] = []
+
+    async def docs_needing(_session):
+        pending = [
+            d
+            for d in docs
+            if (d.extra or {}).get("activities_parsed") != ACTIVITIES_PARSED_FLAG
+        ]
+        return pending
+
+    async def fake_refresh(d, _body):
+        d.extra = {**(d.extra or {}), "activities_parsed": ACTIVITIES_PARSED_FLAG}
+        return True
+
+    async def fake_sleep(seconds: float):
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr(activity_dates_mod, "_docs_needing_llm_activities", docs_needing)
+    monkeypatch.setattr(
+        activity_dates_mod,
+        "_load_settings_row",
+        AsyncMock(return_value=settings_row),
+    )
+    monkeypatch.setattr(
+        activity_dates_mod,
+        "_body_for_doc",
+        AsyncMock(return_value=FIXTURE_EDBCM_136_STYLE),
+    )
+    monkeypatch.setattr(activity_dates_mod, "refresh_activities_llm_only", fake_refresh)
+    monkeypatch.setattr(activity_dates_mod.asyncio, "sleep", fake_sleep)
+
+    class FakeSession:
+        async def commit(self):
+            return None
+
+    out = await activity_dates_mod.backfill_document_activities(FakeSession())
+    assert out["checked"] == 2
+    assert sleep_calls == [activity_dates_mod.BACKFILL_INTER_DOC_DELAY_SECONDS]
+
+
 def test_dates_updating_helper():
     assert activity_dates_mod.dates_updating_from_values(
         {BACKFILL_STATUS_KEY: BACKFILL_STATUS_IN_PROGRESS}

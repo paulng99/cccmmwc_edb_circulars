@@ -23,7 +23,7 @@
 | `apps/api/app/services/activity_dates.py` | Prepare + run full-library LLM backfill; status helpers |
 | `apps/api/app/services/reanalyze.py` | Use LLM-only activities; drop regex fallback |
 | `apps/api/app/services/rag.py` | Ingest: LLM dates instead of `apply_document_activities` |
-| `apps/api/app/bootstrap.py` / `main.py` / `worker.py` | Clear stale + background/celery backfill |
+| `apps/api/app/bootstrap.py` / `main.py` | Clear stale + in-process lifespan LLM backfill |
 | `apps/api/app/api/documents.py` | `dates_updating` on calendar endpoints |
 | `apps/api/app/services/runtime_settings.py` | Preserve non-editable AppSetting keys |
 | `apps/web` calendar/home + document activity rows + i18n | Backfill copy; hide null date rows |

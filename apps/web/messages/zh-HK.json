@@ -35,7 +35,7 @@
     "subtitle": "按日期列出各通告活動的開始日與截止日",
     "loading": "正在載入月曆…",
     "loadError": "無法載入月曆，請稍後再試。",
-    "empty": "尚未抽出任何活動日期",
+    "empty": "暫未有開始日或截止日",
     "datesUpdating": "日期更新中",
     "kindStart": "開始",
     "kindDeadline": "截止"
