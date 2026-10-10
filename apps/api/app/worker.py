@@ -19,10 +19,11 @@ celery_app = Celery(
     backend=settings.celery_result_backend,
 )
 celery_app.conf.timezone = "Asia/Hong_Kong"
+# Tick every minute; each source's schedule in sources.yaml decides whether to crawl.
 celery_app.conf.beat_schedule = {
-    "daily-crawl-all": {
-        "task": "app.worker.crawl_all",
-        "schedule": crontab(hour=6, minute=0),
+    "dispatch-scheduled-crawls": {
+        "task": "app.worker.dispatch_scheduled_crawls",
+        "schedule": crontab(minute="*"),
     },
 }
 
@@ -75,6 +76,20 @@ async def _refresh_runtime_settings(session) -> None:
     invalidate_cache()
     await ensure_seeded(session)
     await get_merged(session)
+
+
+@celery_app.task(name="app.worker.dispatch_scheduled_crawls")
+def dispatch_scheduled_crawls() -> dict:
+    """Every minute: enqueue crawl_source for sources whose cron matches now."""
+    from app.core.db import SessionLocal
+    from app.services.schedule_dispatch import dispatch_scheduled_crawls as _dispatch
+
+    async def _inner() -> dict:
+        async with SessionLocal() as session:
+            await _refresh_runtime_settings(session)
+            return await _dispatch(session)
+
+    return _run_async(_inner())
 
 
 @celery_app.task(name="app.worker.crawl_all")

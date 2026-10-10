@@ -50,4 +50,5 @@ def load_sources_config() -> list[dict[str, Any]]:
 
 
 def get_enabled_sources() -> list[dict[str, Any]]:
-    return [s for s in load_sources_config() if s.get("enabled")]
+    sources = [s for s in load_sources_config() if s.get("enabled")]
+    return sorted(sources, key=lambda s: (int(s.get("priority") or 0), str(s.get("id") or "")))
