@@ -2979,6 +2979,15 @@ button.kpi:disabled {
   white-space: nowrap;
 }
 
+.dates-backfill-toggle {
+  margin-top: 0.2rem;
+}
+
+.dates-backfill.is-paused .progress-fill::after,
+.dates-backfill.is-paused .progress-fill.indeterminate {
+  animation-play-state: paused;
+}
+
 .progress-fill.indeterminate {
   width: 35%;
   animation: dates-indeterminate 1.1s ease-in-out infinite;

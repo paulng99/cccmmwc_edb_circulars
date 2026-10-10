@@ -28,6 +28,7 @@ BACKFILL_STATUS_DONE = "done"
 BACKFILL_DONE_KEY = "activities_llm_backfill_done"
 BACKFILL_TOTAL_KEY = "activities_llm_backfill_total"
 BACKFILL_CURRENT_KEY = "activities_llm_backfill_current"
+BACKFILL_PAUSED_KEY = "activities_llm_backfill_paused"
 
 MAX_BODY_CHARS = 24_000
 LLM_TIMEOUT_SECONDS = 90.0

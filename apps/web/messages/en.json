@@ -41,7 +41,10 @@
     "kindDeadline": "Deadline"
   },
   "datesBackfill": {
-    "count": "{done} / {total}"
+    "count": "{done} / {total}",
+    "pause": "Pause date update",
+    "resume": "Continue date update",
+    "paused": "Paused"
   },
   "login": {
     "title": "Welcome back",

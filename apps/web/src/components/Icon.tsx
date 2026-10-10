@@ -152,6 +152,12 @@ const PATHS = {
       <path d="M12 8h.01" />
     </>
   ),
+  pause: (
+    <>
+      <rect width="4" height="16" x="6" y="4" rx="1" />
+      <rect width="4" height="16" x="14" y="4" rx="1" />
+    </>
+  ),
   play: <polygon points="6 3 20 12 6 21 6 3" />,
   "refresh-cw": (
     <>

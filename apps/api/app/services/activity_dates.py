@@ -19,6 +19,7 @@ from app.services.llm_activities import (
     ACTIVITIES_PARSED_FLAG,
     BACKFILL_CURRENT_KEY,
     BACKFILL_DONE_KEY,
+    BACKFILL_PAUSED_KEY,
     BACKFILL_STATUS_DONE,
     BACKFILL_STATUS_IN_PROGRESS,
     BACKFILL_STATUS_KEY,
@@ -77,7 +78,16 @@ def dates_progress_from_values(values: dict[str, Any] | None) -> dict[str, Any] 
         done = total
     current = values.get(BACKFILL_CURRENT_KEY)
     label = current.strip()[:200] if isinstance(current, str) and current.strip() else None
-    return {"done": done, "total": total, "current": label}
+    return {
+        "done": done,
+        "total": total,
+        "current": label,
+        "paused": dates_paused_from_values(values),
+    }
+
+
+def dates_paused_from_values(values: dict[str, Any] | None) -> bool:
+    return isinstance(values, dict) and values.get(BACKFILL_PAUSED_KEY) is True
 
 
 async def _load_settings_row(session: AsyncSession) -> AppSetting:
@@ -109,6 +119,8 @@ async def _set_backfill_status(
             values[BACKFILL_CURRENT_KEY] = current.strip()[:200]
         else:
             values.pop(BACKFILL_CURRENT_KEY, None)
+    if status == BACKFILL_STATUS_DONE:
+        values.pop(BACKFILL_PAUSED_KEY, None)
     row.values = values
     if hasattr(row, "_sa_instance_state"):
         flag_modified(row, "values")
@@ -123,6 +135,37 @@ def _progress_label(doc: object) -> str | None:
     else:
         label = circular or title
     return label[:200] if label else None
+
+
+async def _read_paused(session: AsyncSession) -> bool:
+    get = getattr(session, "get", None)
+    if get is None:
+        return False
+    try:
+        row = await get(AppSetting, 1, populate_existing=True)
+    except TypeError:
+        row = await get(AppSetting, 1)
+    values = getattr(row, "values", None) if row is not None else None
+    return dates_paused_from_values(values)
+
+
+async def _wait_while_paused(session: AsyncSession) -> None:
+    while await _read_paused(session):
+        await asyncio.sleep(0.5)
+
+
+async def set_backfill_paused(session: AsyncSession, paused: bool) -> bool | None:
+    """Pause or resume an in-progress backfill. None when dates are not updating."""
+    row = await _load_settings_row(session)
+    values = dict(row.values or {})
+    if values.get(BACKFILL_STATUS_KEY) != BACKFILL_STATUS_IN_PROGRESS:
+        return None
+    values[BACKFILL_PAUSED_KEY] = paused
+    row.values = values
+    if hasattr(row, "_sa_instance_state"):
+        flag_modified(row, "values")
+    await session.commit()
+    return paused
 
 
 async def get_dates_updating(session: AsyncSession) -> bool:
@@ -218,6 +261,7 @@ async def backfill_document_activities(session: AsyncSession) -> dict[str, int]:
     updated = 0
     total = len(docs)
     for index, doc in enumerate(docs):
+        await _wait_while_paused(session)
         await _set_backfill_status(
             session,
             BACKFILL_STATUS_IN_PROGRESS,

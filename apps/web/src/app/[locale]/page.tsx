@@ -73,7 +73,11 @@ export default function HomePage() {
       ) : null}
 
       {status === "success" && datesUpdating ? (
-        <DatesUpdatingCard title={t("datesUpdating")} progress={data?.dates_progress} />
+        <DatesUpdatingCard
+          title={t("datesUpdating")}
+          progress={data?.dates_progress}
+          token={token}
+        />
       ) : null}
 
       {status === "success" && !datesUpdating && days.length === 0 ? (

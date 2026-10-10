@@ -41,7 +41,10 @@
     "kindDeadline": "截止"
   },
   "datesBackfill": {
-    "count": "已處理 {done} / {total}"
+    "count": "已處理 {done} / {total}",
+    "pause": "暫停更新日期",
+    "resume": "繼續更新日期",
+    "paused": "已暫停"
   },
   "login": {
     "title": "歡迎回來",

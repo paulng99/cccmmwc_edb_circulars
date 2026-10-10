@@ -305,6 +305,7 @@ export type DatesProgress = {
   done: number;
   total: number;
   current?: string | null;
+  paused?: boolean;
 };
 
 export type CalendarEvent = {
@@ -342,6 +343,19 @@ export async function getCalendarEvents(token: string) {
     dates_updating?: boolean;
     dates_progress?: DatesProgress | null;
     days: Array<{ date: string; events: CalendarEvent[] }>;
+  }>;
+}
+
+export async function setDatesBackfillPaused(token: string, paused: boolean) {
+  const res = await fetch(`${apiBase()}/api/documents/calendar/backfill-pause`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ paused }),
+  });
+  if (!res.ok) throw new Error("backfill_pause_failed");
+  return res.json() as Promise<{
+    dates_updating: boolean;
+    dates_progress: DatesProgress | null;
   }>;
 }
 

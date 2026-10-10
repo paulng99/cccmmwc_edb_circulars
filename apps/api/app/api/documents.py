@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,11 +28,15 @@ from app.services.reanalyze import reanalyze_documents, school_action_from_extra
 from app.collectors.circular_meta import is_language_label
 from app.core.db import get_db
 from app.models.entities import Document, DocumentChunk, User
-from app.services.activity_dates import get_dates_status
+from app.services.activity_dates import get_dates_status, set_backfill_paused
 from app.services.classify import PROGRAMMES, TOPICS, programme_for
 from app.services.storage import get_object_bytes
 
 _HK = ZoneInfo("Asia/Hong_Kong")
+
+
+class BackfillPauseBody(BaseModel):
+    paused: bool
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -450,6 +455,20 @@ async def calendar_events(
         "dates_progress": None,
         "days": [d.model_dump() for d in days],
     }
+
+
+@router.post("/calendar/backfill-pause")
+async def pause_dates_backfill(
+    body: BackfillPauseBody,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """Pause or resume the in-process LLM date backfill."""
+    del user
+    applied = await set_backfill_paused(db, body.paused)
+    if applied is None:
+        raise HTTPException(status_code=409, detail="dates_not_updating")
+    return await get_dates_status(db)
 
 
 @router.post("/reanalyze")

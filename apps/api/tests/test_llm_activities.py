@@ -14,6 +14,7 @@ from app.services.llm_activities import (
     ACTIVITIES_PARSED_FLAG,
     BACKFILL_CURRENT_KEY,
     BACKFILL_DONE_KEY,
+    BACKFILL_PAUSED_KEY,
     BACKFILL_STATUS_DONE,
     BACKFILL_STATUS_IN_PROGRESS,
     BACKFILL_STATUS_KEY,
@@ -367,6 +368,94 @@ def test_dates_updating_helper():
     assert not activity_dates_mod.dates_updating_from_values({})
 
 
+@pytest.mark.asyncio
+async def test_set_backfill_paused_only_while_updating(monkeypatch):
+    settings_row = SimpleNamespace(
+        values={
+            BACKFILL_STATUS_KEY: BACKFILL_STATUS_IN_PROGRESS,
+            BACKFILL_DONE_KEY: 1,
+            BACKFILL_TOTAL_KEY: 4,
+        }
+    )
+
+    class FakeSession:
+        async def commit(self):
+            return None
+
+        async def flush(self):
+            return None
+
+    monkeypatch.setattr(
+        activity_dates_mod,
+        "_load_settings_row",
+        AsyncMock(return_value=settings_row),
+    )
+    session = FakeSession()
+    assert await activity_dates_mod.set_backfill_paused(session, True) is True
+    assert settings_row.values[BACKFILL_PAUSED_KEY] is True
+    progress = activity_dates_mod.dates_progress_from_values(settings_row.values)
+    assert progress is not None
+    assert progress["paused"] is True
+
+    settings_row.values[BACKFILL_STATUS_KEY] = BACKFILL_STATUS_DONE
+    assert await activity_dates_mod.set_backfill_paused(session, False) is None
+
+
+@pytest.mark.asyncio
+async def test_backfill_waits_while_paused(monkeypatch):
+    doc = SimpleNamespace(
+        id=uuid.uuid4(),
+        activities=[],
+        extra={"activities_parsed": "12"},
+        circular_no="140/2026",
+        title="工作坊",
+    )
+    settings_row = SimpleNamespace(values={})
+    paused = {"value": True}
+    sleeps: list[float] = []
+
+    async def docs_needing(_session):
+        if (doc.extra or {}).get("activities_parsed") == ACTIVITIES_PARSED_FLAG:
+            return []
+        return [doc]
+
+    async def read_paused(_session):
+        return paused["value"]
+
+    async def fake_refresh(d, _body):
+        d.extra = {**(d.extra or {}), "activities_parsed": ACTIVITIES_PARSED_FLAG}
+        return True
+
+    async def fake_sleep(seconds: float):
+        sleeps.append(seconds)
+        paused["value"] = False
+
+    monkeypatch.setattr(activity_dates_mod, "_docs_needing_llm_activities", docs_needing)
+    monkeypatch.setattr(
+        activity_dates_mod,
+        "_load_settings_row",
+        AsyncMock(return_value=settings_row),
+    )
+    monkeypatch.setattr(
+        activity_dates_mod,
+        "_body_for_doc",
+        AsyncMock(return_value=FIXTURE_EDBCM_136_STYLE),
+    )
+    monkeypatch.setattr(activity_dates_mod, "_read_paused", read_paused)
+    monkeypatch.setattr(activity_dates_mod, "refresh_activities_llm_only", fake_refresh)
+    monkeypatch.setattr(activity_dates_mod.asyncio, "sleep", fake_sleep)
+
+    class FakeSession:
+        async def commit(self):
+            return None
+
+    out = await activity_dates_mod.backfill_document_activities(FakeSession())
+    assert sleeps == [0.5]
+    assert out["checked"] == 1
+    assert settings_row.values[BACKFILL_STATUS_KEY] == BACKFILL_STATUS_DONE
+    assert BACKFILL_PAUSED_KEY not in settings_row.values
+
+
 def test_dates_progress_while_updating():
     progress = activity_dates_mod.dates_progress_from_values(
         {
@@ -376,7 +465,12 @@ def test_dates_progress_while_updating():
             BACKFILL_CURRENT_KEY: "140/2026 · 工作坊",
         }
     )
-    assert progress == {"done": 2, "total": 5, "current": "140/2026 · 工作坊"}
+    assert progress == {
+        "done": 2,
+        "total": 5,
+        "current": "140/2026 · 工作坊",
+        "paused": False,
+    }
     assert (
         activity_dates_mod.dates_progress_from_values(
             {
