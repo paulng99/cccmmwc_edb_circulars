@@ -321,6 +321,7 @@ export async function getUpcomingDeadlines(token: string, days = 7) {
   return res.json() as Promise<{
     from: string;
     to: string;
+    dates_updating?: boolean;
     items: CalendarEvent[];
   }>;
 }
@@ -331,6 +332,7 @@ export async function getCalendarEvents(token: string) {
   });
   if (!res.ok) throw new Error("calendar_failed");
   return res.json() as Promise<{
+    dates_updating?: boolean;
     days: Array<{ date: string; events: CalendarEvent[] }>;
   }>;
 }

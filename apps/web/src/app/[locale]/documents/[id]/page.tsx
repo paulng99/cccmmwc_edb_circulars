@@ -7,6 +7,7 @@ import { Link, useRouter } from "@/i18n/routing";
 import DocumentChatPanel from "@/components/DocumentChatPanel";
 import PdfPreview from "@/components/PdfPreview";
 import { apiBase, fileUrl, reanalyzeDocuments, type DocumentActivity } from "@/lib/api";
+import { activityDateRows } from "@/lib/activity-date-rows";
 import { agendaTitleLines } from "@/lib/agenda-title";
 import { useAuth } from "@/lib/auth";
 import { formatHkDate } from "@/lib/date";
@@ -440,14 +441,14 @@ export default function DocumentDetailPage() {
                         {act.location?.trim() ? (
                           <p className="activity-location">{act.location.trim()}</p>
                         ) : null}
-                        <div>
-                          <span>{t("activityStartsAt")}</span>
-                          <span>{formatHkDate(act.starts_at, t("dateMissing"))}</span>
-                        </div>
-                        <div>
-                          <span>{t("activityDeadlineAt")}</span>
-                          <span>{formatHkDate(act.deadline_at, t("dateMissing"))}</span>
-                        </div>
+                        {activityDateRows(act).map((row) => (
+                          <div key={`${row.kind}-${row.value}`}>
+                            <span>
+                              {row.kind === "start" ? t("activityStartsAt") : t("activityDeadlineAt")}
+                            </span>
+                            <span>{formatHkDate(row.value)}</span>
+                          </div>
+                        ))}
                       </li>
                     ))}
                   </ul>
@@ -568,14 +569,16 @@ export default function DocumentDetailPage() {
                                 {act.location?.trim() ? (
                                   <p className="activity-location">{act.location.trim()}</p>
                                 ) : null}
-                                <div>
-                                  <span>{t("activityStartsAt")}</span>
-                                  <span>{formatHkDate(act.starts_at, t("dateMissing"))}</span>
-                                </div>
-                                <div>
-                                  <span>{t("activityDeadlineAt")}</span>
-                                  <span>{formatHkDate(act.deadline_at, t("dateMissing"))}</span>
-                                </div>
+                                {activityDateRows(act).map((row) => (
+                                  <div key={`${row.kind}-${row.value}`}>
+                                    <span>
+                                      {row.kind === "start"
+                                        ? t("activityStartsAt")
+                                        : t("activityDeadlineAt")}
+                                    </span>
+                                    <span>{formatHkDate(row.value)}</span>
+                                  </div>
+                                ))}
                               </li>
                             ))}
                           </ul>

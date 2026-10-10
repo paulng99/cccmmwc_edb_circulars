@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from app.api.documents import reanalyze_selected
 from app.api.schemas import ReanalyzeBody
+from app.services import llm_activities as llm_act_mod
 from app.services import reanalyze as reanalyze_mod
 from app.services.reanalyze import (
     FAIL_KEEP_MESSAGE,
@@ -102,13 +103,13 @@ def test_parse_llm_activities_invalid_raises():
 
 def test_answer_model_configured_openrouter(monkeypatch):
     monkeypatch.setattr(
-        reanalyze_mod,
+        llm_act_mod,
         "resolved_settings",
         lambda: {"llm_provider": "openrouter", "openrouter_api_key": "sk-test"},
     )
     assert answer_model_configured() is True
     monkeypatch.setattr(
-        reanalyze_mod,
+        llm_act_mod,
         "resolved_settings",
         lambda: {"llm_provider": "openrouter", "openrouter_api_key": ""},
     )
@@ -117,17 +118,24 @@ def test_answer_model_configured_openrouter(monkeypatch):
 
 def test_answer_model_configured_ollama(monkeypatch):
     monkeypatch.setattr(
-        reanalyze_mod,
+        llm_act_mod,
         "resolved_settings",
         lambda: {"llm_provider": "ollama", "ollama_model": "llama"},
     )
     assert answer_model_configured() is True
     monkeypatch.setattr(
-        reanalyze_mod,
+        llm_act_mod,
         "resolved_settings",
         lambda: {"llm_provider": "ollama", "ollama_model": "  "},
     )
     assert answer_model_configured() is False
+
+
+def _patch_llm(monkeypatch, llm_factory) -> None:
+    monkeypatch.setattr(reanalyze_mod, "answer_model_configured", lambda: True)
+    monkeypatch.setattr(llm_act_mod, "answer_model_configured", lambda: True)
+    monkeypatch.setattr(reanalyze_mod, "get_llm_client", llm_factory)
+    monkeypatch.setattr(llm_act_mod, "get_llm_client", llm_factory)
 
 
 def _fake_doc(*, school_action: str | None = FIXTURE_OLD_ACTION) -> SimpleNamespace:
@@ -193,8 +201,7 @@ async def test_reanalyze_one_success_prefixes_and_uses_llm_activities(monkeypatc
                 return FIXTURE_LLM_ACTIVITIES_JSON
             return f"  {FIXTURE_NEW_RAW}  "
 
-    monkeypatch.setattr(reanalyze_mod, "answer_model_configured", lambda: True)
-    monkeypatch.setattr(reanalyze_mod, "get_llm_client", lambda: FakeLlm())
+    _patch_llm(monkeypatch, lambda: FakeLlm())
 
     result = await reanalyze_one(db, doc.id)
     assert result["ok"] is True
@@ -227,8 +234,7 @@ async def test_reanalyze_one_failure_keeps_old_action_but_still_updates_llm_acti
                 return FIXTURE_LLM_ACTIVITIES_JSON
             return "   "
 
-    monkeypatch.setattr(reanalyze_mod, "answer_model_configured", lambda: True)
-    monkeypatch.setattr(reanalyze_mod, "get_llm_client", lambda: SplitLlm())
+    _patch_llm(monkeypatch, lambda: SplitLlm())
 
     result = await reanalyze_one(db, doc.id)
     assert result["ok"] is False
@@ -243,7 +249,7 @@ async def test_reanalyze_one_failure_keeps_old_action_but_still_updates_llm_acti
 
 
 @pytest.mark.asyncio
-async def test_reanalyze_one_activities_llm_fail_falls_back_to_regex(monkeypatch):
+async def test_reanalyze_one_activities_llm_fail_omits_dates_no_regex(monkeypatch):
     doc = _fake_doc()
     db = _FakeDb(doc)
     old_activities = list(doc.activities)
@@ -254,14 +260,14 @@ async def test_reanalyze_one_activities_llm_fail_falls_back_to_regex(monkeypatch
                 return "not a json array"
             return FIXTURE_NEW_RAW
 
-    monkeypatch.setattr(reanalyze_mod, "answer_model_configured", lambda: True)
-    monkeypatch.setattr(reanalyze_mod, "get_llm_client", lambda: ActionOnlyLlm())
+    _patch_llm(monkeypatch, lambda: ActionOnlyLlm())
 
     result = await reanalyze_one(db, doc.id)
     assert result["ok"] is True
-    assert result["activities"] == doc.activities
+    assert result["activities"] == []
+    assert doc.activities == []
     assert doc.activities != old_activities
-    assert any(a.get("deadline_at") == "2026-10-31" for a in doc.activities)
+    assert not any(a.get("deadline_at") == "2026-10-31" for a in doc.activities)
 
 
 @pytest.mark.asyncio
@@ -269,11 +275,14 @@ async def test_reanalyze_one_model_unset_keeps_old(monkeypatch):
     doc = _fake_doc()
     db = _FakeDb(doc)
     monkeypatch.setattr(reanalyze_mod, "answer_model_configured", lambda: False)
+    monkeypatch.setattr(llm_act_mod, "answer_model_configured", lambda: False)
     result = await reanalyze_one(db, doc.id)
     assert result["ok"] is False
     assert result["error"] == "model_unset"
     assert result["school_action"] == FIXTURE_OLD_ACTION
     assert result["message"] == FAIL_KEEP_MESSAGE
+    assert result["activities"] == []
+    assert doc.activities == []
 
 
 @pytest.mark.asyncio
@@ -284,7 +293,13 @@ async def test_reanalyze_one_timeout_keeps_old(monkeypatch):
     async def slow(*_a, **_k):
         raise asyncio.TimeoutError()
 
+    async def clear_activities(d, _body):
+        d.activities = []
+        return True
+
     monkeypatch.setattr(reanalyze_mod, "answer_model_configured", lambda: True)
+    monkeypatch.setattr(llm_act_mod, "answer_model_configured", lambda: True)
+    monkeypatch.setattr(reanalyze_mod, "refresh_activities_llm_only", clear_activities)
     monkeypatch.setattr(reanalyze_mod, "_call_answer_model", slow)
 
     result = await reanalyze_one(db, doc.id)
@@ -292,6 +307,7 @@ async def test_reanalyze_one_timeout_keeps_old(monkeypatch):
     assert result["error"] == "timeout"
     assert result["school_action"] == FIXTURE_OLD_ACTION
     assert result["message"] == FAIL_KEEP_MESSAGE
+    assert result["activities"] == []
 
 
 @pytest.mark.asyncio
@@ -303,13 +319,15 @@ async def test_reanalyze_one_error_keeps_old(monkeypatch):
         async def chat(self, *args, **kwargs):
             raise RuntimeError("provider down")
 
-    monkeypatch.setattr(reanalyze_mod, "answer_model_configured", lambda: True)
-    monkeypatch.setattr(reanalyze_mod, "get_llm_client", lambda: BoomLlm())
+    _patch_llm(monkeypatch, lambda: BoomLlm())
 
     result = await reanalyze_one(db, doc.id)
     assert result["ok"] is False
     assert result["error"] == "error"
     assert result["school_action"] == FIXTURE_OLD_ACTION
+    # Activities LLM also failed → omit dates (no local regex fallback).
+    assert result["activities"] == []
+    assert doc.activities == []
 
 
 @pytest.mark.asyncio
@@ -500,6 +518,7 @@ async def test_index_document_calls_auto_ai_when_text_indexed(monkeypatch):
         mime_type="text/plain",
         extra={},
         status="stored",
+        activities=[],
     )
     session = MagicMock()
     session.get = AsyncMock(return_value=doc)
@@ -511,8 +530,15 @@ async def test_index_document_calls_auto_ai_when_text_indexed(monkeypatch):
 
     monkeypatch.setattr("app.services.rag.get_object_bytes", lambda key: b"school must reply")
     monkeypatch.setattr("app.services.rag.apply_document_dates", lambda *a, **k: None)
-    monkeypatch.setattr("app.services.rag.apply_document_activities", lambda *a, **k: None)
     monkeypatch.setattr("app.services.rag.chunk_text", lambda text: ["school must reply"])
+
+    refresh_calls: list[str] = []
+
+    async def fake_refresh(d, body):
+        refresh_calls.append(body)
+        return False
+
+    monkeypatch.setattr("app.services.rag.refresh_activities_llm_only", fake_refresh)
 
     class Embedder:
         async def embed(self, batch):
@@ -546,4 +572,82 @@ async def test_index_document_calls_auto_ai_when_text_indexed(monkeypatch):
     assert result["ok"] is True
     assert result["chunks"] == 1
     assert seen == {"id": doc_id, "has_text": True, "enabled": True}
+    # Auto-AI path covers activities; dedicated refresh is not also called.
+    assert refresh_calls == []
     session.flush.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_index_document_uses_llm_dates_when_auto_ai_off(monkeypatch):
+    from app.services.rag import index_document
+
+    doc_id = uuid.uuid4()
+    doc = SimpleNamespace(
+        id=doc_id,
+        source_id="edb_circulars",
+        storage_key="k",
+        mime_type="text/plain",
+        extra={},
+        status="stored",
+        activities=[],
+    )
+    session = MagicMock()
+    session.get = AsyncMock(return_value=doc)
+    session.commit = AsyncMock()
+    session.flush = AsyncMock()
+    session.execute = AsyncMock()
+    session.rollback = AsyncMock()
+    session.add = MagicMock()
+
+    monkeypatch.setattr("app.services.rag.get_object_bytes", lambda key: b"school must reply")
+    monkeypatch.setattr("app.services.rag.apply_document_dates", lambda *a, **k: None)
+    monkeypatch.setattr("app.services.rag.chunk_text", lambda text: ["school must reply"])
+
+    refresh_calls: list[str] = []
+
+    async def fake_refresh(d, body):
+        refresh_calls.append(body)
+        d.activities = [
+            {
+                "name": "交回",
+                "starts_at": None,
+                "deadline_at": "2026-10-31",
+                "summary": None,
+                "location": None,
+            }
+        ]
+        return True
+
+    monkeypatch.setattr("app.services.rag.refresh_activities_llm_only", fake_refresh)
+
+    class Embedder:
+        async def embed(self, batch):
+            return [[0.1] for _ in batch]
+
+    monkeypatch.setattr("app.services.rag.get_embedding_backend", lambda: Embedder())
+
+    async def classify(*_a, **_k):
+        return None
+
+    monkeypatch.setattr("app.services.classify.apply_classification", classify)
+
+    class Sync:
+        async def sync_document(self, *_a, **_k):
+            return None
+
+    monkeypatch.setattr("app.services.rag.get_dify_sync", lambda: Sync())
+    monkeypatch.setattr("app.services.rag.source_auto_ai_enabled", lambda _source_id: False)
+
+    auto_called = {"n": 0}
+
+    async def fake_auto(*_a, **_k):
+        auto_called["n"] += 1
+        return True
+
+    monkeypatch.setattr("app.services.rag.maybe_auto_ai_analyze", fake_auto)
+
+    result = await index_document(session, doc_id)
+    assert result["ok"] is True
+    assert auto_called["n"] == 0
+    assert refresh_calls == ["school must reply"]
+    assert doc.activities[0]["deadline_at"] == "2026-10-31"

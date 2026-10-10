@@ -10,12 +10,12 @@ from typing import Any
 from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.collectors.activity_dates import apply_document_activities
 from app.collectors.doc_dates import apply_document_dates
 from app.models.entities import Document, DocumentChunk
 from app.services.dify import get_dify_sync
 from app.services.embeddings import get_embedding_backend
 from app.services.ingest import chunk_text, extract_text_from_pdf
+from app.services.llm_activities import ACTIVITIES_PARSED_FLAG, refresh_activities_llm_only
 from app.services.reanalyze import maybe_auto_ai_analyze, source_auto_ai_enabled
 from app.services.storage import get_object_bytes
 from app.services.usage import usage_scope
@@ -55,18 +55,23 @@ async def index_document(session: AsyncSession, document_id: uuid.UUID) -> dict[
             )
         else:
             text = raw.decode("utf-8", errors="ignore")
-        if text and text.strip():
+        has_text = bool(text and text.strip())
+        if has_text:
             apply_document_dates(doc, text)
-            apply_document_activities(doc, text)
             doc.extra = {
                 **(doc.extra or {}),
                 "dates_parsed": "1",
-                "activities_parsed": "5",
             }
         chunks = chunk_text(text)
         if not chunks:
             doc.status = "ready"
             doc.extra = {**(doc.extra or {}), "warning": "no text extracted"}
+            if has_text:
+                # No chunks to re-read later — still attempt LLM dates from raw text.
+                await refresh_activities_llm_only(doc, text)
+            else:
+                doc.activities = []
+                doc.extra = {**(doc.extra or {}), "activities_parsed": ACTIVITIES_PARSED_FLAG}
             try:
                 from app.services.classify import apply_classification
 
@@ -104,12 +109,18 @@ async def index_document(session: AsyncSession, document_id: uuid.UUID) -> dict[
             logger.exception("Classification failed for %s", document_id)
         # Chunks must be visible so analysis can read them without a second PDF pass.
         await session.flush()
-        await maybe_auto_ai_analyze(
-            session,
-            doc.id,
-            has_text=bool(text and text.strip()),
-            enabled=source_auto_ai_enabled(getattr(doc, "source_id", None)),
-        )
+        auto_ai = source_auto_ai_enabled(getattr(doc, "source_id", None))
+        if auto_ai:
+            # School-action + LLM activities (no regex) in one pass.
+            await maybe_auto_ai_analyze(
+                session,
+                doc.id,
+                has_text=has_text,
+                enabled=True,
+            )
+        elif has_text:
+            # Dates always use LLM on ingest, even when school-action auto-AI is off.
+            await refresh_activities_llm_only(doc, text)
         await session.commit()
 
         sync = get_dify_sync()

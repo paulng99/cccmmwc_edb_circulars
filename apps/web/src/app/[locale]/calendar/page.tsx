@@ -18,6 +18,7 @@ export default function CalendarPage() {
   const router = useRouter();
   const [status, setStatus] = useState<LoadState>("loading");
   const [days, setDays] = useState<DayGroup[]>([]);
+  const [datesUpdating, setDatesUpdating] = useState(false);
 
   useEffect(() => {
     if (!ready) return;
@@ -30,12 +31,14 @@ export default function CalendarPage() {
     getCalendarEvents(token)
       .then((res) => {
         if (cancelled) return;
-        setDays(res.days || []);
+        setDatesUpdating(Boolean(res.dates_updating));
+        setDays(res.dates_updating ? [] : res.days || []);
         setStatus("success");
       })
       .catch(() => {
         if (cancelled) return;
         setDays([]);
+        setDatesUpdating(false);
         setStatus("error");
       });
     return () => {
@@ -68,7 +71,16 @@ export default function CalendarPage() {
         </div>
       ) : null}
 
-      {status === "success" && days.length === 0 ? (
+      {status === "success" && datesUpdating ? (
+        <div className="card empty" role="status">
+          <div className="empty-icon">
+            <Icon name="calendar" />
+          </div>
+          <h3>{t("datesUpdating")}</h3>
+        </div>
+      ) : null}
+
+      {status === "success" && !datesUpdating && days.length === 0 ? (
         <div className="card empty">
           <div className="empty-icon">
             <Icon name="calendar" />
@@ -77,7 +89,7 @@ export default function CalendarPage() {
         </div>
       ) : null}
 
-      {status === "success" && days.length > 0 ? (
+      {status === "success" && !datesUpdating && days.length > 0 ? (
         <div className="calendar-days">
           {days.map((day) => (
             <section key={day.date} className="calendar-day">

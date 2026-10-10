@@ -30,6 +30,7 @@ export default function HomePage() {
   const router = useRouter();
   const [status, setStatus] = useState<LoadState>("loading");
   const [items, setItems] = useState<CalendarEvent[]>([]);
+  const [datesUpdating, setDatesUpdating] = useState(false);
 
   useEffect(() => {
     if (!ready) return;
@@ -42,12 +43,14 @@ export default function HomePage() {
     getUpcomingDeadlines(token, 7)
       .then((res) => {
         if (cancelled) return;
-        setItems(res.items || []);
+        setDatesUpdating(Boolean(res.dates_updating));
+        setItems(res.dates_updating ? [] : res.items || []);
         setStatus("success");
       })
       .catch(() => {
         if (cancelled) return;
         setItems([]);
+        setDatesUpdating(false);
         setStatus("error");
       });
     return () => {
@@ -86,7 +89,16 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      {status === "success" && days.length === 0 ? (
+      {status === "success" && datesUpdating ? (
+        <div className="card empty" role="status">
+          <div className="empty-icon">
+            <Icon name="calendar" />
+          </div>
+          <h3>{t("datesUpdating")}</h3>
+        </div>
+      ) : null}
+
+      {status === "success" && !datesUpdating && days.length === 0 ? (
         <div className="card empty">
           <div className="empty-icon">
             <Icon name="calendar" />
@@ -95,7 +107,7 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      {status === "success" && days.length > 0 ? (
+      {status === "success" && !datesUpdating && days.length > 0 ? (
         <div className="calendar-days">
           {days.map((day) => (
             <section key={day.date} className="calendar-day">
