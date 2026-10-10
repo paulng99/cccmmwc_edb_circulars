@@ -152,17 +152,3 @@ def classify_documents(force_topics: bool = False, use_llm: bool = True, user_id
                 )
 
     return _run_async(_inner())
-
-
-@celery_app.task(name="app.worker.backfill_llm_activities")
-def backfill_llm_activities() -> dict:
-    """Full-library LLM start/deadline extraction (no local regex fallback)."""
-    from app.core.db import SessionLocal
-    from app.services.activity_dates import backfill_document_activities
-
-    async def _inner() -> dict:
-        async with SessionLocal() as session:
-            await _refresh_runtime_settings(session)
-            return await backfill_document_activities(session)
-
-    return _run_async(_inner())

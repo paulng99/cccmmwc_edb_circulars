@@ -18,9 +18,8 @@ logger = logging.getLogger(__name__)
 async def _run_llm_activity_backfill_background() -> None:
     """Complete full-library LLM date backfill without blocking API startup.
 
-    Idempotent per document (activities_parsed=llm-1). A Celery task with the
-    same body exists for ops; lifespan always runs in-process so a stopped
-    worker cannot leave the UI stuck on「日期更新中」.
+    Idempotent per document (activities_parsed=llm-1). Runs in-process on
+    lifespan so a stopped Celery worker cannot leave the UI stuck on「日期更新中」.
     """
     from app.services.activity_dates import backfill_document_activities
 
