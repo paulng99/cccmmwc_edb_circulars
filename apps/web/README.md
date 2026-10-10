@@ -1,36 +1,12 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Web（Next.js）
 
-## Getting Started
-
-First, run the development server:
+教育局通告助手前端（`zh-HK` / `en`）。產品說明、本機啟動與 Coolify 部署見倉庫根目錄 [`README.md`](../../README.md)。
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev   # http://localhost:4000
 ```
 
-Open [http://localhost:4000](http://localhost:4000) with your browser to see the result.
+`npm run dev` 時，Next 把 `/api` 轉送到 `API_INTERNAL_URL`（未設則 `http://127.0.0.1:8008`）。請先啟動 API（或 `docker compose up`）。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+正式部署走根目錄 Docker Compose + Coolify（DigitalOcean），**不是** Vercel。此套件不包含 Capacitor／原生 app。
