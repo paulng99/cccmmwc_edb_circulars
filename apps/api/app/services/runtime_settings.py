@@ -331,8 +331,14 @@ async def update_settings(
     env_defaults = defaults_from_env(get_settings())
     current = merge_values(env_defaults, row.values or {})
     new_values, warnings = apply_patch(current, patch)
-    # Persist only editable bag (full merged editable snapshot)
-    row.values = {k: new_values[k] for k in EDITABLE_KEYS if k in new_values}
+    # Persist editable bag, but keep non-editable internal keys (e.g. backfill flags).
+    preserved = {
+        k: v for k, v in (row.values or {}).items() if k not in EDITABLE_KEYS
+    }
+    row.values = {
+        **preserved,
+        **{k: new_values[k] for k in EDITABLE_KEYS if k in new_values},
+    }
     row.updated_by = user_id
     await session.commit()
     await session.refresh(row)

@@ -27,6 +27,7 @@
     "loading": "Loading deadlines…",
     "loadError": "Could not load deadlines. Please try again.",
     "empty": "No deadlines in the next 7 days",
+    "datesUpdating": "Updating dates",
     "kindDeadline": "Deadline"
   },
   "calendar": {
@@ -35,6 +36,7 @@
     "loading": "Loading calendar…",
     "loadError": "Could not load the calendar. Please try again.",
     "empty": "No activity dates extracted yet",
+    "datesUpdating": "Updating dates",
     "kindStart": "Start",
     "kindDeadline": "Deadline"
   },

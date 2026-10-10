@@ -20,7 +20,7 @@ from app.models import (  # noqa: F401
     Source,
     User,
 )
-from app.services.activity_dates import backfill_document_activities
+from app.services.activity_dates import prepare_llm_activity_backfill
 from app.services.doc_dates import backfill_document_dates
 from app.services.pipeline import sync_sources_table
 from app.services.runtime_settings import ensure_seeded
@@ -174,7 +174,9 @@ async def bootstrap() -> None:
             logger.exception("document date backfill failed")
             await session.rollback()
         try:
-            await backfill_document_activities(session)
+            # Clear stale local regex activities and mark dates_updating before
+            # the API serves traffic. LLM extraction runs in the background.
+            await prepare_llm_activity_backfill(session)
         except Exception:
-            logger.exception("document activity backfill failed")
+            logger.exception("document activity backfill prepare failed")
             await session.rollback()
