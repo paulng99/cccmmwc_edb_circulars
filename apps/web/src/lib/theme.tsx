@@ -1,20 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
+import { resolveTheme, type Theme } from "./theme-resolve";
 
-export type Theme = "light" | "dark";
-
+export type { Theme };
+export { resolveTheme };
 export const THEME_KEY = "edb_theme";
 
-function systemTheme(): Theme {
-  if (typeof window === "undefined") return "light";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+function systemPrefersDark(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-function readStored(): Theme | null {
+function readStored(): string | null {
   if (typeof window === "undefined") return null;
-  const v = localStorage.getItem(THEME_KEY);
-  return v === "dark" || v === "light" ? v : null;
+  return localStorage.getItem(THEME_KEY);
+}
+
+function currentTheme(): Theme {
+  return resolveTheme(readStored(), systemPrefersDark());
 }
 
 export function applyTheme(theme: Theme) {
@@ -26,15 +30,22 @@ export const THEME_BOOT_SCRIPT = `(function(){try{var t=localStorage.getItem(${J
   THEME_KEY,
 )});if(t!=="dark"&&t!=="light"){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.setAttribute("data-theme",t)}catch(e){}})();`;
 
+/**
+ * Theme hook. Locale navigations remount the [locale] layout (and this hook);
+ * client navigations do not re-run THEME_BOOT_SCRIPT, so we must re-apply the
+ * stored theme on every mount via useLayoutEffect — independently of locale.
+ */
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>("light");
+  const [theme, setThemeState] = useState<Theme>(currentTheme);
 
-  useEffect(() => {
-    setThemeState(readStored() ?? systemTheme());
+  useLayoutEffect(() => {
+    const initial = currentTheme();
+    setThemeState(initial);
+    applyTheme(initial);
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => {
       if (!readStored()) {
-        const next = systemTheme();
+        const next = resolveTheme(null, mq.matches);
         setThemeState(next);
         applyTheme(next);
       }
