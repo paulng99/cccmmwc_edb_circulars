@@ -6,9 +6,16 @@ import { useRouter } from "@/i18n/routing";
 import SourcesSection from "@/components/SourcesSection";
 import { Icon, type IconName } from "@/components/Icon";
 import { Switch } from "@/components/Switch";
-import { getSettings, SecretField, SettingsResponse, updateSettings } from "@/lib/api";
+import {
+  getSettings,
+  improveSystemPrompt,
+  SecretField,
+  SettingsResponse,
+  updateSettings,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatHkDateTime } from "@/lib/date";
+import { improveSystemPromptErrorMessage } from "@/lib/improve-system-prompt-error";
 import { isValidTopK } from "@/lib/top-k";
 import { isValidTopP } from "@/lib/top-p";
 
@@ -110,6 +117,7 @@ export default function SettingsPage() {
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [improvingPrompt, setImprovingPrompt] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -344,6 +352,24 @@ export default function SettingsPage() {
     }
   }
 
+  async function onImproveSystemPrompt() {
+    if (!token || improvingPrompt) return;
+    const prompt = displayString("system_prompt").trim();
+    if (!prompt) return;
+
+    setImprovingPrompt(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await improveSystemPrompt(token, prompt);
+      updateDraft("system_prompt", res.prompt);
+    } catch (err) {
+      setError(improveSystemPromptErrorMessage(err, t("improveSystemPromptFailed")));
+    } finally {
+      setImprovingPrompt(false);
+    }
+  }
+
   function onRestoreSystemPrompt() {
     const original = data?.defaults?.system_prompt;
     if (!original) return;
@@ -410,6 +436,8 @@ export default function SettingsPage() {
 
     if (TEXTAREA_KEYS.has(key)) {
       const isSystemPrompt = key === "system_prompt";
+      const systemPromptDraft = isSystemPrompt ? displayString("system_prompt") : "";
+      const canImprove = isSystemPrompt && systemPromptDraft.trim().length > 0;
       return (
         <div className="field span-2" key={key}>
           <label
@@ -421,20 +449,26 @@ export default function SettingsPage() {
               <span className="prompt-actions">
                 <button
                   type="button"
-                  className="btn ghost sm"
-                  disabled
-                  aria-disabled="true"
-                  title={t("improveSystemPromptDisabled")}
+                  className={`btn ghost sm${improvingPrompt ? " is-loading" : ""}`}
+                  onClick={onImproveSystemPrompt}
+                  disabled={!canImprove || improvingPrompt}
+                  title={
+                    canImprove
+                      ? t("improveSystemPrompt")
+                      : t("systemPromptBlank")
+                  }
+                  aria-label={
+                    improvingPrompt ? t("improvingSystemPrompt") : t("improveSystemPrompt")
+                  }
                 >
-                  <Icon name="wand" />
-                  <span>{t("improveSystemPrompt")}</span>
-                  <span className="badge amber">{t("improveSystemPromptDisabled")}</span>
+                  {improvingPrompt ? <span className="spinner" /> : <Icon name="wand" />}
+                  <span>{improvingPrompt ? t("improvingSystemPrompt") : t("improveSystemPrompt")}</span>
                 </button>
                 <button
                   type="button"
                   className="btn secondary sm"
                   onClick={onRestoreSystemPrompt}
-                  disabled={!data?.defaults?.system_prompt}
+                  disabled={!data?.defaults?.system_prompt || improvingPrompt}
                 >
                   {t("restoreSystemPrompt")}
                 </button>
@@ -447,6 +481,7 @@ export default function SettingsPage() {
             value={displayString(key)}
             onChange={(e) => updateDraft(key, e.target.value)}
             placeholder={isSecretKey(key) ? secretPlaceholder(key) : undefined}
+            disabled={isSystemPrompt ? improvingPrompt : undefined}
           />
           {help ? <span className="field-hint">{help}</span> : null}
         </div>

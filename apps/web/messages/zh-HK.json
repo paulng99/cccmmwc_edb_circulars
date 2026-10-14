@@ -369,7 +369,6 @@
     "improveSystemPrompt": "改善系統提示詞",
     "improvingSystemPrompt": "改善中…",
     "improveSystemPromptFailed": "無法改善系統提示詞",
-    "improveSystemPromptDisabled": "尚未開啟",
     "restoreSystemPrompt": "還原為原本的提示詞",
     "restoreSystemPromptConfirm": "還原後會蓋過你的改寫",
     "restoreSystemPromptDone": "已還原為原本的提示詞",

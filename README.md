@@ -54,7 +54,7 @@ i18n：`zh-HK` / `en`；日期格式 `yyyy-mm-dd`。
 ### 設定
 
 - 登入：`ADMIN_USERNAME` / `ADMIN_PASSWORD`（`.env.example` 預設 `admin` / `000000`，生產必須更改）
-- 設定頁「用 AI 改寫系統提示詞」：**尚未開啟**（按鈕 disabled，標「尚未開啟」），待明確批准前勿當可用功能
+- 設定頁「改善系統提示詞」：系統提示詞草稿非空時可按，呼叫 `POST /api/settings/improve-system-prompt` 改寫草稿；需再按儲存才會持久化（LLM 未設定時會顯示錯誤）
 
 ---
 
