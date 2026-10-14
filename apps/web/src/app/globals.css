@@ -4518,6 +4518,19 @@ input[type="checkbox"] {
   cursor: not-allowed;
 }
 
+.extra-prompts-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.extra-prompt-field.is-active textarea {
+  outline: 2px solid color-mix(in srgb, var(--accent, #2563eb) 55%, transparent);
+  outline-offset: 1px;
+}
+
 .meta-activities {
   grid-column: 1 / -1;
 }

@@ -35,6 +35,42 @@ How to answer:
 9. Prefer concise structure. Avoid long preambles when the key number or rule is available.
 """
 
+DEFAULT_REANALYZE_SYSTEM_PROMPT = """你協助香港學校職員閱讀教育局通告。
+
+任務：根據通告正文，只用一段文字說明「這份要學校做什麼」（行動、交回、申請、參加、注意事項）。
+規則：
+1. 只根據正文；正文沒有的不要臆造。
+2. 輸出一段完整文字，不要條列、不要標題、不要 markdown。
+3. 用通告原文語言；中文用繁體（香港）。
+4. 不要重複整份通告；聚焦學校要做的事。
+5. 不要自行加上「未核對」字樣（系統會標示）。
+"""
+
+DEFAULT_ACTIVITIES_SYSTEM_PROMPT = """你協助香港學校職員從教育局通告抽出「活動／限期」資料，供月曆使用。
+
+任務：輸出一個 JSON 陣列（不要其他說明、不要 markdown 標題）。每個元素為物件，欄位：
+- name: 活動或事項名稱（字串或 null）
+- starts_at: 開始日期 yyyy-mm-dd（字串或 null）
+- deadline_at: 截止日期／完結日期 yyyy-mm-dd（字串或 null）
+- summary: 一句簡述（字串或 null）
+- location: 地點（字串或 null）
+
+規則：
+1. 只根據正文；沒有寫明的日期不要臆造。
+2. 日期必須是 yyyy-mm-dd；無法確定則該欄為 null。
+3. 納入：活動日期、報名／交回／回覆／申請限期、講座／培訓／比賽等。
+4. 排除：通告發出／修訂／更新日期、學年（如 2025/26）、生效日期、取代舊通告的背景日期、局方信頭／署名地址。
+5. 同一事項若有開始與截止，合併為一筆；不同事項必須分開多筆，不要合併無關項目。
+6. 正文沒有可上曆的活動時輸出 []。
+7. 中文用繁體（香港）；只輸出 JSON 陣列。
+"""
+
+PROMPT_SETTING_KEYS = frozenset({
+    "system_prompt",
+    "reanalyze_system_prompt",
+    "activities_system_prompt",
+})
+
 SECRET_KEYS = frozenset({
     "openrouter_api_key",
     "jina_api_key",
@@ -50,7 +86,8 @@ EDITABLE_KEYS = frozenset({
     "app_name", "cors_origins",
     "llm_provider", "openrouter_api_key", "openrouter_model", "openrouter_base_url",
     "ollama_base_url", "ollama_model", "temperature", "max_tokens", "llm_top_p",
-    "system_prompt", "cite_inline_refs", "local_top_k", "local_min_score", "dify_top_k",
+    "system_prompt", "reanalyze_system_prompt", "activities_system_prompt",
+    "cite_inline_refs", "local_top_k", "local_min_score", "dify_top_k",
     "jina_api_key", "jina_embedding_model", "jina_embedding_dim", "jina_reranker_model",
     "dify_enabled", "dify_api_url", "dify_dataset_api_key", "dify_app_api_key", "dify_dataset_id",
     "crawl_enabled", "crawl_user_agent", "crawl_rate_limit_seconds",
@@ -157,7 +194,11 @@ def build_settings_response(
         "readonly": readonly,
         "meta": meta,
         "warnings": warnings or [],
-        "defaults": {"system_prompt": DEFAULT_SYSTEM_PROMPT},
+        "defaults": {
+            "system_prompt": DEFAULT_SYSTEM_PROMPT,
+            "reanalyze_system_prompt": DEFAULT_REANALYZE_SYSTEM_PROMPT,
+            "activities_system_prompt": DEFAULT_ACTIVITIES_SYSTEM_PROMPT,
+        },
     }
 
 
@@ -175,6 +216,8 @@ def defaults_from_env(settings: Settings) -> dict[str, Any]:
         "max_tokens": 4096,
         "llm_top_p": None,
         "system_prompt": DEFAULT_SYSTEM_PROMPT,
+        "reanalyze_system_prompt": DEFAULT_REANALYZE_SYSTEM_PROMPT,
+        "activities_system_prompt": DEFAULT_ACTIVITIES_SYSTEM_PROMPT,
         "cite_inline_refs": True,
         "local_top_k": 10,
         # Drop weak retrieval hits after rerank (0 = keep all). TRG-style noise was ~0.08–0.18.
@@ -256,9 +299,9 @@ def apply_patch(current: dict[str, Any], patch: dict[str, Any]) -> tuple[dict[st
             raise ValueError("llm_provider must be openrouter or ollama")
         if k == "storage_backend" and v not in ("local", "minio"):
             raise ValueError("storage_backend must be local or minio")
-        if k == "system_prompt":
+        if k in PROMPT_SETTING_KEYS:
             if v is None or (isinstance(v, str) and not v.strip()):
-                raise ValueError("system_prompt must not be blank")
+                raise ValueError(f"{k} must not be blank")
             v = str(v)
         new[k] = v
     return new, warnings

@@ -265,7 +265,11 @@ export type SettingsResponse = {
   readonly: Record<string, unknown>;
   meta: { updated_at: string | null; updated_by: string | null };
   warnings: string[];
-  defaults?: { system_prompt?: string };
+  defaults?: {
+    system_prompt?: string;
+    reanalyze_system_prompt?: string;
+    activities_system_prompt?: string;
+  };
 };
 
 export type DocumentActivity = {

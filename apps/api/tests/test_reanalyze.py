@@ -219,6 +219,34 @@ async def test_reanalyze_one_success_prefixes_and_uses_llm_activities(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_reanalyze_uses_merged_system_prompt(monkeypatch):
+    custom = "CUSTOM_REANALYZE_PROMPT_FOR_TEST"
+    doc = _fake_doc()
+    db = _FakeDb(doc)
+    db._chunk_rows = [(FIXTURE_BODY_OBSCURE,)]
+    seen: list[str] = []
+
+    class FakeLlm:
+        async def chat(self, messages, stream=False, reasoning=True, *, apply_top_p=False):
+            seen.append(messages[0]["content"])
+            if _is_activities_prompt(messages):
+                return FIXTURE_LLM_ACTIVITIES_JSON
+            return FIXTURE_NEW_RAW
+
+    monkeypatch.setattr(
+        reanalyze_mod,
+        "resolved_settings",
+        lambda: {"reanalyze_system_prompt": custom},
+    )
+    _patch_llm(monkeypatch, lambda: FakeLlm())
+
+    result = await reanalyze_one(db, doc.id)
+    assert result["ok"] is True
+    assert custom in seen
+    assert any(s == custom for s in seen)
+
+
+@pytest.mark.asyncio
 async def test_reanalyze_one_failure_keeps_old_action_but_still_updates_llm_activities(
     monkeypatch,
 ):
