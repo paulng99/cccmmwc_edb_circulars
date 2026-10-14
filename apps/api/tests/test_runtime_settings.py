@@ -93,9 +93,11 @@ def test_apply_patch_rejects_blank_system_prompt():
     "key",
     ["reanalyze_system_prompt", "activities_system_prompt"],
 )
-def test_apply_patch_rejects_blank_extra_system_prompts(key):
-    with pytest.raises(ValueError, match=f"{key} must not be blank"):
-        apply_patch({key: "keep"}, {key: "   "})
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_apply_patch_allows_blank_extra_system_prompts(key, blank):
+    new, warnings = apply_patch({key: "keep"}, {key: blank})
+    assert new[key] == ""
+    assert warnings == []
 
 
 def test_apply_patch_accepts_extra_system_prompts():

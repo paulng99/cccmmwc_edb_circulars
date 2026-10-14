@@ -333,9 +333,15 @@ export default function SettingsPage() {
     for (const key of PROMPT_KEYS) {
       if (!(key in patch)) continue;
       const prompt = String(patch[key] ?? "").trim();
+      // Analysis prompts: blank saves as "" and runtime uses built-in defaults.
+      // Main chat system_prompt still requires a non-empty value.
       if (!prompt) {
-        setError(t("systemPromptBlank"));
-        return;
+        if (key === "system_prompt") {
+          setError(t("systemPromptBlank"));
+          return;
+        }
+        patch[key] = "";
+        continue;
       }
       patch[key] = prompt;
     }
@@ -882,6 +888,7 @@ export default function SettingsPage() {
                                       disabled={improvingExtraPrompt}
                                     />
                                     {help ? <span className="field-hint">{help}</span> : null}
+                                    <span className="field-hint">{t("promptBlankUsesDefault")}</span>
                                   </div>
                                 );
                               })}

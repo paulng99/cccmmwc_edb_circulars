@@ -300,9 +300,14 @@ def apply_patch(current: dict[str, Any], patch: dict[str, Any]) -> tuple[dict[st
         if k == "storage_backend" and v not in ("local", "minio"):
             raise ValueError("storage_backend must be local or minio")
         if k in PROMPT_SETTING_KEYS:
-            if v is None or (isinstance(v, str) and not v.strip()):
-                raise ValueError(f"{k} must not be blank")
-            v = str(v)
+            # Chat system_prompt must be non-empty. Analysis prompts may be blank;
+            # reanalyze / llm_activities fall back to built-in defaults when empty.
+            if k == "system_prompt":
+                if v is None or (isinstance(v, str) and not v.strip()):
+                    raise ValueError("system_prompt must not be blank")
+                v = str(v)
+            else:
+                v = "" if v is None or (isinstance(v, str) and not v.strip()) else str(v)
         new[k] = v
     return new, warnings
 
