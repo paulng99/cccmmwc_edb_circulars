@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useRouter, Link } from "@/i18n/routing";
 import { ingestStatus, listDocuments, stopCrawl, triggerClassify, triggerCrawl, triggerReindex } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { formatHkDateTime } from "@/lib/date";
+import { formatHkDateTime, formatHkTimeHm } from "@/lib/date";
 import { Icon } from "@/components/Icon";
 import { statusTone } from "@/lib/taxonomy";
 
@@ -53,6 +53,10 @@ type IngestData = {
     failed: number;
   };
   active?: boolean;
+  /** Runtime setting: scheduled crawls may enqueue when true. */
+  crawl_enabled?: boolean;
+  /** Code-level Celery beat minute dispatcher is registered (not a live heartbeat). */
+  schedule_dispatch_configured?: boolean;
   sources: Array<{
     id: string;
     enabled: boolean;
@@ -350,6 +354,20 @@ export default function StatusPage() {
 
   const activeRuns = data?.recent_runs.filter((r) => r.status === "running") || [];
   const historyRuns = data?.recent_runs.filter((r) => r.status !== "running") || [];
+  // Latest row from the same recent_runs list that powers Recent runs (incl. live).
+  const latestRun = data?.recent_runs[0];
+  const scheduleArmed =
+    (data?.crawl_enabled ?? true) && (data?.schedule_dispatch_configured ?? true);
+  const scheduleGlance = data
+    ? [
+        scheduleArmed ? t("scheduleGlanceOn") : t("scheduleGlanceOff"),
+        latestRun
+          ? t("crawlRunGlanceSome", {
+              time: formatHkTimeHm(latestRun.started_at || latestRun.finished_at),
+            })
+          : t("crawlRunGlanceNone"),
+      ].join("\u3000")
+    : "";
 
   const sourceName = (id: string) => {
     if (id === REINDEX_SOURCE_ID) return t("reindexJob");
@@ -432,6 +450,11 @@ export default function StatusPage() {
         <div>
           <h1>{t("title")}</h1>
           <p className="page-subtitle">{t("subtitle")}</p>
+          {scheduleGlance ? (
+            <p className="muted tnum" style={{ marginTop: "0.35rem", fontSize: "0.92rem" }}>
+              {scheduleGlance}
+            </p>
+          ) : null}
         </div>
         <div className="page-actions">
           <button
