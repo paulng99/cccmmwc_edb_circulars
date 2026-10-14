@@ -63,6 +63,13 @@ const SELECT_KEYS: Record<string, string[]> = {
 
 const TEXTAREA_KEYS = new Set(["system_prompt", "cors_origins"]);
 
+type ExtraPromptKey = "reanalyze_system_prompt" | "activities_system_prompt";
+const EXTRA_PROMPT_KEYS: ExtraPromptKey[] = [
+  "reanalyze_system_prompt",
+  "activities_system_prompt",
+];
+const PROMPT_KEYS = new Set<string>(["system_prompt", ...EXTRA_PROMPT_KEYS]);
+
 /** Fields that are long enough to deserve the full width of the grid. */
 const WIDE_KEYS = new Set([
   "system_prompt",
@@ -118,6 +125,9 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [improvingPrompt, setImprovingPrompt] = useState(false);
+  const [improvingExtraPrompt, setImprovingExtraPrompt] = useState(false);
+  const [activeExtraPrompt, setActiveExtraPrompt] =
+    useState<ExtraPromptKey>("reanalyze_system_prompt");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -320,13 +330,14 @@ export default function SettingsPage() {
       return;
     }
 
-    if ("system_prompt" in patch) {
-      const prompt = String(patch.system_prompt ?? "").trim();
+    for (const key of PROMPT_KEYS) {
+      if (!(key in patch)) continue;
+      const prompt = String(patch[key] ?? "").trim();
       if (!prompt) {
         setError(t("systemPromptBlank"));
         return;
       }
-      patch.system_prompt = prompt;
+      patch[key] = prompt;
     }
 
     const nextDim = patch.jina_embedding_dim;
@@ -370,11 +381,38 @@ export default function SettingsPage() {
     }
   }
 
+  async function onImproveActiveExtraPrompt() {
+    if (!token || improvingExtraPrompt) return;
+    const prompt = displayString(activeExtraPrompt).trim();
+    if (!prompt) return;
+
+    setImprovingExtraPrompt(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await improveSystemPrompt(token, prompt);
+      updateDraft(activeExtraPrompt, res.prompt);
+    } catch (err) {
+      setError(improveSystemPromptErrorMessage(err, t("improveSystemPromptFailed")));
+    } finally {
+      setImprovingExtraPrompt(false);
+    }
+  }
+
   function onRestoreSystemPrompt() {
     const original = data?.defaults?.system_prompt;
     if (!original) return;
     if (!window.confirm(t("restoreSystemPromptConfirm"))) return;
     updateDraft("system_prompt", original);
+    setError("");
+    setSuccess(t("restoreSystemPromptDone"));
+  }
+
+  function onRestoreExtraPrompt(key: ExtraPromptKey) {
+    const original = data?.defaults?.[key];
+    if (!original) return;
+    if (!window.confirm(t("restoreSystemPromptConfirm"))) return;
+    updateDraft(key, original);
     setError("");
     setSuccess(t("restoreSystemPromptDone"));
   }
@@ -591,7 +629,14 @@ export default function SettingsPage() {
     "google_client_id",
     "google_client_secret",
   ];
-  const chatKeys = ["system_prompt", "cite_inline_refs", "local_top_k", "local_min_score", "dify_top_k"];
+  const chatKeys = [
+    "system_prompt",
+    "cite_inline_refs",
+    "local_top_k",
+    "local_min_score",
+    "dify_top_k",
+  ];
+  const chatSearchKeys = [...chatKeys, ...EXTRA_PROMPT_KEYS];
 
   function matches(label: string) {
     return !q || label.toLowerCase().includes(q);
@@ -605,14 +650,22 @@ export default function SettingsPage() {
   ];
 
   const visibleChat = chatKeys.filter((key) => matches(fieldLabel(key)) || matches(t("groupChat")));
+  const visibleExtraPrompts = EXTRA_PROMPT_KEYS.filter(
+    (key) =>
+      matches(fieldLabel(key)) ||
+      matches(t("groupChat")) ||
+      matches(t("extraPromptsTitle")),
+  );
   const visibleConnect = connectKeys.filter((key) => matches(fieldLabel(key)) || matches(t("groupConnect")));
   const visibleSystem = systemKeys.filter((key) => matches(fieldLabel(key)) || matches(t("groupSystem")));
   const groupHasMatch = {
     sources: !q || matches(t("groupSources")) || matches(t("sourcesTitle")),
-    chat: visibleChat.length > 0,
+    chat: visibleChat.length > 0 || visibleExtraPrompts.length > 0,
     connect: visibleConnect.length > 0,
     system: visibleSystem.length > 0 || (!q ? false : matches(t("sectionReadonly")) || matches(t("advanced"))),
   };
+  const activeExtraDraft = displayString(activeExtraPrompt).trim();
+  const canImproveActiveExtra = activeExtraDraft.length > 0;
 
   const current = groups.find((g) => g.id === group)!;
 
@@ -639,7 +692,12 @@ export default function SettingsPage() {
                 if (!needle) return;
                 const hit = groups.find((item) => {
                   if (item.id === "sources") return item.title.toLowerCase().includes(needle);
-                  if (item.id === "chat") return chatKeys.some((key) => fieldLabel(key).toLowerCase().includes(needle)) || item.title.toLowerCase().includes(needle);
+                  if (item.id === "chat")
+                    return (
+                      chatSearchKeys.some((key) => fieldLabel(key).toLowerCase().includes(needle)) ||
+                      t("extraPromptsTitle").toLowerCase().includes(needle) ||
+                      item.title.toLowerCase().includes(needle)
+                    );
                   if (item.id === "connect") return connectKeys.some((key) => fieldLabel(key).toLowerCase().includes(needle)) || item.title.toLowerCase().includes(needle);
                   return systemKeys.some((key) => fieldLabel(key).toLowerCase().includes(needle)) || item.title.toLowerCase().includes(needle) || t("advanced").toLowerCase().includes(needle);
                 });
@@ -729,10 +787,115 @@ export default function SettingsPage() {
                   <p className="section-desc">{current.desc}</p>
 
                   {group === "chat" ? (
-                    visibleChat.length === 0 ? (
+                    visibleChat.length === 0 && visibleExtraPrompts.length === 0 ? (
                       <p className="muted">{t("searchEmpty")}</p>
                     ) : (
-                      <div className="field-grid">{visibleChat.map((key) => renderField(key))}</div>
+                      <>
+                        {visibleChat.includes("system_prompt") ? (
+                          <div className="field-grid">{renderField("system_prompt")}</div>
+                        ) : null}
+                        {visibleExtraPrompts.length > 0 ? (
+                          <div
+                            className="extra-prompts"
+                            style={{
+                              marginTop: visibleChat.includes("system_prompt") ? "1.25rem" : undefined,
+                            }}
+                          >
+                            <div className="extra-prompts-head">
+                              <div>
+                                <strong>{t("extraPromptsTitle")}</strong>
+                                <p className="field-hint" style={{ marginTop: "0.25rem" }}>
+                                  {t("extraPromptsHint")}
+                                </p>
+                              </div>
+                              <span className="prompt-actions">
+                                <button
+                                  type="button"
+                                  className={`btn ghost sm${improvingExtraPrompt ? " is-loading" : ""}`}
+                                  onClick={onImproveActiveExtraPrompt}
+                                  disabled={!canImproveActiveExtra || improvingExtraPrompt}
+                                  title={
+                                    canImproveActiveExtra
+                                      ? t("improveActivePrompt")
+                                      : t("systemPromptBlank")
+                                  }
+                                  aria-label={
+                                    improvingExtraPrompt
+                                      ? t("improvingSystemPrompt")
+                                      : t("improveActivePrompt")
+                                  }
+                                >
+                                  {improvingExtraPrompt ? (
+                                    <span className="spinner" />
+                                  ) : (
+                                    <Icon name="wand" />
+                                  )}
+                                  <span>
+                                    {improvingExtraPrompt
+                                      ? t("improvingSystemPrompt")
+                                      : t("improveActivePrompt")}
+                                  </span>
+                                </button>
+                              </span>
+                            </div>
+                            <p className="muted" style={{ fontSize: "0.8rem", margin: "0.5rem 0 0.75rem" }}>
+                              {t("activePromptLabel", { label: fieldLabel(activeExtraPrompt) })}
+                            </p>
+                            <div className="field-grid">
+                              {visibleExtraPrompts.map((key) => {
+                                const help = fieldHelp(key);
+                                const isActive = activeExtraPrompt === key;
+                                return (
+                                  <div
+                                    className={`field extra-prompt-field${isActive ? " is-active" : ""}`}
+                                    key={key}
+                                  >
+                                    <label
+                                      htmlFor={key}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "0.5rem",
+                                        flexWrap: "wrap",
+                                      }}
+                                    >
+                                      <span style={{ flex: 1 }}>{fieldLabel(key)}</span>
+                                      <button
+                                        type="button"
+                                        className="btn secondary sm"
+                                        onClick={() => onRestoreExtraPrompt(key)}
+                                        disabled={!data?.defaults?.[key] || improvingExtraPrompt}
+                                      >
+                                        {t("restoreSystemPrompt")}
+                                      </button>
+                                    </label>
+                                    <textarea
+                                      id={key}
+                                      rows={8}
+                                      value={displayString(key)}
+                                      onFocus={() => setActiveExtraPrompt(key)}
+                                      onClick={() => setActiveExtraPrompt(key)}
+                                      onChange={(e) => {
+                                        setActiveExtraPrompt(key);
+                                        updateDraft(key, e.target.value);
+                                      }}
+                                      disabled={improvingExtraPrompt}
+                                    />
+                                    {help ? <span className="field-hint">{help}</span> : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
+                        {visibleChat.filter((key) => key !== "system_prompt").length > 0 ? (
+                          <div className="field-grid" style={{ marginTop: "1.25rem" }}>
+                            {visibleChat
+                              .filter((key) => key !== "system_prompt")
+                              .map((key) => renderField(key))}
+                          </div>
+                        ) : null}
+                      </>
                     )
                   ) : null}
 

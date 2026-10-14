@@ -198,6 +198,8 @@ class SettingsUpdate(BaseModel):
     max_tokens: int | None = None
     llm_top_p: float | None = None
     system_prompt: str | None = None
+    reanalyze_system_prompt: str | None = None
+    activities_system_prompt: str | None = None
     cite_inline_refs: bool | None = None
     local_top_k: int | None = None
     local_min_score: float | None = None

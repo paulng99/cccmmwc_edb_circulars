@@ -16,7 +16,10 @@ from typing import Any
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.services.llm import get_llm_client
-from app.services.runtime_settings import resolved_settings
+from app.services.runtime_settings import (
+    DEFAULT_ACTIVITIES_SYSTEM_PROMPT,
+    resolved_settings,
+)
 from app.services.usage import usage_scope
 
 logger = logging.getLogger(__name__)
@@ -35,24 +38,8 @@ LLM_TIMEOUT_SECONDS = 90.0
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _JSON_FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.S)
 
-ACTIVITIES_SYSTEM = """你協助香港學校職員從教育局通告抽出「活動／限期」資料，供月曆使用。
-
-任務：輸出一個 JSON 陣列（不要其他說明、不要 markdown 標題）。每個元素為物件，欄位：
-- name: 活動或事項名稱（字串或 null）
-- starts_at: 開始日期 yyyy-mm-dd（字串或 null）
-- deadline_at: 截止日期／完結日期 yyyy-mm-dd（字串或 null）
-- summary: 一句簡述（字串或 null）
-- location: 地點（字串或 null）
-
-規則：
-1. 只根據正文；沒有寫明的日期不要臆造。
-2. 日期必須是 yyyy-mm-dd；無法確定則該欄為 null。
-3. 納入：活動日期、報名／交回／回覆／申請限期、講座／培訓／比賽等。
-4. 排除：通告發出／修訂／更新日期、學年（如 2025/26）、生效日期、取代舊通告的背景日期、局方信頭／署名地址。
-5. 同一事項若有開始與截止，合併為一筆；不同事項必須分開多筆，不要合併無關項目。
-6. 正文沒有可上曆的活動時輸出 []。
-7. 中文用繁體（香港）；只輸出 JSON 陣列。
-"""
+# Default prompt (also the fallback when settings are empty/missing).
+ACTIVITIES_SYSTEM = DEFAULT_ACTIVITIES_SYSTEM_PROMPT
 
 
 def answer_model_configured() -> bool:
@@ -165,11 +152,16 @@ def apply_llm_activities(doc: object, activities: list[dict[str, Any]]) -> bool:
 
 async def _call_activities_model(body: str) -> str:
     clipped = _clip_body(body)
+    rs = resolved_settings()
+    raw = rs.get("activities_system_prompt")
+    system = str(raw).strip() if isinstance(raw, str) else ""
+    if not system:
+        system = ACTIVITIES_SYSTEM
     llm = get_llm_client()
     with usage_scope("reanalyze"):
         answer = await llm.chat(
             [
-                {"role": "system", "content": ACTIVITIES_SYSTEM},
+                {"role": "system", "content": system},
                 {"role": "user", "content": clipped},
             ],
             stream=False,

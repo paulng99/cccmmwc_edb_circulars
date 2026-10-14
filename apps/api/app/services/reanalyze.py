@@ -27,6 +27,10 @@ from app.services.llm_activities import (
     parse_llm_activities,
     refresh_activities_llm_only,
 )
+from app.services.runtime_settings import (
+    DEFAULT_REANALYZE_SYSTEM_PROMPT,
+    resolved_settings,
+)
 from app.services.storage import get_object_bytes
 from app.services.usage import usage_scope
 
@@ -42,6 +46,7 @@ LLM_TIMEOUT_SECONDS = 90.0
 __all__ = [
     "ACTIVITIES_PARSED_FLAG",
     "FAIL_KEEP_MESSAGE",
+    "REANALYZE_SYSTEM",
     "SCHOOL_ACTION_KEY",
     "UNVERIFIED_PREFIX",
     "activities_payload",
@@ -58,16 +63,8 @@ __all__ = [
     "with_unverified_prefix",
 ]
 
-REANALYZE_SYSTEM = """你協助香港學校職員閱讀教育局通告。
-
-任務：根據通告正文，只用一段文字說明「這份要學校做什麼」（行動、交回、申請、參加、注意事項）。
-規則：
-1. 只根據正文；正文沒有的不要臆造。
-2. 輸出一段完整文字，不要條列、不要標題、不要 markdown。
-3. 用通告原文語言；中文用繁體（香港）。
-4. 不要重複整份通告；聚焦學校要做的事。
-5. 不要自行加上「未核對」字樣（系統會標示）。
-"""
+# Default prompt (also the fallback when settings are empty/missing).
+REANALYZE_SYSTEM = DEFAULT_REANALYZE_SYSTEM_PROMPT
 
 
 def school_action_from_extra(extra: object) -> str | None:
@@ -132,11 +129,16 @@ async def load_document_body(db: AsyncSession, doc: Document) -> str:
 
 async def _call_answer_model(body: str) -> str:
     clipped = _clip_body(body)
+    rs = resolved_settings()
+    raw = rs.get("reanalyze_system_prompt")
+    system = str(raw).strip() if isinstance(raw, str) else ""
+    if not system:
+        system = REANALYZE_SYSTEM
     llm = get_llm_client()
     with usage_scope("reanalyze"):
         answer = await llm.chat(
             [
-                {"role": "system", "content": REANALYZE_SYSTEM},
+                {"role": "system", "content": system},
                 {"role": "user", "content": clipped},
             ],
             stream=False,

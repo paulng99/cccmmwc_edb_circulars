@@ -6,6 +6,8 @@ import pytest
 from app.core.config import Settings
 from app.models import AppSetting
 from app.services.runtime_settings import (
+    DEFAULT_ACTIVITIES_SYSTEM_PROMPT,
+    DEFAULT_REANALYZE_SYSTEM_PROMPT,
     DEFAULT_SYSTEM_PROMPT,
     apply_patch,
     build_settings_response,
@@ -46,6 +48,10 @@ def test_defaults_include_new_keys():
     assert d["dify_top_k"] == 5
     assert d["cite_inline_refs"] is True
     assert d["system_prompt"] == DEFAULT_SYSTEM_PROMPT
+    assert d["reanalyze_system_prompt"] == DEFAULT_REANALYZE_SYSTEM_PROMPT
+    assert d["activities_system_prompt"] == DEFAULT_ACTIVITIES_SYSTEM_PROMPT
+    assert "要學校做什麼" in d["reanalyze_system_prompt"]
+    assert "yyyy-mm-dd" in d["activities_system_prompt"]
     assert d["openrouter_api_key"] == "secret-key"
     assert d["llm_provider"] == "openrouter"
 
@@ -83,16 +89,51 @@ def test_apply_patch_rejects_blank_system_prompt():
         apply_patch({"system_prompt": "keep"}, {"system_prompt": "   "})
 
 
+@pytest.mark.parametrize(
+    "key",
+    ["reanalyze_system_prompt", "activities_system_prompt"],
+)
+def test_apply_patch_rejects_blank_extra_system_prompts(key):
+    with pytest.raises(ValueError, match=f"{key} must not be blank"):
+        apply_patch({key: "keep"}, {key: "   "})
+
+
+def test_apply_patch_accepts_extra_system_prompts():
+    current = {
+        "reanalyze_system_prompt": DEFAULT_REANALYZE_SYSTEM_PROMPT,
+        "activities_system_prompt": DEFAULT_ACTIVITIES_SYSTEM_PROMPT,
+    }
+    new, warnings = apply_patch(
+        current,
+        {
+            "reanalyze_system_prompt": "  reanalyze custom  ",
+            "activities_system_prompt": "activities custom",
+        },
+    )
+    assert new["reanalyze_system_prompt"] == "  reanalyze custom  "
+    assert new["activities_system_prompt"] == "activities custom"
+    assert warnings == []
+
+
 def test_build_settings_response_includes_default_system_prompt():
     row = MagicMock()
     row.updated_at = None
     row.updated_by = None
     payload = build_settings_response(
-        {"system_prompt": "custom", "temperature": 0.2},
+        {
+            "system_prompt": "custom",
+            "reanalyze_system_prompt": "ra custom",
+            "activities_system_prompt": "act custom",
+            "temperature": 0.2,
+        },
         row,
     )
     assert payload["defaults"]["system_prompt"] == DEFAULT_SYSTEM_PROMPT
+    assert payload["defaults"]["reanalyze_system_prompt"] == DEFAULT_REANALYZE_SYSTEM_PROMPT
+    assert payload["defaults"]["activities_system_prompt"] == DEFAULT_ACTIVITIES_SYSTEM_PROMPT
     assert payload["editable"]["system_prompt"] == "custom"
+    assert payload["editable"]["reanalyze_system_prompt"] == "ra custom"
+    assert payload["editable"]["activities_system_prompt"] == "act custom"
 
 
 @pytest.mark.parametrize("key", ["local_top_k", "dify_top_k"])

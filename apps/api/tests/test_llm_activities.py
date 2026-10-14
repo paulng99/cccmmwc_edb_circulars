@@ -90,6 +90,48 @@ async def test_extract_activities_via_llm_success(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_extract_activities_uses_merged_system_prompt(monkeypatch):
+    custom = "CUSTOM_ACTIVITIES_PROMPT_FOR_TEST"
+    seen: list[str] = []
+
+    class FakeLlm:
+        async def chat(self, messages, stream=False, reasoning=True, *, apply_top_p=False):
+            seen.append(messages[0]["content"])
+            return FIXTURE_MULTI_JSON
+
+    monkeypatch.setattr(
+        llm_act,
+        "resolved_settings",
+        lambda: {"activities_system_prompt": custom},
+    )
+    monkeypatch.setattr(llm_act, "get_llm_client", lambda: FakeLlm())
+    monkeypatch.setattr(llm_act, "answer_model_configured", lambda: True)
+    await extract_activities_via_llm(FIXTURE_EDBCM_140_STYLE)
+    assert seen == [custom]
+
+
+@pytest.mark.asyncio
+async def test_extract_activities_falls_back_to_default_prompt(monkeypatch):
+    seen: list[str] = []
+
+    class FakeLlm:
+        async def chat(self, messages, stream=False, reasoning=True, *, apply_top_p=False):
+            seen.append(messages[0]["content"])
+            return FIXTURE_MULTI_JSON
+
+    monkeypatch.setattr(
+        llm_act,
+        "resolved_settings",
+        lambda: {"activities_system_prompt": "   "},
+    )
+    monkeypatch.setattr(llm_act, "get_llm_client", lambda: FakeLlm())
+    monkeypatch.setattr(llm_act, "answer_model_configured", lambda: True)
+    await extract_activities_via_llm(FIXTURE_EDBCM_140_STYLE)
+    assert seen == [llm_act.ACTIVITIES_SYSTEM]
+    assert "yyyy-mm-dd" in seen[0]
+
+
+@pytest.mark.asyncio
 async def test_extract_activities_via_llm_failure_returns_none(monkeypatch):
     class BadLlm:
         async def chat(self, *a, **k):
