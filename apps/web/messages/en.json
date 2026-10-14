@@ -369,7 +369,6 @@
     "improveSystemPrompt": "Improve system prompt",
     "improvingSystemPrompt": "Improving…",
     "improveSystemPromptFailed": "Could not improve the system prompt",
-    "improveSystemPromptDisabled": "Not enabled yet",
     "restoreSystemPrompt": "Restore original prompt",
     "restoreSystemPromptConfirm": "Restoring will overwrite your edits",
     "restoreSystemPromptDone": "Restored to the original prompt",
