@@ -63,12 +63,13 @@ def test_exact_minute_only_misses_when_late_without_window():
 
 @pytest.mark.asyncio
 async def test_dispatch_skips_when_crawl_disabled():
+    """resolved_settings is sync and takes no args (warm cache / env defaults)."""
     session = AsyncMock()
     with (
         patch(
             "app.services.schedule_dispatch.resolved_settings",
-            new=AsyncMock(return_value={"crawl_enabled": False}),
-        ),
+            return_value={"crawl_enabled": False},
+        ) as mock_rs,
         patch("app.services.schedule_dispatch.persist_last_dispatch") as persist,
         patch(
             "app.services.schedule_dispatch._sources_path_meta",
@@ -76,6 +77,7 @@ async def test_dispatch_skips_when_crawl_disabled():
         ),
     ):
         result = await dispatch_scheduled_crawls(session)
+    mock_rs.assert_called_once_with()
     assert result["status"] == "skipped"
     assert result["reason"] == "crawl_disabled"
     persist.assert_called_once()
@@ -94,8 +96,8 @@ async def test_dispatch_enqueues_due_and_skips_busy():
     with (
         patch(
             "app.services.schedule_dispatch.resolved_settings",
-            new=AsyncMock(return_value={"crawl_enabled": True}),
-        ),
+            return_value={"crawl_enabled": True},
+        ) as mock_rs,
         patch(
             "app.services.schedule_dispatch.get_enabled_sources",
             return_value=sources,
@@ -118,6 +120,7 @@ async def test_dispatch_enqueues_due_and_skips_busy():
         mock_crawl.delay = mock_delay
         result = await dispatch_scheduled_crawls(session, now=when)
 
+    mock_rs.assert_called_once_with()
     mock_delay.assert_called_once_with("ready")
     assert result["enqueued"] == ["ready"]
     assert result["skipped_busy"] == ["busy"]
@@ -142,7 +145,7 @@ async def test_dispatch_late_run_enqueues_missed_0600_slot():
     with (
         patch(
             "app.services.schedule_dispatch.resolved_settings",
-            new=AsyncMock(return_value={"crawl_enabled": True}),
+            return_value={"crawl_enabled": True},
         ),
         patch(
             "app.services.schedule_dispatch.get_enabled_sources",
@@ -168,6 +171,39 @@ async def test_dispatch_late_run_enqueues_missed_0600_slot():
     assert result["enqueued"] == ["edb_circulars"]
     assert result["checked_from"] == datetime(2026, 10, 20, 5, 51, tzinfo=HK).isoformat()
     assert result["checked_to"] == when.replace(second=0, microsecond=0).isoformat()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_uses_real_resolved_settings_signature():
+    """Regression: PR #43 awaited resolved_settings(session) → TypeError in production."""
+    session = AsyncMock()
+    when = datetime(2026, 10, 10, 6, 0, tzinfo=HK)
+
+    with (
+        patch(
+            "app.services.runtime_settings.get_cached_merged",
+            return_value={"crawl_enabled": True},
+        ),
+        patch(
+            "app.services.schedule_dispatch.get_enabled_sources",
+            return_value=[],
+        ),
+        patch(
+            "app.services.schedule_dispatch.source_ids_blocked",
+            new=AsyncMock(return_value=set()),
+        ),
+        patch("app.services.schedule_dispatch.load_last_dispatch", return_value=None),
+        patch("app.services.schedule_dispatch.persist_last_dispatch"),
+        patch(
+            "app.services.schedule_dispatch._sources_path_meta",
+            return_value={"sources_path": "/config/sources.yaml", "sources_mtime": 1.0},
+        ),
+    ):
+        result = await dispatch_scheduled_crawls(session, now=when)
+
+    assert result["status"] == "ok"
+    assert result["enqueued"] == []
+    assert result["due"] == []
 
 
 def test_beat_schedule_uses_dispatcher():

@@ -134,7 +134,8 @@ async def dispatch_scheduled_crawls(session: AsyncSession, *, now: datetime | No
     match schedules for every minute since the last successful check (capped).
     """
     path_meta = _sources_path_meta()
-    rs = await resolved_settings(session)
+    # Cache is warmed by the worker via _refresh_runtime_settings before dispatch.
+    rs = resolved_settings()
     if not rs.get("crawl_enabled", True):
         result = {
             "status": "skipped",
