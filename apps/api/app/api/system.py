@@ -15,6 +15,7 @@ from app.services.crawl_events import list_recent, pick_current, request_cancel
 from app.services.classify import CLASSIFY_SOURCE_ID
 from app.services.reindex import REINDEX_SOURCE_ID
 from app.services.runtime_settings import resolved_settings
+from app.services.schedule_dispatch_state import load_last_dispatch
 from app.worker import celery_app
 
 _SYSTEM_SOURCE_IDS = frozenset({REINDEX_SOURCE_ID, CLASSIFY_SOURCE_ID})
@@ -61,6 +62,8 @@ async def ingest_status(
     # Not a live Celery beat heartbeat — only whether the minute dispatcher entry
     # exists in worker beat_schedule (`dispatch-scheduled-crawls`).
     schedule_dispatch_configured = "dispatch-scheduled-crawls" in (celery_app.conf.beat_schedule or {})
+    # Written by the worker each time dispatch_scheduled_crawls finishes (Redis).
+    last_schedule_dispatch = load_last_dispatch()
     return {
         "documents": {
             "total": total,
@@ -72,6 +75,7 @@ async def ingest_status(
         "active": len(active) > 0,
         "crawl_enabled": bool(rs.get("crawl_enabled", True)),
         "schedule_dispatch_configured": schedule_dispatch_configured,
+        "last_schedule_dispatch": last_schedule_dispatch,
         "sources": [
             {
                 "id": s.id,

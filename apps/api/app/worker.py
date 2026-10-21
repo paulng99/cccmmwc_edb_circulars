@@ -18,12 +18,15 @@ celery_app = Celery(
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
 )
+celery_app.set_default()
 celery_app.conf.timezone = "Asia/Hong_Kong"
 # Tick every minute; each source's schedule in sources.yaml decides whether to crawl.
+# expires: drop stale ticks while the worker is busy — catch-up uses the Redis watermark.
 celery_app.conf.beat_schedule = {
     "dispatch-scheduled-crawls": {
         "task": "app.worker.dispatch_scheduled_crawls",
         "schedule": crontab(minute="*"),
+        "options": {"expires": 120},
     },
 }
 
@@ -80,16 +83,32 @@ async def _refresh_runtime_settings(session) -> None:
 
 @celery_app.task(name="app.worker.dispatch_scheduled_crawls")
 def dispatch_scheduled_crawls() -> dict:
-    """Every minute: enqueue crawl_source for sources whose cron matches now."""
+    """Every minute: enqueue crawl_source for sources whose cron matches now (HK)."""
     from app.core.db import SessionLocal
     from app.services.schedule_dispatch import dispatch_scheduled_crawls as _dispatch
+    from app.services.schedule_dispatch_state import persist_last_dispatch
+
+    logger.info("dispatch_scheduled_crawls received")
 
     async def _inner() -> dict:
         async with SessionLocal() as session:
             await _refresh_runtime_settings(session)
             return await _dispatch(session)
 
-    return _run_async(_inner())
+    try:
+        return _run_async(_inner())
+    except Exception as exc:
+        logger.exception("dispatch_scheduled_crawls failed")
+        persist_last_dispatch(
+            {
+                "status": "error",
+                "error": str(exc),
+                "due": [],
+                "enqueued": [],
+                "skipped_busy": [],
+            }
+        )
+        raise
 
 
 @celery_app.task(name="app.worker.crawl_all")
