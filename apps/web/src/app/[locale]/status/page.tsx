@@ -57,6 +57,17 @@ type IngestData = {
   crawl_enabled?: boolean;
   /** Code-level Celery beat minute dispatcher is registered (not a live heartbeat). */
   schedule_dispatch_configured?: boolean;
+  /** Last worker dispatch_scheduled_crawls outcome (Redis); null if never ran. */
+  last_schedule_dispatch?: {
+    status?: string;
+    at?: string | null;
+    checked_to?: string | null;
+    due?: string[];
+    enqueued?: string[];
+    skipped_busy?: string[];
+    error?: string;
+    reason?: string;
+  } | null;
   sources: Array<{
     id: string;
     enabled: boolean;
@@ -358,9 +369,24 @@ export default function StatusPage() {
   const latestRun = data?.recent_runs[0];
   const scheduleArmed =
     (data?.crawl_enabled ?? true) && (data?.schedule_dispatch_configured ?? true);
+  const lastDispatch = data?.last_schedule_dispatch;
+  const dispatchGlance = (() => {
+    if (!data) return "";
+    if (!lastDispatch) return t("dispatchGlanceNone");
+    const time = formatHkTimeHm(lastDispatch.checked_to || lastDispatch.at);
+    const status = lastDispatch.status || "";
+    if (status === "error") return t("dispatchGlanceError", { time });
+    if (status === "skipped") return t("dispatchGlanceSkipped", { time });
+    return t("dispatchGlanceOk", {
+      time,
+      due: String(lastDispatch.due?.length ?? 0),
+      enqueued: String(lastDispatch.enqueued?.length ?? 0),
+    });
+  })();
   const scheduleGlance = data
     ? [
         scheduleArmed ? t("scheduleGlanceOn") : t("scheduleGlanceOff"),
+        dispatchGlance,
         latestRun
           ? t("crawlRunGlanceSome", {
               time: formatHkTimeHm(latestRun.started_at || latestRun.finished_at),
