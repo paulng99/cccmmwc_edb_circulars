@@ -57,7 +57,7 @@ type IngestData = {
   crawl_enabled?: boolean;
   /** Code-level Celery beat minute dispatcher is registered (not a live heartbeat). */
   schedule_dispatch_configured?: boolean;
-  /** Last worker dispatch_scheduled_crawls outcome (Redis); null if never ran. */
+  /** Last minute-check watermark (Redis); often due=[] — not an acceptance fail. */
   last_schedule_dispatch?: {
     status?: string;
     at?: string | null;
@@ -65,6 +65,19 @@ type IngestData = {
     due?: string[];
     enqueued?: string[];
     skipped_busy?: string[];
+    error?: string;
+    reason?: string;
+  } | null;
+  /** Last dispatch with non-empty due and/or enqueued (acceptance signal). */
+  last_due_dispatch?: {
+    status?: string;
+    at?: string | null;
+    checked_from?: string | null;
+    checked_to?: string | null;
+    due?: string[];
+    enqueued?: string[];
+    skipped_busy?: string[];
+    task_ids?: Record<string, string>;
     error?: string;
     reason?: string;
   } | null;
@@ -370,6 +383,7 @@ export default function StatusPage() {
   const scheduleArmed =
     (data?.crawl_enabled ?? true) && (data?.schedule_dispatch_configured ?? true);
   const lastDispatch = data?.last_schedule_dispatch;
+  const lastDueDispatch = data?.last_due_dispatch;
   const dispatchGlance = (() => {
     if (!data) return "";
     if (!lastDispatch) return t("dispatchGlanceNone");
@@ -383,16 +397,30 @@ export default function StatusPage() {
       enqueued: String(lastDispatch.enqueued?.length ?? 0),
     });
   })();
+  const lastDueGlance = (() => {
+    if (!data || !lastDueDispatch) return "";
+    const time = formatHkTimeHm(lastDueDispatch.checked_to || lastDueDispatch.at);
+    return t("dispatchLastDueGlance", {
+      time,
+      due: String(lastDueDispatch.due?.length ?? 0),
+      enqueued: String(lastDueDispatch.enqueued?.length ?? 0),
+    });
+  })();
   const scheduleGlance = data
     ? [
         scheduleArmed ? t("scheduleGlanceOn") : t("scheduleGlanceOff"),
         dispatchGlance,
+        lastDueGlance,
+        // Empty due on the watermark row is normal between cron minutes.
+        t("dispatchEmptyDueHint"),
         latestRun
           ? t("crawlRunGlanceSome", {
               time: formatHkTimeHm(latestRun.started_at || latestRun.finished_at),
             })
           : t("crawlRunGlanceNone"),
-      ].join("\u3000")
+      ]
+        .filter(Boolean)
+        .join("\u3000")
     : "";
 
   const sourceName = (id: string) => {
