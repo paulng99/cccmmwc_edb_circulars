@@ -100,9 +100,9 @@ Web 以 `/api` 轉送 API：`API_INTERNAL_URL` 在 Compose 內為 `http://api:80
 ### 可選 profile
 
 ```bash
-docker compose --profile minio up -d   # 並設 STORAGE_BACKEND=minio
-docker compose --profile dify up -d    # 並設 DIFY_ENABLED=true 等（見 docker/dify）
-docker compose --profile tools up -d adminer
+docker compose -f docker-compose.yml -f docker-compose.optional.yml --profile minio up -d   # 並設 STORAGE_BACKEND=minio
+docker compose -f docker-compose.yml -f docker-compose.optional.yml --profile dify up -d    # 並設 DIFY_ENABLED=true 等（見 docker/dify）
+docker compose -f docker-compose.yml -f docker-compose.optional.yml --profile tools up -d adminer
 ```
 
 ### 環境變數（摘要，不含密鑰）
@@ -131,6 +131,7 @@ docker compose --profile tools up -d adminer
 - Coolify resource 使用兩個 compose 檔（順序重要）：
   1. `docker-compose.yml`
   2. `docker-compose.coolify.yml`（移除 host port bind，改 `expose`；config 用 named volume）
+- **不要**把 `docker-compose.optional.yml` 加進 Coolify（內含 MinIO／Adminer，會令部署 pull 非必要映像）。若 Coolify 仍列出 `minio`／`adminer`／`dify-placeholder`，在 resource 設定移除這些 service 後再部署。
 - **Domains**：`web` → 公開網域（內部 port `4000`）。**不要**把 `8008` 暴露到公網
 - Environment：`API_INTERNAL_URL=http://api:8008`；`NEXT_PUBLIC_API_URL` 留空；設好 `JWT_SECRET`、`ADMIN_PASSWORD`、`OPENROUTER_API_KEY`、`JINA_API_KEY` 等
 - 改 `NEXT_PUBLIC_*` 後須**重新建置** web image
