@@ -51,3 +51,8 @@ export function formatHkDate(iso: string | null | undefined, missing = "—"): s
     day: "2-digit",
   }).format(d);
 }
+
+/** Hong Kong calendar day as yyyy-mm-dd. */
+export function hkTodayIso(now: Date = new Date()): string {
+  return formatHkDate(now.toISOString());
+}

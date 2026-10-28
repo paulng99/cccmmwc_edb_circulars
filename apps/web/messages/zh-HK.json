@@ -32,13 +32,26 @@
   },
   "calendar": {
     "title": "活動月曆",
-    "subtitle": "按日期列出各通告活動的開始日與截止日",
+    "subtitle": "預設顯示本月。向上捲動查看較早月份，向下捲動查看較後月份。",
     "loading": "正在載入月曆…",
     "loadError": "無法載入月曆，請稍後再試。",
     "empty": "暫未有開始日或截止日",
+    "noDayEvents": "這日沒有活動",
     "datesUpdating": "日期更新中",
     "kindStart": "開始",
-    "kindDeadline": "截止"
+    "kindDeadline": "截止",
+    "thisMonth": "本月",
+    "scrollMonths": "月份。向上捲動查看較早月份，向下捲動查看較後月份。",
+    "dayAria": "{date}，{count} 項活動",
+    "weekdays": {
+      "sun": "日",
+      "mon": "一",
+      "tue": "二",
+      "wed": "三",
+      "thu": "四",
+      "fri": "五",
+      "sat": "六"
+    }
   },
   "datesBackfill": {
     "count": "已處理 {done} / {total}",

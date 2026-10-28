@@ -5,11 +5,10 @@ import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/routing";
 import { getCalendarEvents, type CalendarEvent } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { formatHkDate } from "@/lib/date";
 import { useRefreshingQuery } from "@/lib/useRefreshingQuery";
-import { AgendaEventRow } from "@/components/AgendaEventRow";
 import { DatesUpdatingCard } from "@/components/DatesUpdatingCard";
 import { Icon } from "@/components/Icon";
+import { MonthCalendar } from "@/components/MonthCalendar";
 
 type DayGroup = { date: string; events: CalendarEvent[] };
 
@@ -30,7 +29,7 @@ export default function CalendarPage() {
   }, [ready, token, router]);
 
   return (
-    <div className="page">
+    <div className="page calendar-page">
       <header className="page-head">
         <div>
           <h1>{t("title")}</h1>
@@ -62,38 +61,7 @@ export default function CalendarPage() {
         />
       ) : null}
 
-      {status === "success" && !datesUpdating && days.length === 0 ? (
-        <div className="card empty">
-          <div className="empty-icon">
-            <Icon name="calendar" />
-          </div>
-          <h3>{t("empty")}</h3>
-        </div>
-      ) : null}
-
-      {status === "success" && !datesUpdating && days.length > 0 ? (
-        <div className="calendar-days">
-          {days.map((day) => (
-            <section key={day.date} className="calendar-day">
-              <h2>
-                <time dateTime={day.date}>{formatHkDate(day.date)}</time>
-              </h2>
-              <ul>
-                {day.events.map((ev) => (
-                  <li
-                    key={`${ev.document_id}-${ev.kind}-${ev.activity_name || ""}-${ev.date}-${ev.summary || ""}`}
-                  >
-                    <AgendaEventRow
-                      event={ev}
-                      kindLabel={ev.kind === "start" ? t("kindStart") : t("kindDeadline")}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
-      ) : null}
+      {status === "success" && !datesUpdating ? <MonthCalendar days={days} /> : null}
     </div>
   );
 }
