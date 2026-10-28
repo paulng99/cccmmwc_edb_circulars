@@ -32,13 +32,26 @@
   },
   "calendar": {
     "title": "Activity calendar",
-    "subtitle": "Start and deadline dates for activities in circulars, grouped by day",
+    "subtitle": "Opens on this month. Scroll up for earlier months and down for later months.",
     "loading": "Loading calendar…",
     "loadError": "Could not load the calendar. Please try again.",
     "empty": "No start or deadline dates yet",
+    "noDayEvents": "No activities on this day",
     "datesUpdating": "Updating dates",
     "kindStart": "Start",
-    "kindDeadline": "Deadline"
+    "kindDeadline": "Deadline",
+    "thisMonth": "This month",
+    "scrollMonths": "Months. Scroll up for earlier months and down for later months.",
+    "dayAria": "{date}, {count, plural, =0 {no activities} one {# activity} other {# activities}}",
+    "weekdays": {
+      "sun": "Sun",
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat"
+    }
   },
   "datesBackfill": {
     "count": "{done} / {total}",
